@@ -5,10 +5,8 @@
   <title>MemeDrop overlay</title>
   <style>
     html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
       background: transparent !important;
       overflow: hidden;
       cursor: none;
@@ -18,25 +16,20 @@
     }
 
     #stage {
-      position: fixed;
-      inset: 0;
+      position: fixed; inset: 0;
       pointer-events: none;
       overflow: hidden;
     }
 
-    /* Zero-size anchor point — placed at the desired center coordinate.
-       All animations live on the child .drop, so this stays put. */
+    /* Zero-size anchor — animations live on the inner .drop */
     .anchor {
       position: absolute;
-      width: 0;
-      height: 0;
+      width: 0; height: 0;
     }
 
-    /* The actual meme container, centered on the anchor */
     .drop {
       position: absolute;
-      left: 0;
-      top: 0;
+      left: 0; top: 0;
       transform-origin: center;
       will-change: transform, opacity;
       filter:
@@ -64,7 +57,7 @@
       background: #000;
     }
 
-    /* Tag with sender username, sits above the meme */
+    /* Small username tag above the meme */
     .tag {
       position: absolute;
       top: -14px;
@@ -79,22 +72,73 @@
       border-radius: 999px;
       white-space: nowrap;
       box-shadow: 0 4px 14px rgba(0,0,0,.35);
-      z-index: 2;
+      z-index: 3;
     }
 
-    /* All animations now translate from a base of (-50%, -50%)
-       so the .drop stays centered on the anchor point throughout. */
+    /* Caption ribbon — diagonal sash overlaid on the meme.
+       Pure CSS, no extra deps. Looks like a meme stamp. */
+    .caption-ribbon {
+      position: absolute;
+      left: 50%;
+      bottom: 18%;
+      transform: translateX(-50%) rotate(var(--rot, 0deg));
+      max-width: 90%;
+      padding: 10px 28px;
+      font-family: 'Impact', 'Anton', system-ui, sans-serif;
+      font-weight: 900;
+      font-size: clamp(20px, 3.2vw, 42px);
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      color: #fff;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      background: linear-gradient(135deg, #ff3b6e 0%, #ff7e3a 50%, #ffb02e 100%);
+      -webkit-text-stroke: 2px rgba(0,0,0,.55);
+      text-shadow:
+        0 2px 0 rgba(0,0,0,.5),
+        0 6px 16px rgba(0,0,0,.6);
+      box-shadow:
+        0 10px 30px rgba(0,0,0,.45),
+        inset 0 1px 0 rgba(255,255,255,.25),
+        inset 0 -3px 0 rgba(0,0,0,.18);
+      border-radius: 6px;
+      z-index: 2;
+      animation: caption-pop 520ms cubic-bezier(.18,1.4,.4,1) 200ms backwards;
+    }
+
+    /* Side notches that give it the classic "ribbon" look */
+    .caption-ribbon::before,
+    .caption-ribbon::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      width: 14px; height: 14px;
+      background: inherit;
+      transform: translateY(-50%) rotate(45deg);
+      z-index: -1;
+      filter: brightness(.7);
+    }
+    .caption-ribbon::before { left: -6px; }
+    .caption-ribbon::after  { right: -6px; }
+
     @keyframes drop-in {
       0%   { opacity: 0; transform: translate(-50%, calc(-50% - 80px)) rotate(-8deg) scale(.6); }
       60%  { opacity: 1; transform: translate(-50%, calc(-50% + 12px)) rotate( 2deg) scale(1.04); }
       100% { opacity: 1; transform: translate(-50%, -50%)              rotate( 0deg) scale(1);    }
     }
     @keyframes drop-bob {
-      0%, 100% { transform: translate(-50%, -50%)                rotate(0deg); }
-      50%      { transform: translate(-50%, calc(-50% - 6px))    rotate(.6deg); }
+      0%, 100% { transform: translate(-50%, -50%)             rotate(0deg); }
+      50%      { transform: translate(-50%, calc(-50% - 6px)) rotate(.6deg); }
     }
     @keyframes drop-out {
       to { opacity: 0; transform: translate(-50%, calc(-50% + 40px)) rotate(6deg) scale(.92); }
+    }
+    @keyframes caption-pop {
+      0%   { opacity: 0; transform: translateX(-50%) rotate(var(--rot, 0deg)) scale(.4); }
+      70%  { opacity: 1; transform: translateX(-50%) rotate(var(--rot, 0deg)) scale(1.1); }
+      100% { opacity: 1; transform: translateX(-50%) rotate(var(--rot, 0deg)) scale(1);   }
     }
   </style>
 </head>

@@ -1,19 +1,15 @@
 // overlay.js — renderer for the transparent overlay window.
-// Receives drop payloads from main, renders them on top of the screen.
 
 const stage = document.getElementById('stage');
 
-const popUrl = 'data:audio/wav;base64,UklGRoQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YWAAAAAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA';
+const popUrl = 'data:audio/wav;base64,UklGRoQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YWAAAAAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA';
 
 const MAX_CONCURRENT = 6;
 let active = 0;
 
 function chooseSpot() {
-  // Pick the center point in vh/vw units. With the wrapper centered via
-  // its own translate(-50%,-50%) on a NESTED element, the outer position
-  // is the true center of the meme.
-  const marginX = 12; // %
-  const marginY = 18; // %
+  const marginX = 14;
+  const marginY = 20;
   const x = marginX + Math.random() * (100 - marginX * 2);
   const y = marginY + Math.random() * (100 - marginY * 2);
   return { x, y };
@@ -27,14 +23,13 @@ function playPop(volume) {
   } catch {}
 }
 
-function renderDrop({ media, from, settings }) {
+function renderDrop({ media, caption, from, settings }) {
   if (active >= MAX_CONCURRENT) return;
   active++;
 
   const { x, y } = chooseSpot();
 
-  // Anchor: positioned absolutely, used purely as a centered coordinate.
-  // It has zero size and the inner .drop is centered on it.
+  // Zero-size anchor for centering — animations live on .drop
   const anchor = document.createElement('div');
   anchor.className = 'anchor';
   anchor.style.left = `${x}%`;
@@ -44,10 +39,23 @@ function renderDrop({ media, from, settings }) {
   wrap.className = 'drop';
   wrap.style.opacity = String(settings?.opacity ?? 1);
 
+  // Sender tag (small pill at the top)
   const tag = document.createElement('div');
   tag.className = 'tag';
   tag.textContent = `@${from?.username || 'someone'}`;
   wrap.appendChild(tag);
+
+  // Caption ribbon — diagonal sash with gradient, like a meme stamp.
+  // Only added if caption is non-empty.
+  if (caption && String(caption).trim()) {
+    const ribbon = document.createElement('div');
+    ribbon.className = 'caption-ribbon';
+    ribbon.textContent = String(caption).trim().slice(0, 80);
+    // Subtle rotation per drop so it looks hand-placed
+    const rot = -8 + Math.random() * 16; // -8° to +8°
+    ribbon.style.setProperty('--rot', `${rot}deg`);
+    wrap.appendChild(ribbon);
+  }
 
   let lifetime = (settings?.duration ?? 4) * 1000;
   let el;
@@ -87,6 +95,7 @@ function renderDrop({ media, from, settings }) {
     el.firstElementChild.style.borderRadius = '14px';
     el.firstElementChild.style.display = 'block';
   } else {
+    // image / gif — handled the same way; the <img> tag plays GIFs natively
     el = document.createElement('img');
     el.src = media.url;
     el.alt = '';

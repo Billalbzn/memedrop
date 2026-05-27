@@ -4,14 +4,8 @@ const path = require('path');
 const WebSocket = require('ws');
 const Store = require('electron-store');
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Defaults
-//   DEFAULT_SERVER is the public bot URL your friends will connect to.
-//   Override at build time:  DEFAULT_SERVER=wss://your.domain npm run build:win
-//   Override per-user via the settings UI.
-// ─────────────────────────────────────────────────────────────────────────────
 const DEFAULT_SERVER =
-  process.env.DEFAULT_SERVER || 'wss://memedrop-bot.up.railway.app';
+  process.env.DEFAULT_SERVER || 'wss://memedrop-production-3106.up.railway.app';
 
 const store = new Store({
   defaults: {
@@ -29,9 +23,9 @@ const store = new Store({
 let overlayWin = null;
 let settingsWin = null;
 let tray = null;
+let topGuardTimer = null;   // periodic re-asserter for the overlay's z-order
 
 function iconPath() {
-  // Works both packaged (resources/app/assets) and unpacked (cwd/assets)
   return path.join(__dirname, 'assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
 }
 
@@ -43,6 +37,45 @@ function getTargetDisplay() {
     if (found) return found;
   }
   return screen.getPrimaryDisplay();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Aggressive "stay on top" enforcement.
+//
+// Windows in particular tends to demote always-on-top windows when:
+//   - another fullscreen/borderless app gains focus
+//   - the user alt-tabs across virtual desktops
+//   - a UAC prompt or system dialog steals focus and releases
+//
+// We counter all that with:
+//   1. setAlwaysOnTop(true, 'screen-saver') — the highest non-system level
+//   2. setVisibleOnAllWorkspaces with visibleOnFullScreen:true
+//   3. setIgnoreMouseEvents — never steal focus ourselves
+//   4. focusable:false at creation time — Windows won't grab focus
+//   5. A 1s timer that re-runs setAlwaysOnTop + moveTop if we slipped
+//   6. Re-asserting on every system display event
+// ─────────────────────────────────────────────────────────────────────────────
+function enforceTop() {
+  if (!overlayWin || overlayWin.isDestroyed()) return;
+  try {
+    if (!overlayWin.isAlwaysOnTop()) {
+      overlayWin.setAlwaysOnTop(true, 'screen-saver');
+    }
+    overlayWin.moveTop();
+  } catch (e) { /* ignore */ }
+}
+
+function startTopGuard() {
+  if (topGuardTimer) return;
+  // 1s cadence is enough to feel "always on top" without spamming the WM.
+  topGuardTimer = setInterval(enforceTop, 1000);
+}
+
+function stopTopGuard() {
+  if (topGuardTimer) {
+    clearInterval(topGuardTimer);
+    topGuardTimer = null;
+  }
 }
 
 function createOverlayWindow() {
@@ -62,10 +95,11 @@ function createOverlayWindow() {
     fullscreenable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    focusable: false,
+    focusable: false,          // critical: we must never steal focus
     hasShadow: false,
     show: false,
     icon: iconPath(),
+    type: process.platform === 'darwin' ? undefined : undefined, // platform default
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -78,13 +112,21 @@ function createOverlayWindow() {
   overlayWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   overlayWin.setIgnoreMouseEvents(true, { forward: true });
 
+  // Wake up the z-order whenever the OS shuffles things around
+  overlayWin.on('blur', enforceTop);
+  overlayWin.on('hide', () => stopTopGuard());
+  overlayWin.on('show', () => startTopGuard());
+
   overlayWin.loadFile(path.join(__dirname, 'src', 'overlay.html'));
+  overlayWin.once('ready-to-show', () => {
+    overlayWin.show();
+    enforceTop();
+    startTopGuard();
+  });
 
-  overlayWin.once('ready-to-show', () => overlayWin.show());
-
-  screen.on('display-metrics-changed', repositionOverlay);
-  screen.on('display-added',   repositionOverlay);
-  screen.on('display-removed', repositionOverlay);
+  screen.on('display-metrics-changed', () => { repositionOverlay(); enforceTop(); });
+  screen.on('display-added',   () => { repositionOverlay(); enforceTop(); });
+  screen.on('display-removed', () => { repositionOverlay(); enforceTop(); });
 
   return overlayWin;
 }
@@ -143,6 +185,7 @@ function createTray() {
         if (overlayWin && overlayWin.isVisible()) overlayWin.hide();
         else { createOverlayWindow(); overlayWin.show(); }
       } },
+    { label: 'Force on top',     click: enforceTop },
     { type: 'separator' },
     { label: 'Quit',
       click: () => { app.isQuitting = true; app.quit(); } },
@@ -207,6 +250,8 @@ function connectWS() {
         break;
       case 'drop':
         if (!overlayWin || overlayWin.isDestroyed()) createOverlayWindow();
+        // re-assert top BEFORE rendering so the meme appears above the game
+        enforceTop();
         overlayWin.webContents.send('drop', {
           ...msg,
           settings: {
@@ -228,9 +273,7 @@ function connectWS() {
     scheduleReconnect();
   });
 
-  ws.on('error', (err) => {
-    console.error('[ws] error:', err.message);
-  });
+  ws.on('error', (err) => console.error('[ws] error:', err.message));
 }
 
 function scheduleReconnect() {
@@ -255,7 +298,6 @@ ipcMain.handle('settings:get', () => ({
 
 ipcMain.handle('settings:set', (_e, patch) => {
   for (const [k, v] of Object.entries(patch)) store.set(k, v);
-
   if ('autostart' in patch) {
     app.setLoginItemSettings({ openAtLogin: !!patch.autostart, openAsHidden: true });
   }
@@ -265,6 +307,7 @@ ipcMain.handle('settings:set', (_e, patch) => {
   }
   if ('overlayDisplayId' in patch) {
     repositionOverlay();
+    enforceTop();
   }
   return true;
 });
@@ -288,15 +331,11 @@ ipcMain.handle('connection:reconnect', () => {
 
 ipcMain.on('test-drop', () => {
   if (!overlayWin || overlayWin.isDestroyed()) createOverlayWindow();
+  enforceTop();
   overlayWin.webContents.send('drop', {
     type: 'drop',
-    media: {
-      url: 'about:blank',
-      kind: 'test',
-      mime: 'test/test',
-      name: 'test.png',
-      size: 0,
-    },
+    media: { url: 'about:blank', kind: 'test', mime: 'test/test', name: 'test.png', size: 0 },
+    caption: 'TEST DROP',
     from: { id: '0', username: 'You (test)' },
     ts: Date.now(),
     settings: {
@@ -321,10 +360,7 @@ if (!gotLock) {
 } else {
   app.on('second-instance', () => createSettingsWindow());
 
-  // Set the AppUserModelID so Windows taskbar groups correctly and shows our icon
-  if (process.platform === 'win32') {
-    app.setAppUserModelId('com.memedrop.overlay');
-  }
+  if (process.platform === 'win32') app.setAppUserModelId('com.memedrop.overlay');
 
   app.whenReady().then(() => {
     createOverlayWindow();
@@ -340,9 +376,6 @@ if (!gotLock) {
     });
   });
 
-  app.on('window-all-closed', (e) => {
-    e.preventDefault?.();
-  });
-
-  app.on('before-quit', () => { app.isQuitting = true; });
+  app.on('window-all-closed', (e) => { e.preventDefault?.(); });
+  app.on('before-quit', () => { app.isQuitting = true; stopTopGuard(); });
 }

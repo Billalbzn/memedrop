@@ -1,5 +1,4 @@
 // index.js — MemeDrop bot
-// Owns the Discord side AND a WebSocket server that overlay clients connect to.
 require('dotenv').config();
 
 const { Client, GatewayIntentBits, Events, MessageFlags } = require('discord.js');
@@ -7,14 +6,6 @@ const { WebSocketServer } = require('ws');
 const http = require('http');
 const crypto = require('crypto');
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HTTP + WebSocket server
-//
-// Why HTTP wrapping the WS server?
-//   1) Railway / most PaaS only give us ONE port (process.env.PORT) and that
-//      port must speak HTTP for healthchecks. We multiplex WS upgrades on it.
-//   2) A simple GET / returns 200 so the platform sees the service as healthy.
-// ─────────────────────────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT || process.env.WS_PORT || 8765);
 
 const httpServer = http.createServer((req, res) => {
@@ -29,12 +20,9 @@ const httpServer = http.createServer((req, res) => {
 
 const wss = new WebSocketServer({ server: httpServer });
 
-// pairingCode (string) -> ws (waiting for /link)
-const pendingOverlays = new Map();
-// discordUserId -> ws (linked & active)
-const linkedOverlays = new Map();
-// ws -> { code, userId, guildIds:Set }
-const wsMeta = new WeakMap();
+const pendingOverlays = new Map();         // code -> ws
+const linkedOverlays = new Map();          // discordUserId -> ws
+const wsMeta = new WeakMap();              // ws -> { code, userId }
 
 function generatePairingCode() {
   let code;
@@ -85,9 +73,6 @@ httpServer.listen(PORT, () => {
   console.log(`[http+ws] listening on port ${PORT}`);
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Discord client
-// ─────────────────────────────────────────────────────────────────────────────
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
 });
@@ -99,7 +84,6 @@ client.once(Events.ClientReady, (c) => {
 const ACCEPTED_MIME = /^(image\/(png|jpe?g|gif|webp)|video\/(mp4|webm|quicktime))$/i;
 const MAX_BYTES = 25 * 1024 * 1024;
 
-// Lightweight rate limit: max 1 drop / 2s per sender
 const lastDropAt = new Map();
 function rateLimited(userId) {
   const now = Date.now();
@@ -107,6 +91,40 @@ function rateLimited(userId) {
   if (now - prev < 2000) return true;
   lastDropAt.set(userId, now);
   return false;
+}
+
+function validateAttachment(att) {
+  if (att.size > MAX_BYTES) {
+    return `File too large (${(att.size / 1024 / 1024).toFixed(1)} MB). Limit is 25 MB.`;
+  }
+  if (!att.contentType || !ACCEPTED_MIME.test(att.contentType)) {
+    return `Unsupported type: \`${att.contentType || 'unknown'}\`. Use PNG / JPG / GIF / WEBP / MP4 / WEBM.`;
+  }
+  return null;
+}
+
+function classifyMedia(mime) {
+  if (mime.startsWith('video/')) return 'video';
+  if (mime === 'image/gif')      return 'gif';
+  return 'image';
+}
+
+function buildDropPayload(att, caption, fromUser) {
+  return {
+    type: 'drop',
+    media: {
+      url: att.url,
+      kind: classifyMedia(att.contentType),
+      mime: att.contentType,
+      name: att.name,
+      size: att.size,
+      width: att.width || null,
+      height: att.height || null,
+    },
+    caption: caption ? String(caption).slice(0, 80) : null,
+    from: { id: fromUser.id, username: fromUser.username },
+    ts: Date.now(),
+  };
 }
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -124,22 +142,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
             flags: MessageFlags.Ephemeral,
           });
         }
-
         const previous = linkedOverlays.get(interaction.user.id);
         if (previous && previous !== ws) {
           sendJson(previous, { type: 'unlinked', reason: 'replaced' });
           previous.close();
         }
-
         pendingOverlays.delete(code);
         linkedOverlays.set(interaction.user.id, ws);
         wsMeta.set(ws, { code: null, userId: interaction.user.id });
-
         sendJson(ws, {
           type: 'linked',
           user: { id: interaction.user.id, username: interaction.user.username },
         });
-
         return interaction.reply({
           content: `✅ Linked! Your friends can now drop memes on you with \`/drop target:@${interaction.user.username}\`.`,
           flags: MessageFlags.Ephemeral,
@@ -157,10 +171,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
         sendJson(ws, { type: 'unlinked', reason: 'user' });
         linkedOverlays.delete(interaction.user.id);
-        return interaction.reply({
-          content: '✅ Unlinked.',
-          flags: MessageFlags.Ephemeral,
-        });
+        return interaction.reply({ content: '✅ Unlinked.', flags: MessageFlags.Ephemeral });
       }
 
       // ── /status ─────────────────────────────────────────────────────────
@@ -186,7 +197,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const list = [];
         for (const [userId, ws] of linkedOverlays) {
           if (ws.readyState !== ws.OPEN) continue;
-          // Only show users that share at least one guild with the requester
           try {
             const member = await interaction.guild?.members.fetch(userId).catch(() => null);
             if (member) list.push(`• <@${userId}>`);
@@ -200,18 +210,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // ── /drop ───────────────────────────────────────────────────────────
+      // ── /drop @target [@target2..5] media [caption] ────────────────────
       case 'drop': {
-        const target = interaction.options.getUser('target', true);
-        const att = interaction.options.getAttachment('media', true);
-
-        if (target.bot) {
-          return interaction.reply({
-            content: '🤖 Bots don\'t have screens to drop memes on.',
-            flags: MessageFlags.Ephemeral,
-          });
-        }
-
         if (rateLimited(interaction.user.id)) {
           return interaction.reply({
             content: '⏱️ Slow down — one drop every 2 seconds.',
@@ -219,51 +219,91 @@ client.on(Events.InteractionCreate, async (interaction) => {
           });
         }
 
-        const ws = linkedOverlays.get(target.id);
-        if (!ws || ws.readyState !== ws.OPEN) {
+        // Collect 1-5 targets, dedupe, drop bots
+        const targets = [];
+        const seen = new Set();
+        for (const optName of ['target', 'target2', 'target3', 'target4', 'target5']) {
+          const u = interaction.options.getUser(optName, optName === 'target');
+          if (!u || u.bot || seen.has(u.id)) continue;
+          seen.add(u.id);
+          targets.push(u);
+        }
+        if (targets.length === 0) {
           return interaction.reply({
-            content: `❌ **${target.username}** has no linked overlay running. Tell them to launch MemeDrop and \`/link\`.`,
+            content: '🤖 No valid targets (bots and duplicates filtered out).',
             flags: MessageFlags.Ephemeral,
           });
         }
 
-        if (att.size > MAX_BYTES) {
+        const att = interaction.options.getAttachment('media', true);
+        const caption = interaction.options.getString('caption', false);
+
+        const err = validateAttachment(att);
+        if (err) return interaction.reply({ content: `❌ ${err}`, flags: MessageFlags.Ephemeral });
+
+        const payload = buildDropPayload(att, caption, interaction.user);
+
+        const delivered = [];
+        const offline = [];
+        for (const t of targets) {
+          const ws = linkedOverlays.get(t.id);
+          if (ws && ws.readyState === ws.OPEN) {
+            sendJson(ws, payload);
+            delivered.push(t.username);
+          } else {
+            offline.push(t.username);
+          }
+        }
+
+        let msg;
+        if (delivered.length && offline.length) {
+          msg = `✅ Dropped on **${delivered.join('**, **')}**.\n⚠️ Offline (skipped): ${offline.map(o => `**${o}**`).join(', ')}`;
+        } else if (delivered.length) {
+          msg = `✅ Dropped on **${delivered.join('**, **')}**!`;
+        } else {
+          msg = `❌ Nobody received it — none of them have a linked overlay running.`;
+        }
+        return interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
+      }
+
+      // ── /dropall media [caption] ───────────────────────────────────────
+      case 'dropall': {
+        if (rateLimited(interaction.user.id)) {
           return interaction.reply({
-            content: `❌ File too large (${(att.size / 1024 / 1024).toFixed(1)} MB). Limit is 25 MB.`,
+            content: '⏱️ Slow down — one drop every 2 seconds.',
             flags: MessageFlags.Ephemeral,
           });
         }
-        if (!att.contentType || !ACCEPTED_MIME.test(att.contentType)) {
+
+        const att = interaction.options.getAttachment('media', true);
+        const caption = interaction.options.getString('caption', false);
+
+        const err = validateAttachment(att);
+        if (err) return interaction.reply({ content: `❌ ${err}`, flags: MessageFlags.Ephemeral });
+
+        // Find every linked user that's also a member of this guild
+        const recipients = [];
+        for (const [userId, ws] of linkedOverlays) {
+          if (ws.readyState !== ws.OPEN) continue;
+          const member = await interaction.guild?.members.fetch(userId).catch(() => null);
+          if (member) recipients.push({ userId, ws, username: member.user.username });
+        }
+
+        if (recipients.length === 0) {
           return interaction.reply({
-            content: `❌ Unsupported type: \`${att.contentType || 'unknown'}\`. Use PNG / JPG / GIF / WEBP / MP4 / WEBM.`,
+            content: 'Nobody in this server has a linked overlay right now. 😴',
             flags: MessageFlags.Ephemeral,
           });
         }
 
-        const kind = att.contentType.startsWith('video/') ? 'video'
-                   : att.contentType === 'image/gif'      ? 'gif'
-                   : 'image';
-
-        sendJson(ws, {
-          type: 'drop',
-          media: {
-            url: att.url,
-            kind,
-            mime: att.contentType,
-            name: att.name,
-            size: att.size,
-            width: att.width || null,
-            height: att.height || null,
-          },
-          from: {
-            id: interaction.user.id,
-            username: interaction.user.username,
-          },
-          ts: Date.now(),
-        });
-
+        const payload = buildDropPayload(att, caption, interaction.user);
+        const names = [];
+        for (const r of recipients) {
+          sendJson(r.ws, payload);
+          names.push(r.username);
+        }
         return interaction.reply({
-          content: `✅ Dropped on **${target.username}**!`,
+          content: `💥 Dropped on **${names.length}** people: ${names.map(n => `**${n}**`).join(', ')}`,
           flags: MessageFlags.Ephemeral,
         });
       }
