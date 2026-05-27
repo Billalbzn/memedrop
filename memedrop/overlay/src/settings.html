@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:;">
+  <title>MemeDrop</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=JetBrains+Mono:wght@500;700&family=Instrument+Serif:ital@1&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="grain"></div>
+
+  <header class="hero">
+    <div class="hero-mark">
+      <svg viewBox="0 0 40 40" width="32" height="32" aria-hidden="true">
+        <defs>
+          <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%"   stop-color="#ff5e8a"/>
+            <stop offset="100%" stop-color="#ffb45e"/>
+          </linearGradient>
+        </defs>
+        <path d="M8 6 L20 22 L32 6 L32 30 L24 30 L24 18 L20 24 L16 18 L16 30 L8 30 Z"
+              fill="url(#lg)"/>
+      </svg>
+      <div>
+        <h1>MemeDrop</h1>
+        <p class="tagline">drop a meme — <em>watch them suffer</em></p>
+      </div>
+    </div>
+
+    <div id="conn-pill" class="pill pill--idle">
+      <span class="dot"></span>
+      <span class="label">connecting…</span>
+    </div>
+  </header>
+
+  <!-- Pairing card: shown when waiting for /link -->
+  <section id="pairing-card" class="card pairing hidden">
+    <div class="card-eyebrow">step 01</div>
+    <h2>Pair this overlay</h2>
+    <p class="muted">In your Discord server with the bot, run<br>
+      <code>/link &lt;code&gt;</code> using the code below.</p>
+    <div class="code" id="pairing-code">000000</div>
+    <button class="ghost" id="copy-code">copy code</button>
+  </section>
+
+  <!-- Linked card: shown once a user has paired -->
+  <section id="linked-card" class="card linked hidden">
+    <div class="card-eyebrow">live</div>
+    <h2>Linked to <span id="linked-user">…</span></h2>
+    <p class="muted">Any <code>/drop</code> they post will land on your screen.</p>
+    <div class="row">
+      <button class="ghost danger" id="reconnect-btn">force reconnect</button>
+      <button class="primary" id="test-btn">test drop</button>
+    </div>
+  </section>
+
+  <!-- Settings -->
+  <section class="card">
+    <div class="card-eyebrow">audio &amp; display</div>
+
+    <div class="field">
+      <label for="volume">
+        <span>Video volume</span>
+        <output id="volume-out">75%</output>
+      </label>
+      <input type="range" id="volume" min="0" max="100" step="1" value="75">
+    </div>
+
+    <div class="field">
+      <label for="opacity">
+        <span>Overlay opacity</span>
+        <output id="opacity-out">100%</output>
+      </label>
+      <input type="range" id="opacity" min="20" max="100" step="1" value="100">
+    </div>
+
+    <div class="field">
+      <label for="duration">
+        <span>Image duration</span>
+        <output id="duration-out">4s</output>
+      </label>
+      <input type="range" id="duration" min="1" max="15" step="1" value="4">
+    </div>
+
+    <div class="field toggle">
+      <label for="sound">Pop sound on arrival</label>
+      <input type="checkbox" id="sound" class="switch">
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-eyebrow">system</div>
+
+    <div class="field">
+      <label for="display">
+        <span>Display</span>
+      </label>
+      <select id="display"></select>
+    </div>
+
+    <div class="field">
+      <label for="server">
+        <span>Bot server URL</span>
+      </label>
+      <input type="text" id="server" placeholder="ws://localhost:8765" spellcheck="false">
+    </div>
+
+    <div class="field toggle">
+      <label for="autostart">Launch at startup</label>
+      <input type="checkbox" id="autostart" class="switch">
+    </div>
+  </section>
+
+  <footer class="foot">
+    <span>v1.0.0</span>
+    <span class="dotdiv">·</span>
+    <a href="#" id="open-discord">how it works</a>
+  </footer>
+
+  <script src="./settings.js"></script>
+</body>
+</html>

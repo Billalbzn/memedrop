@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>MemeDrop overlay</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: transparent !important;
+      overflow: hidden;
+      cursor: none;
+      user-select: none;
+      -webkit-user-select: none;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+    }
+
+    #stage {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    /* Zero-size anchor point — placed at the desired center coordinate.
+       All animations live on the child .drop, so this stays put. */
+    .anchor {
+      position: absolute;
+      width: 0;
+      height: 0;
+    }
+
+    /* The actual meme container, centered on the anchor */
+    .drop {
+      position: absolute;
+      left: 0;
+      top: 0;
+      transform-origin: center;
+      will-change: transform, opacity;
+      filter:
+        drop-shadow(0 30px 60px rgba(0,0,0,.55))
+        drop-shadow(0 6px 12px rgba(0,0,0,.4));
+      opacity: 0;
+      animation:
+        drop-in   420ms cubic-bezier(.18,1.2,.4,1) forwards,
+        drop-bob  3s ease-in-out 420ms infinite;
+    }
+
+    .drop.leaving {
+      animation: drop-out 380ms cubic-bezier(.5,0,.75,0) forwards;
+    }
+
+    .drop img,
+    .drop video,
+    .drop > div > svg {
+      display: block;
+      max-width: 38vw;
+      max-height: 50vh;
+      width: auto;
+      height: auto;
+      border-radius: 14px;
+      background: #000;
+    }
+
+    /* Tag with sender username, sits above the meme */
+    .tag {
+      position: absolute;
+      top: -14px;
+      left: 50%;
+      transform: translate(-50%, -100%);
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: .02em;
+      color: #fff;
+      background: linear-gradient(135deg, #ff5e8a, #ffb45e);
+      border-radius: 999px;
+      white-space: nowrap;
+      box-shadow: 0 4px 14px rgba(0,0,0,.35);
+      z-index: 2;
+    }
+
+    /* All animations now translate from a base of (-50%, -50%)
+       so the .drop stays centered on the anchor point throughout. */
+    @keyframes drop-in {
+      0%   { opacity: 0; transform: translate(-50%, calc(-50% - 80px)) rotate(-8deg) scale(.6); }
+      60%  { opacity: 1; transform: translate(-50%, calc(-50% + 12px)) rotate( 2deg) scale(1.04); }
+      100% { opacity: 1; transform: translate(-50%, -50%)              rotate( 0deg) scale(1);    }
+    }
+    @keyframes drop-bob {
+      0%, 100% { transform: translate(-50%, -50%)                rotate(0deg); }
+      50%      { transform: translate(-50%, calc(-50% - 6px))    rotate(.6deg); }
+    }
+    @keyframes drop-out {
+      to { opacity: 0; transform: translate(-50%, calc(-50% + 40px)) rotate(6deg) scale(.92); }
+    }
+  </style>
+</head>
+<body>
+  <div id="stage"></div>
+  <script src="./overlay.js"></script>
+</body>
+</html>
