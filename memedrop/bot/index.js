@@ -20,9 +20,9 @@ const httpServer = http.createServer((req, res) => {
 
 const wss = new WebSocketServer({ server: httpServer });
 
-const pendingOverlays = new Map();         // code -> ws
-const linkedOverlays = new Map();          // discordUserId -> ws
-const wsMeta = new WeakMap();              // ws -> { code, userId }
+const pendingOverlays = new Map();
+const linkedOverlays = new Map();
+const wsMeta = new WeakMap();
 
 function generatePairingCode() {
   let code;
@@ -34,6 +34,18 @@ function generatePairingCode() {
 
 function sendJson(ws, payload) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(payload));
+}
+
+// Issue a fresh pairing code to an overlay and move it from "linked" → "pending".
+// Used after /unlink and after a forced replacement, so the user doesn't have
+// to restart the app to get a new code.
+function reissuePairingCode(ws) {
+  if (!ws || ws.readyState !== ws.OPEN) return;
+  const code = generatePairingCode();
+  pendingOverlays.set(code, ws);
+  wsMeta.set(ws, { code, userId: null });
+  sendJson(ws, { type: 'pairing_code', code });
+  console.log(`[ws] reissued pairing code = ${code}`);
 }
 
 wss.on('connection', (ws) => {
@@ -132,7 +144,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   try {
     switch (interaction.commandName) {
-      // ── /link ───────────────────────────────────────────────────────────
       case 'link': {
         const code = interaction.options.getString('code', true);
         const ws = pendingOverlays.get(code);
@@ -144,8 +155,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
         const previous = linkedOverlays.get(interaction.user.id);
         if (previous && previous !== ws) {
+          // Notify the old overlay and issue it a fresh pairing code
           sendJson(previous, { type: 'unlinked', reason: 'replaced' });
-          previous.close();
+          linkedOverlays.delete(interaction.user.id);
+          reissuePairingCode(previous);
         }
         pendingOverlays.delete(code);
         linkedOverlays.set(interaction.user.id, ws);
@@ -160,7 +173,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // ── /unlink ─────────────────────────────────────────────────────────
       case 'unlink': {
         const ws = linkedOverlays.get(interaction.user.id);
         if (!ws) {
@@ -169,12 +181,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
             flags: MessageFlags.Ephemeral,
           });
         }
-        sendJson(ws, { type: 'unlinked', reason: 'user' });
         linkedOverlays.delete(interaction.user.id);
-        return interaction.reply({ content: '✅ Unlinked.', flags: MessageFlags.Ephemeral });
+        sendJson(ws, { type: 'unlinked', reason: 'user' });
+        // The big quality-of-life fix: immediately give the overlay a fresh
+        // pairing code so the user can re-/link without restarting the app.
+        reissuePairingCode(ws);
+        return interaction.reply({
+          content: '✅ Unlinked. Your overlay is back to "awaiting link" with a new code.',
+          flags: MessageFlags.Ephemeral,
+        });
       }
 
-      // ── /status ─────────────────────────────────────────────────────────
       case 'status': {
         const ws = linkedOverlays.get(interaction.user.id);
         const connected = ws && ws.readyState === ws.OPEN;
@@ -186,7 +203,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // ── /who ────────────────────────────────────────────────────────────
       case 'who': {
         if (linkedOverlays.size === 0) {
           return interaction.reply({
@@ -210,7 +226,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // ── /drop @target [@target2..5] media [caption] ────────────────────
       case 'drop': {
         if (rateLimited(interaction.user.id)) {
           return interaction.reply({
@@ -219,7 +234,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
           });
         }
 
-        // Collect 1-5 targets, dedupe, drop bots
         const targets = [];
         const seen = new Set();
         for (const optName of ['target', 'target2', 'target3', 'target4', 'target5']) {
@@ -237,12 +251,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const att = interaction.options.getAttachment('media', true);
         const caption = interaction.options.getString('caption', false);
-
         const err = validateAttachment(att);
         if (err) return interaction.reply({ content: `❌ ${err}`, flags: MessageFlags.Ephemeral });
 
         const payload = buildDropPayload(att, caption, interaction.user);
-
         const delivered = [];
         const offline = [];
         for (const t of targets) {
@@ -266,7 +278,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
       }
 
-      // ── /dropall media [caption] ───────────────────────────────────────
       case 'dropall': {
         if (rateLimited(interaction.user.id)) {
           return interaction.reply({
@@ -277,18 +288,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const att = interaction.options.getAttachment('media', true);
         const caption = interaction.options.getString('caption', false);
-
         const err = validateAttachment(att);
         if (err) return interaction.reply({ content: `❌ ${err}`, flags: MessageFlags.Ephemeral });
 
-        // Find every linked user that's also a member of this guild
         const recipients = [];
         for (const [userId, ws] of linkedOverlays) {
           if (ws.readyState !== ws.OPEN) continue;
           const member = await interaction.guild?.members.fetch(userId).catch(() => null);
           if (member) recipients.push({ userId, ws, username: member.user.username });
         }
-
         if (recipients.length === 0) {
           return interaction.reply({
             content: 'Nobody in this server has a linked overlay right now. 😴',
