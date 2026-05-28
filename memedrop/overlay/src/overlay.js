@@ -23,13 +23,18 @@ function playPop(volume) {
   } catch {}
 }
 
+function notifyIfIdle() {
+  if (active === 0 && window.memedrop && window.memedrop.stageEmpty) {
+    window.memedrop.stageEmpty();
+  }
+}
+
 function renderDrop({ media, caption, from, settings }) {
   if (active >= MAX_CONCURRENT) return;
   active++;
 
   const { x, y } = chooseSpot();
 
-  // Zero-size anchor for centering — animations live on .drop
   const anchor = document.createElement('div');
   anchor.className = 'anchor';
   anchor.style.left = `${x}%`;
@@ -39,23 +44,15 @@ function renderDrop({ media, caption, from, settings }) {
   wrap.className = 'drop';
   wrap.style.opacity = String(settings?.opacity ?? 1);
 
-  // Sender tag (small pill at the top)
   const tag = document.createElement('div');
   tag.className = 'tag';
   tag.textContent = `@${from?.username || 'someone'}`;
   wrap.appendChild(tag);
 
-  // Caption ribbon — diagonal sash with gradient, like a meme stamp.
-  // Only added if caption is non-empty.
-  if (caption && String(caption).trim()) {
-    const ribbon = document.createElement('div');
-    ribbon.className = 'caption-ribbon';
-    ribbon.textContent = String(caption).trim().slice(0, 80);
-    // Subtle rotation per drop so it looks hand-placed
-    const rot = -8 + Math.random() * 16; // -8° to +8°
-    ribbon.style.setProperty('--rot', `${rot}deg`);
-    wrap.appendChild(ribbon);
-  }
+  // The media-box wraps the media element so the caption bar can be sized to
+  // the media's exact width (not the whole screen).
+  const mediaBox = document.createElement('div');
+  mediaBox.className = 'media-box';
 
   let lifetime = (settings?.duration ?? 4) * 1000;
   let el;
@@ -76,9 +73,10 @@ function renderDrop({ media, caption, from, settings }) {
       }
     });
     el.addEventListener('ended', () => removeNow());
+    mediaBox.appendChild(el);
   } else if (media.kind === 'test') {
-    el = document.createElement('div');
-    el.innerHTML = `
+    const holder = document.createElement('div');
+    holder.innerHTML = `
       <svg xmlns="http://www.w3.org/2000/svg" width="320" height="320" viewBox="0 0 320 320">
         <defs>
           <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
@@ -92,18 +90,27 @@ function renderDrop({ media, caption, from, settings }) {
         <text x="50%" y="62%" text-anchor="middle" font-family="system-ui" font-size="20"
               fill="rgba(255,255,255,.85)">MemeDrop overlay</text>
       </svg>`;
-    el.firstElementChild.style.borderRadius = '14px';
-    el.firstElementChild.style.display = 'block';
+    holder.firstElementChild.style.borderRadius = '14px';
+    holder.firstElementChild.style.display = 'block';
+    mediaBox.appendChild(holder);
   } else {
-    // image / gif — handled the same way; the <img> tag plays GIFs natively
     el = document.createElement('img');
     el.src = media.url;
     el.alt = '';
     el.referrerPolicy = 'no-referrer';
     el.draggable = false;
+    mediaBox.appendChild(el);
   }
 
-  wrap.appendChild(el);
+  // Caption bar — appended INSIDE media-box so it's the exact media width.
+  if (caption && String(caption).trim()) {
+    const bar = document.createElement('div');
+    bar.className = 'caption-bar';
+    bar.textContent = String(caption).trim().slice(0, 80);
+    mediaBox.appendChild(bar);
+  }
+
+  wrap.appendChild(mediaBox);
   anchor.appendChild(wrap);
   stage.appendChild(anchor);
 
@@ -120,6 +127,7 @@ function renderDrop({ media, caption, from, settings }) {
     setTimeout(() => {
       anchor.remove();
       active = Math.max(0, active - 1);
+      notifyIfIdle();
     }, 400);
   }
 

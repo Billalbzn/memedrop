@@ -9,7 +9,6 @@
       width: 100%; height: 100%;
       background: transparent !important;
       overflow: hidden;
-      cursor: none;
       user-select: none;
       -webkit-user-select: none;
       font-family: ui-sans-serif, system-ui, sans-serif;
@@ -21,7 +20,6 @@
       overflow: hidden;
     }
 
-    /* Zero-size anchor — animations live on the inner .drop */
     .anchor {
       position: absolute;
       width: 0; height: 0;
@@ -45,9 +43,17 @@
       animation: drop-out 380ms cubic-bezier(.5,0,.75,0) forwards;
     }
 
+    /* The media wrapper — establishes the box the caption aligns to */
+    .media-box {
+      position: relative;
+      display: inline-block;
+      line-height: 0;             /* kill inline gap under media */
+    }
+
     .drop img,
     .drop video,
-    .drop > div > svg {
+    .media-box > div > svg,
+    .media-box > div > div > svg {
       display: block;
       max-width: 38vw;
       max-height: 50vh;
@@ -75,53 +81,44 @@
       z-index: 3;
     }
 
-    /* Caption ribbon — diagonal sash overlaid on the meme.
-       Pure CSS, no extra deps. Looks like a meme stamp. */
-    .caption-ribbon {
+    /* Caption — full-width subtitle bar at the bottom of the media,
+       TikTok/MrBeast style. White bold text, black outline, centered,
+       wraps onto multiple lines, never crops. */
+    .caption-bar {
       position: absolute;
-      left: 50%;
-      bottom: 18%;
-      transform: translateX(-50%) rotate(var(--rot, 0deg));
-      max-width: 90%;
-      padding: 10px 28px;
-      font-family: 'Impact', 'Anton', system-ui, sans-serif;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      box-sizing: border-box;
+      width: 100%;
+      padding: 10px 14px 14px;
+      font-family: 'Impact', 'Arial Black', 'Anton', system-ui, sans-serif;
       font-weight: 900;
-      font-size: clamp(20px, 3.2vw, 42px);
-      letter-spacing: .04em;
+      font-size: clamp(18px, 2.6vw, 40px);
+      line-height: 1.08;
+      letter-spacing: .01em;
       text-transform: uppercase;
-      color: #fff;
       text-align: center;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      background: linear-gradient(135deg, #ff3b6e 0%, #ff7e3a 50%, #ffb02e 100%);
-      -webkit-text-stroke: 2px rgba(0,0,0,.55);
+      color: #fff;
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      /* heavy black outline for readability over any image */
+      -webkit-text-stroke: 2px #000;
+      paint-order: stroke fill;
       text-shadow:
-        0 2px 0 rgba(0,0,0,.5),
-        0 6px 16px rgba(0,0,0,.6);
-      box-shadow:
-        0 10px 30px rgba(0,0,0,.45),
-        inset 0 1px 0 rgba(255,255,255,.25),
-        inset 0 -3px 0 rgba(0,0,0,.18);
-      border-radius: 6px;
+        0 2px 4px rgba(0,0,0,.9),
+        0 0 10px rgba(0,0,0,.7);
+      /* subtle gradient scrim so text stays legible on bright images */
+      background: linear-gradient(to top,
+        rgba(0,0,0,.65) 0%,
+        rgba(0,0,0,.35) 55%,
+        rgba(0,0,0,0) 100%);
+      border-bottom-left-radius: 14px;
+      border-bottom-right-radius: 14px;
       z-index: 2;
-      animation: caption-pop 520ms cubic-bezier(.18,1.4,.4,1) 200ms backwards;
+      animation: caption-rise 420ms cubic-bezier(.18,1.1,.4,1) 160ms backwards;
     }
-
-    /* Side notches that give it the classic "ribbon" look */
-    .caption-ribbon::before,
-    .caption-ribbon::after {
-      content: '';
-      position: absolute;
-      top: 50%;
-      width: 14px; height: 14px;
-      background: inherit;
-      transform: translateY(-50%) rotate(45deg);
-      z-index: -1;
-      filter: brightness(.7);
-    }
-    .caption-ribbon::before { left: -6px; }
-    .caption-ribbon::after  { right: -6px; }
 
     @keyframes drop-in {
       0%   { opacity: 0; transform: translate(-50%, calc(-50% - 80px)) rotate(-8deg) scale(.6); }
@@ -135,10 +132,9 @@
     @keyframes drop-out {
       to { opacity: 0; transform: translate(-50%, calc(-50% + 40px)) rotate(6deg) scale(.92); }
     }
-    @keyframes caption-pop {
-      0%   { opacity: 0; transform: translateX(-50%) rotate(var(--rot, 0deg)) scale(.4); }
-      70%  { opacity: 1; transform: translateX(-50%) rotate(var(--rot, 0deg)) scale(1.1); }
-      100% { opacity: 1; transform: translateX(-50%) rotate(var(--rot, 0deg)) scale(1);   }
+    @keyframes caption-rise {
+      0%   { opacity: 0; transform: translateY(14px); }
+      100% { opacity: 1; transform: translateY(0); }
     }
   </style>
 </head>
