@@ -5,14 +5,12 @@ const stage = document.getElementById('stage');
 const popUrl = 'data:audio/wav;base64,UklGRoQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YWAAAAAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA';
 
 const MAX_CONCURRENT = 6;
-// Hard ceiling. The user's "Image duration" slider acts as a softer cap that
-// can shorten clips further if they prefer short drops.
 const VIDEO_HARD_CAP_SECONDS = 30;
+const AUDIO_HARD_CAP_SECONDS = 10;   // chad-mode audio drops are short by design
 let active = 0;
 
-// Track all live video elements so we can react to live volume changes from
-// the settings window in real time.
-const liveVideos = new Set();
+// Track live audio + video elements so we can apply live volume changes
+const livePlayables = new Set();
 
 function chooseSpot() {
   const marginX = 14;
@@ -36,7 +34,46 @@ function notifyIfIdle() {
   }
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// Audio drops are CHAD MODE: pure ear-attack, nothing on screen.
+// We bypass the whole stage rendering and just play the file.
+// ──────────────────────────────────────────────────────────────────────────
+function playAudioDrop({ media, settings }) {
+  if (active >= MAX_CONCURRENT) return;
+  active++;
+
+  const a = document.createElement('audio');
+  a.src = media.url;
+  a.volume = settings?.volume ?? 0.75;
+  a.preload = 'auto';
+  livePlayables.add(a);
+
+  let removed = false;
+  function cleanup() {
+    if (removed) return;
+    removed = true;
+    try { a.pause(); } catch {}
+    livePlayables.delete(a);
+    active = Math.max(0, active - 1);
+    notifyIfIdle();
+  }
+
+  a.addEventListener('timeupdate', () => {
+    if (a.currentTime >= AUDIO_HARD_CAP_SECONDS) cleanup();
+  });
+  a.addEventListener('ended', cleanup);
+  a.addEventListener('error', cleanup);
+
+  a.play().catch(() => cleanup());
+}
+
 function renderDrop({ media, caption, from, settings }) {
+  // Audio = invisible chad-mode drop
+  if (media.kind === 'audio') {
+    playAudioDrop({ media, settings });
+    return;
+  }
+
   if (active >= MAX_CONCURRENT) return;
   active++;
 
@@ -51,15 +88,33 @@ function renderDrop({ media, caption, from, settings }) {
   wrap.className = 'drop';
   wrap.style.opacity = String(settings?.opacity ?? 1);
 
-  const tag = document.createElement('div');
-  tag.className = 'tag';
-  tag.textContent = `@${from?.username || 'someone'}`;
-  wrap.appendChild(tag);
+  // Avatar bubble — replaces the old text tag with a circular profile pic
+  if (from) {
+    const bubble = document.createElement('div');
+    bubble.className = 'avatar-bubble';
+    bubble.setAttribute('data-username', from.username || 'someone');
+
+    if (from.avatar) {
+      const av = document.createElement('img');
+      av.src = from.avatar;
+      av.alt = '';
+      av.referrerPolicy = 'no-referrer';
+      av.draggable = false;
+      // Fallback if Discord CDN hiccups
+      av.addEventListener('error', () => {
+        av.replaceWith(makeInitialFallback(from.username));
+      });
+      bubble.appendChild(av);
+    } else {
+      bubble.appendChild(makeInitialFallback(from.username));
+    }
+
+    wrap.appendChild(bubble);
+  }
 
   const mediaBox = document.createElement('div');
   mediaBox.className = 'media-box';
 
-  // user-configured "Image duration" — also acts as the cap for videos
   const userMaxSec = Math.max(1, Math.min(VIDEO_HARD_CAP_SECONDS, Number(settings?.duration) || 4));
   let lifetime = userMaxSec * 1000;
   let el;
@@ -74,10 +129,9 @@ function renderDrop({ media, caption, from, settings }) {
     el.volume = settings?.volume ?? 0.75;
     el.playsInline = true;
     el.loop = false;
-    liveVideos.add(el);
+    livePlayables.add(el);
 
     el.addEventListener('loadedmetadata', () => {
-      // Effective length = min(real clip duration, hard cap, user's image-duration setting)
       const natural = el.duration || 0;
       const effective = Math.min(natural, VIDEO_HARD_CAP_SECONDS, userMaxSec);
       if (effective > 0) {
@@ -85,7 +139,6 @@ function renderDrop({ media, caption, from, settings }) {
         scheduleRemoval();
       }
     });
-    // Stop early if we hit the user/hard cap mid-playback
     el.addEventListener('timeupdate', () => {
       if (el.currentTime >= Math.min(VIDEO_HARD_CAP_SECONDS, userMaxSec)) {
         try { el.pause(); } catch {}
@@ -144,7 +197,7 @@ function renderDrop({ media, caption, from, settings }) {
   function removeNow() {
     if (removed || !anchor.isConnected) return;
     removed = true;
-    if (isVideo) liveVideos.delete(el);
+    if (isVideo) livePlayables.delete(el);
     wrap.classList.add('leaving');
     setTimeout(() => {
       anchor.remove();
@@ -156,23 +209,34 @@ function renderDrop({ media, caption, from, settings }) {
   if (!isVideo) scheduleRemoval();
 }
 
+// Fallback when avatar fails to load — first letter on a coral gradient
+function makeInitialFallback(name) {
+  const initial = (name || '?').trim().charAt(0).toUpperCase() || '?';
+  const div = document.createElement('div');
+  div.style.cssText = `
+    width:100%;height:100%;border-radius:50%;
+    background:linear-gradient(135deg,#ff5e8a,#ffb45e);
+    display:flex;align-items:center;justify-content:center;
+    color:#fff;font-weight:800;font-size:24px;font-family:system-ui,sans-serif;
+  `;
+  div.textContent = initial;
+  return div;
+}
+
 window.memedrop.onDrop((payload) => {
   if (!payload || !payload.media) return;
   renderDrop(payload);
 });
 
-// Live settings update — applied to all videos currently on screen.
-// Main process sends this whenever the user moves a slider.
 if (window.memedrop.onSettingsUpdate) {
   window.memedrop.onSettingsUpdate((settings) => {
     if (typeof settings?.volume === 'number') {
       const vol = Math.max(0, Math.min(1, settings.volume));
-      for (const v of liveVideos) {
-        try { v.volume = vol; } catch {}
+      for (const p of livePlayables) {
+        try { p.volume = vol; } catch {}
       }
     }
     if (typeof settings?.opacity === 'number') {
-      // Apply to every currently-rendered .drop
       const op = String(Math.max(0.2, Math.min(1, settings.opacity)));
       document.querySelectorAll('.drop').forEach(d => { d.style.opacity = op; });
     }

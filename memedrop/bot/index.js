@@ -72,7 +72,6 @@ wss.on('connection', (ws) => {
   ws.on('error', (err) => console.error('[ws] error:', err.message));
 });
 
-// Heartbeat — also drops dead sockets so /drop never targets a zombie
 setInterval(() => {
   wss.clients.forEach((ws) => {
     if (ws.readyState === ws.OPEN) sendJson(ws, { type: 'ping' });
@@ -91,7 +90,9 @@ client.once(Events.ClientReady, (c) => {
   console.log(`[bot] logged in as ${c.user.tag}`);
 });
 
-const ACCEPTED_MIME = /^(image\/(png|jpe?g|gif|webp)|video\/(mp4|webm|quicktime))$/i;
+// Accepted MIME types — now includes MP3
+const ACCEPTED_MIME =
+  /^(image\/(png|jpe?g|gif|webp)|video\/(mp4|webm|quicktime)|audio\/(mpeg|mp3))$/i;
 const MAX_BYTES = 25 * 1024 * 1024;
 
 const lastDropAt = new Map();
@@ -108,12 +109,13 @@ function validateAttachment(att) {
     return `File too large (${(att.size / 1024 / 1024).toFixed(1)} MB). Limit is 25 MB.`;
   }
   if (!att.contentType || !ACCEPTED_MIME.test(att.contentType)) {
-    return `Unsupported type: \`${att.contentType || 'unknown'}\`. Use PNG / JPG / GIF / WEBP / MP4 / WEBM.`;
+    return `Unsupported type: \`${att.contentType || 'unknown'}\`. Use PNG / JPG / GIF / WEBP / MP4 / WEBM / MP3.`;
   }
   return null;
 }
 
 function classifyMedia(mime) {
+  if (mime.startsWith('audio/')) return 'audio';
   if (mime.startsWith('video/')) return 'video';
   if (mime === 'image/gif')      return 'gif';
   return 'image';
@@ -132,12 +134,16 @@ function buildDropPayload(att, caption, fromUser) {
       height: att.height || null,
     },
     caption: caption ? String(caption).slice(0, 80) : null,
-    from: { id: fromUser.id, username: fromUser.username },
+    from: {
+      id: fromUser.id,
+      username: fromUser.username,
+      // Discord avatar URL — 128 px is more than enough for a small bubble
+      avatar: fromUser.displayAvatarURL({ size: 128, extension: 'png' }),
+    },
     ts: Date.now(),
   };
 }
 
-// Safe reply helper: works whether or not we've deferred.
 async function safeReply(interaction, content) {
   try {
     if (interaction.deferred || interaction.replied) {
@@ -155,7 +161,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   try {
     switch (interaction.commandName) {
-      // ── /link — must be FAST (no awaits before reply) so it never times out
       case 'link': {
         const code = interaction.options.getString('code', true);
         const ws = pendingOverlays.get(code);
@@ -212,7 +217,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // ── /who — does guild member fetches, so DEFER first (anti-timeout)
       case 'who': {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         if (linkedOverlays.size === 0) {
@@ -230,7 +234,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
             : 'No drop targets in this server right now. 😴');
       }
 
-      // ── /drop — DEFER first (fetches/validation can exceed 3s under load)
       case 'drop': {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
@@ -279,7 +282,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return safeReply(interaction, msg);
       }
 
-      // ── /dropall — DEFER first (iterates guild members)
       case 'dropall': {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
