@@ -33,7 +33,6 @@ function notifyIfIdle() {
   }
 }
 
-// Fallback when avatar fails to load — first letter on a coral gradient
 function makeInitialFallback(name) {
   const initial = (name || '?').trim().charAt(0).toUpperCase() || '?';
   const div = document.createElement('div');
@@ -47,61 +46,10 @@ function makeInitialFallback(name) {
   return div;
 }
 
-function buildAvatarBubble(from, { showLabel = true } = {}) {
+function buildAvatarBubble(from) {
   const bubble = document.createElement('div');
   bubble.className = 'avatar-bubble';
-  if (showLabel && from?.username) {
-    bubble.setAttribute('data-username', from.username);
-  } else {
-    // No label below the bubble — used for audio cards where we render the
-    // username separately so it's bigger/clearer.
-    bubble.style.setProperty('--hide-label', '1');
-  }
-  if (from?.avatar) {
-    const av = document.createElement('img');
-    av.src = from.avatar;
-    av.alt = '';
-    av.referrerPolicy = 'no-referrer';
-    av.draggable = false;
-    av.addEventListener('error', () => {
-      av.replaceWith(makeInitialFallback(from.username));
-    });
-    bubble.appendChild(av);
-  } else {
-    bubble.appendChild(makeInitialFallback(from?.username));
-  }
-  // Hide the ::after label via inline style on the element when needed.
-  // Easier path: skip data-username attribute (handled above by `showLabel`).
-  return bubble;
-}
-
-// ──────────────────────────────────────────────────────────────────────────
-// Audio drops — a slim card with avatar, username, optional caption, and
-// animated speaker bars. The audio plays simultaneously.
-// ──────────────────────────────────────────────────────────────────────────
-function playAudioDrop({ media, caption, from, settings }) {
-  if (active >= MAX_CONCURRENT) return;
-  active++;
-
-  const { x, y } = chooseSpot();
-
-  const anchor = document.createElement('div');
-  anchor.className = 'anchor';
-  anchor.style.left = `${x}%`;
-  anchor.style.top  = `${y}%`;
-
-  const wrap = document.createElement('div');
-  wrap.className = 'drop';
-  wrap.style.opacity = String(settings?.opacity ?? 1);
-
-  const card = document.createElement('div');
-  card.className = 'audio-card';
-
-  // Avatar (without floating label — we'll show username explicitly below)
-  // Build a bubble but suppress the ::after label by passing showLabel=false.
-  // We achieve that simply by not setting data-username.
-  const bubble = document.createElement('div');
-  bubble.className = 'avatar-bubble';
+  if (from?.username) bubble.setAttribute('data-username', from.username);
   if (from?.avatar) {
     const av = document.createElement('img');
     av.src = from.avatar;
@@ -113,33 +61,34 @@ function playAudioDrop({ media, caption, from, settings }) {
   } else {
     bubble.appendChild(makeInitialFallback(from?.username));
   }
-  card.appendChild(bubble);
+  return bubble;
+}
 
-  // Username, prominent
-  const name = document.createElement('div');
-  name.className = 'audio-username';
-  name.textContent = `@${from?.username || 'someone'}`;
-  card.appendChild(name);
+// ──────────────────────────────────────────────────────────────────────────
+// Audio drops — minimal top-center toast: just avatar bubble + (optional)
+// caption underneath. No card, no background. Plays the audio at the same
+// time. Designed to barely interrupt the game.
+// ──────────────────────────────────────────────────────────────────────────
+function playAudioDrop({ media, caption, from, settings }) {
+  if (active >= MAX_CONCURRENT) return;
+  active++;
 
-  // Animated speaker bars
-  const bars = document.createElement('div');
-  bars.className = 'audio-bars';
-  for (let i = 0; i < 5; i++) bars.appendChild(document.createElement('span'));
-  card.appendChild(bars);
+  const toast = document.createElement('div');
+  toast.className = 'audio-toast';
+  toast.style.opacity = String(settings?.opacity ?? 1);
 
-  // Optional caption
+  toast.appendChild(buildAvatarBubble(from));
+
   if (caption && String(caption).trim()) {
     const cap = document.createElement('div');
     cap.className = 'audio-caption';
     cap.textContent = String(caption).trim().slice(0, 80);
-    card.appendChild(cap);
+    toast.appendChild(cap);
   }
 
-  wrap.appendChild(card);
-  anchor.appendChild(wrap);
-  stage.appendChild(anchor);
+  document.body.appendChild(toast);
 
-  // Now play the actual audio
+  // Now the actual audio
   const a = document.createElement('audio');
   a.src = media.url;
   a.volume = settings?.volume ?? 0.75;
@@ -152,13 +101,13 @@ function playAudioDrop({ media, caption, from, settings }) {
     removed = true;
     try { a.pause(); } catch {}
     livePlayables.delete(a);
-    if (anchor.isConnected) {
-      wrap.classList.add('leaving');
+    if (toast.isConnected) {
+      toast.classList.add('leaving');
       setTimeout(() => {
-        anchor.remove();
+        toast.remove();
         active = Math.max(0, active - 1);
         notifyIfIdle();
-      }, 400);
+      }, 300);
     } else {
       active = Math.max(0, active - 1);
       notifyIfIdle();
@@ -195,7 +144,6 @@ function renderDrop({ media, caption, from, settings }) {
   wrap.className = 'drop';
   wrap.style.opacity = String(settings?.opacity ?? 1);
 
-  // Avatar bubble (with label) for visual media drops
   if (from) wrap.appendChild(buildAvatarBubble(from));
 
   const mediaBox = document.createElement('div');
@@ -310,7 +258,7 @@ if (window.memedrop.onSettingsUpdate) {
     }
     if (typeof settings?.opacity === 'number') {
       const op = String(Math.max(0.2, Math.min(1, settings.opacity)));
-      document.querySelectorAll('.drop').forEach(d => { d.style.opacity = op; });
+      document.querySelectorAll('.drop, .audio-toast').forEach(d => { d.style.opacity = op; });
     }
   });
 }

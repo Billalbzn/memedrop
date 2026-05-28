@@ -62,7 +62,7 @@
       background: #000;
     }
 
-    /* Avatar bubble — circular profile picture above the meme */
+    /* Avatar bubble for image/video drops — overlaps top of media */
     .avatar-bubble {
       position: absolute;
       top: 0;
@@ -105,7 +105,7 @@
       box-shadow: 0 4px 10px rgba(0,0,0,.35);
     }
 
-    /* Caption — subtitle bar at bottom of media (or audio card) */
+    /* Caption — subtitle bar at bottom of media (image/video only) */
     .caption-bar {
       position: absolute;
       left: 0;
@@ -141,85 +141,61 @@
     }
 
     /* ──────────────────────────────────────────────────────────────────
-       Audio drop — a slim card that ONLY shows who's playing what.
-       No fake album art, no big visual; just identity + optional caption.
-       Width sized to a max so a long caption can wrap nicely.
+       Audio toast — minimalist, top-center, no card / no background.
+       Just the avatar bubble + small username + optional caption with
+       text-shadows so it stays readable over any game UI.
        ────────────────────────────────────────────────────────────────── */
-    .audio-card {
-      position: relative;
+    .audio-toast {
+      position: fixed;
+      top: 24px;
+      left: 50%;
+      transform: translateX(-50%);
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 10px;
-      padding: 18px 22px 16px;
-      min-width: 200px;
-      max-width: 380px;
-      border-radius: 18px;
-      background: linear-gradient(180deg,
-        rgba(28, 20, 44, .92) 0%,
-        rgba(20, 14, 32, .95) 100%);
-      backdrop-filter: blur(8px);
-      box-shadow:
-        0 12px 40px rgba(0,0,0,.55),
-        inset 0 1px 0 rgba(255,255,255,.08);
-      border: 1px solid rgba(255,180,94,.18);
+      gap: 6px;
+      pointer-events: none;
+      z-index: 999;
+      opacity: 0;
+      animation:
+        audio-in   320ms cubic-bezier(.18,1.2,.4,1) forwards;
+    }
+    .audio-toast.leaving {
+      animation: audio-out 280ms cubic-bezier(.5,0,.75,0) forwards;
     }
 
-    .audio-card .audio-username {
-      font-size: 15px;
-      font-weight: 800;
-      letter-spacing: .02em;
-      color: #fff;
-      text-align: center;
-      margin-top: 2px;
+    .audio-toast .avatar-bubble {
+      position: relative;
+      top: auto; left: auto;
+      transform: none;
+      width: 44px;
+      height: 44px;
+    }
+    /* Smaller pill label for the audio variant */
+    .audio-toast .avatar-bubble::after {
+      font-size: 10px;
+      padding: 2px 7px;
+      transform: translate(-50%, 3px);
     }
 
-    /* Animated speaker bars to make the card feel "alive" while audio plays */
-    .audio-bars {
-      display: flex;
-      align-items: flex-end;
-      gap: 4px;
-      height: 18px;
-      margin-top: 4px;
-    }
-    .audio-bars span {
-      display: block;
-      width: 4px;
-      border-radius: 2px;
-      background: linear-gradient(180deg, #ff5e8a, #ffb45e);
-      animation: bars 900ms ease-in-out infinite;
-    }
-    .audio-bars span:nth-child(1) { animation-delay: 0ms;   height: 60%; }
-    .audio-bars span:nth-child(2) { animation-delay: 120ms; height: 90%; }
-    .audio-bars span:nth-child(3) { animation-delay: 240ms; height: 50%; }
-    .audio-bars span:nth-child(4) { animation-delay: 80ms;  height: 80%; }
-    .audio-bars span:nth-child(5) { animation-delay: 200ms; height: 65%; }
-
-    /* Caption variant for audio cards — same look but as part of card flow */
-    .audio-card .audio-caption {
-      max-width: 100%;
+    .audio-caption {
+      max-width: 70vw;
       text-align: center;
       font-family: 'Impact', 'Arial Black', 'Anton', system-ui, sans-serif;
       font-weight: 900;
-      font-size: clamp(16px, 2vw, 28px);
+      font-size: clamp(14px, 1.6vw, 22px);
       line-height: 1.1;
+      letter-spacing: .02em;
       text-transform: uppercase;
       color: #fff;
       -webkit-text-stroke: 1.5px #000;
       paint-order: stroke fill;
-      text-shadow: 0 2px 6px rgba(0,0,0,.6);
+      text-shadow:
+        0 2px 4px rgba(0,0,0,.9),
+        0 0 8px rgba(0,0,0,.7);
       word-break: break-word;
       overflow-wrap: anywhere;
-      margin-top: 4px;
-    }
-
-    /* When inside an audio-card, the bubble doesn't overlap from outside —
-       it sits at the top of the card flow. Override the absolute positioning. */
-    .audio-card .avatar-bubble {
-      position: relative;
-      top: auto;
-      left: auto;
-      transform: none;
+      margin-top: 12px;     /* room for the avatar's pill label */
     }
 
     @keyframes drop-in {
@@ -238,9 +214,12 @@
       0%   { opacity: 0; transform: translateY(14px); }
       100% { opacity: 1; transform: translateY(0); }
     }
-    @keyframes bars {
-      0%, 100% { transform: scaleY(.5); }
-      50%      { transform: scaleY(1); }
+    @keyframes audio-in {
+      0%   { opacity: 0; transform: translate(-50%, -20px); }
+      100% { opacity: 1; transform: translate(-50%, 0);     }
+    }
+    @keyframes audio-out {
+      to { opacity: 0; transform: translate(-50%, -16px); }
     }
   </style>
 </head>
