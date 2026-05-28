@@ -5,7 +5,14 @@ const stage = document.getElementById('stage');
 const popUrl = 'data:audio/wav;base64,UklGRoQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YWAAAAAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA';
 
 const MAX_CONCURRENT = 6;
+// Hard ceiling. The user's "Image duration" slider acts as a softer cap that
+// can shorten clips further if they prefer short drops.
+const VIDEO_HARD_CAP_SECONDS = 30;
 let active = 0;
+
+// Track all live video elements so we can react to live volume changes from
+// the settings window in real time.
+const liveVideos = new Set();
 
 function chooseSpot() {
   const marginX = 14;
@@ -49,15 +56,17 @@ function renderDrop({ media, caption, from, settings }) {
   tag.textContent = `@${from?.username || 'someone'}`;
   wrap.appendChild(tag);
 
-  // The media-box wraps the media element so the caption bar can be sized to
-  // the media's exact width (not the whole screen).
   const mediaBox = document.createElement('div');
   mediaBox.className = 'media-box';
 
-  let lifetime = (settings?.duration ?? 4) * 1000;
+  // user-configured "Image duration" — also acts as the cap for videos
+  const userMaxSec = Math.max(1, Math.min(VIDEO_HARD_CAP_SECONDS, Number(settings?.duration) || 4));
+  let lifetime = userMaxSec * 1000;
   let el;
+  let isVideo = false;
 
   if (media.kind === 'video') {
+    isVideo = true;
     el = document.createElement('video');
     el.src = media.url;
     el.autoplay = true;
@@ -65,11 +74,22 @@ function renderDrop({ media, caption, from, settings }) {
     el.volume = settings?.volume ?? 0.75;
     el.playsInline = true;
     el.loop = false;
+    liveVideos.add(el);
+
     el.addEventListener('loadedmetadata', () => {
-      const d = Math.min(12, el.duration || 0);
-      if (d > 0) {
-        lifetime = d * 1000 + 200;
+      // Effective length = min(real clip duration, hard cap, user's image-duration setting)
+      const natural = el.duration || 0;
+      const effective = Math.min(natural, VIDEO_HARD_CAP_SECONDS, userMaxSec);
+      if (effective > 0) {
+        lifetime = effective * 1000 + 300;
         scheduleRemoval();
+      }
+    });
+    // Stop early if we hit the user/hard cap mid-playback
+    el.addEventListener('timeupdate', () => {
+      if (el.currentTime >= Math.min(VIDEO_HARD_CAP_SECONDS, userMaxSec)) {
+        try { el.pause(); } catch {}
+        removeNow();
       }
     });
     el.addEventListener('ended', () => removeNow());
@@ -102,7 +122,6 @@ function renderDrop({ media, caption, from, settings }) {
     mediaBox.appendChild(el);
   }
 
-  // Caption bar — appended INSIDE media-box so it's the exact media width.
   if (caption && String(caption).trim()) {
     const bar = document.createElement('div');
     bar.className = 'caption-bar';
@@ -117,12 +136,15 @@ function renderDrop({ media, caption, from, settings }) {
   if (settings?.soundOnArrival) playPop(settings.volume);
 
   let removalTimer = null;
+  let removed = false;
   function scheduleRemoval() {
     if (removalTimer) clearTimeout(removalTimer);
     removalTimer = setTimeout(removeNow, lifetime);
   }
   function removeNow() {
-    if (!anchor.isConnected) return;
+    if (removed || !anchor.isConnected) return;
+    removed = true;
+    if (isVideo) liveVideos.delete(el);
     wrap.classList.add('leaving');
     setTimeout(() => {
       anchor.remove();
@@ -131,10 +153,28 @@ function renderDrop({ media, caption, from, settings }) {
     }, 400);
   }
 
-  if (media.kind !== 'video') scheduleRemoval();
+  if (!isVideo) scheduleRemoval();
 }
 
 window.memedrop.onDrop((payload) => {
   if (!payload || !payload.media) return;
   renderDrop(payload);
 });
+
+// Live settings update — applied to all videos currently on screen.
+// Main process sends this whenever the user moves a slider.
+if (window.memedrop.onSettingsUpdate) {
+  window.memedrop.onSettingsUpdate((settings) => {
+    if (typeof settings?.volume === 'number') {
+      const vol = Math.max(0, Math.min(1, settings.volume));
+      for (const v of liveVideos) {
+        try { v.volume = vol; } catch {}
+      }
+    }
+    if (typeof settings?.opacity === 'number') {
+      // Apply to every currently-rendered .drop
+      const op = String(Math.max(0.2, Math.min(1, settings.opacity)));
+      document.querySelectorAll('.drop').forEach(d => { d.style.opacity = op; });
+    }
+  });
+}

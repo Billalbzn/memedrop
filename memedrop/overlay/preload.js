@@ -25,7 +25,15 @@ contextBridge.exposeInMainWorld('memedrop', {
     return () => ipcRenderer.removeListener('drop', handler);
   },
 
+  // Live settings push (overlay window only) — fires on volume/opacity slider moves
+  onSettingsUpdate: (cb) => {
+    const handler = (_e, settings) => cb(settings);
+    ipcRenderer.on('settings-update', handler);
+    return () => ipcRenderer.removeListener('settings-update', handler);
+  },
+
   // Misc
   testDrop:       () => ipcRenderer.send('test-drop'),
   openExternal:   (url) => ipcRenderer.send('open-external', url),
+  stageEmpty:     () => ipcRenderer.send('stage-empty'),
 });
