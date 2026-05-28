@@ -7,23 +7,6 @@ const Store = require('electron-store');
 const DEFAULT_SERVER =
   process.env.DEFAULT_SERVER || 'wss://memedrop-production-3106.up.railway.app';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GPU / Chromium flags
-//
-// On a "stay on top of a game" overlay, both choices have tradeoffs:
-//   - Hardware accel ON: smooth animations but the GPU shares cycles with the
-//     game, which can cause perceived stutter.
-//   - Hardware accel OFF: zero GPU contention with the game, but our
-//     transparent compositor work falls onto the CPU.
-//
-// For most users a game-friendly default is HW-accel OFF on the overlay app:
-// memes are small, simple, and rendered briefly; the win from not competing
-// with the GPU is bigger than the loss from CPU rendering.
-//
-// `disable-background-timer-throttling` is added back because we DO want our
-// reconnect timers to run when the user is in a game (Electron pauses bg
-// timers by default after focus loss).
-// ─────────────────────────────────────────────────────────────────────────────
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
@@ -45,7 +28,6 @@ let overlayWin = null;
 let settingsWin = null;
 let tray = null;
 let topGuardTimer = null;
-let hasActiveDrop = false;     // is at least one meme on screen right now?
 
 function iconPath() {
   return path.join(__dirname, 'assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
@@ -61,10 +43,6 @@ function getTargetDisplay() {
   return screen.getPrimaryDisplay();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Top-guard: check that we ARE on top, only re-assert if we slipped.
-// This avoids the periodic moveTop() flicker that the previous version had.
-// ─────────────────────────────────────────────────────────────────────────────
 function enforceTop() {
   if (!overlayWin || overlayWin.isDestroyed()) return;
   try {
@@ -75,12 +53,10 @@ function enforceTop() {
   } catch (e) { /* ignore */ }
 }
 
-// Polling cadence: only run when there's actually something to display.
 function startTopGuard() {
   if (topGuardTimer) return;
   topGuardTimer = setInterval(() => {
     if (!overlayWin || overlayWin.isDestroyed()) return;
-    // Only re-assert if we lost the "on top" state — no spamming moveTop.
     if (!overlayWin.isAlwaysOnTop()) {
       overlayWin.setAlwaysOnTop(true, 'screen-saver');
       overlayWin.moveTop();
@@ -118,9 +94,6 @@ function createOverlayWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       backgroundThrottling: false,
-      // The overlay renders nothing 99% of the time, but Chromium still pumps
-      // frames. Limiting offscreen frame rate doesn't apply to visible windows,
-      // but `paintWhenInitiallyHidden:false` keeps boot cheap.
       paintWhenInitiallyHidden: false,
     },
   });
@@ -130,7 +103,6 @@ function createOverlayWindow() {
   overlayWin.setIgnoreMouseEvents(true, { forward: true });
 
   overlayWin.on('blur', () => {
-    // Quick re-check on focus loss — don't call moveTop unconditionally.
     if (overlayWin && !overlayWin.isDestroyed() && !overlayWin.isAlwaysOnTop()) {
       enforceTop();
     }
@@ -140,8 +112,6 @@ function createOverlayWindow() {
   overlayWin.once('ready-to-show', () => {
     overlayWin.show();
     enforceTop();
-    // Don't start the guard immediately; we'll start it on first drop and
-    // stop it when the stage clears (lower idle CPU usage).
   });
 
   screen.on('display-metrics-changed', () => { repositionOverlay(); enforceTop(); });
@@ -166,7 +136,7 @@ function createSettingsWindow() {
 
   settingsWin = new BrowserWindow({
     width: 460,
-    height: 780,
+    height: 820,
     minWidth: 420,
     minHeight: 600,
     title: 'MemeDrop',
@@ -222,7 +192,7 @@ function createTray() {
 let ws = null;
 let reconnectTimer = null;
 let reconnectAttempts = 0;
-let connState = { status: 'disconnected', code: null, user: null };
+let connState = { status: 'disconnected', code: null, user: null, links: null };
 
 function broadcastState() {
   for (const w of BrowserWindow.getAllWindows()) {
@@ -239,7 +209,7 @@ function connectWS() {
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
 
   const url = store.get('serverUrl');
-  setState({ status: 'connecting', code: null, user: null });
+  setState({ status: 'connecting', code: null, user: null, links: null });
 
   try {
     ws = new WebSocket(url);
@@ -260,20 +230,26 @@ function connectWS() {
 
     switch (msg.type) {
       case 'pairing_code':
-        setState({ status: 'awaiting_link', code: msg.code, user: null });
+        setState({ status: 'awaiting_link', code: msg.code, user: null, links: null });
         break;
       case 'linked':
-        setState({ status: 'linked', code: null, user: msg.user });
+        setState({
+          status: 'linked',
+          code: null,
+          user: msg.user,
+          links: msg.links || { scope: 'guild', guilds: [] },
+        });
+        break;
+      case 'links_update':
+        // Bot pushed an updated server list (e.g. after unlink_guild)
+        setState({ links: msg.links });
         break;
       case 'unlinked':
-        // We don't immediately go to 'connected' — the bot is going to send
-        // a fresh `pairing_code` right after. We keep current state until then.
-        setState({ status: 'connecting', code: null, user: null });
+        setState({ status: 'connecting', code: null, user: null, links: null });
         break;
       case 'drop':
         if (!overlayWin || overlayWin.isDestroyed()) createOverlayWindow();
-        hasActiveDrop = true;
-        startTopGuard(); // ensure z-order while something is visible
+        startTopGuard();
         enforceTop();
         overlayWin.webContents.send('drop', {
           ...msg,
@@ -292,7 +268,7 @@ function connectWS() {
   });
 
   ws.on('close', () => {
-    setState({ status: 'disconnected', code: null });
+    setState({ status: 'disconnected', code: null, links: null });
     scheduleReconnect();
   });
 
@@ -332,8 +308,6 @@ ipcMain.handle('settings:set', (_e, patch) => {
     repositionOverlay();
     enforceTop();
   }
-  // Live-push relevant settings to the overlay so on-screen videos can react
-  // to volume/opacity changes in real time.
   if (overlayWin && !overlayWin.isDestroyed() &&
       ('volume' in patch || 'opacity' in patch)) {
     const livePatch = {};
@@ -361,9 +335,19 @@ ipcMain.handle('connection:reconnect', () => {
   return true;
 });
 
+// New: settings UI asks main to ask the bot to revoke a specific guild
+ipcMain.handle('connection:unlink-guild', (_e, guildId) => {
+  if (!ws || ws.readyState !== ws.OPEN) return false;
+  try {
+    ws.send(JSON.stringify({ type: 'unlink_guild', guildId }));
+    return true;
+  } catch {
+    return false;
+  }
+});
+
 ipcMain.on('test-drop', () => {
   if (!overlayWin || overlayWin.isDestroyed()) createOverlayWindow();
-  hasActiveDrop = true;
   startTopGuard();
   enforceTop();
   overlayWin.webContents.send('drop', {
@@ -381,12 +365,7 @@ ipcMain.on('test-drop', () => {
   });
 });
 
-// Renderer tells us when the stage becomes empty — we can stop the top guard
-// to spare CPU until the next drop arrives.
-ipcMain.on('stage-empty', () => {
-  hasActiveDrop = false;
-  stopTopGuard();
-});
+ipcMain.on('stage-empty', () => { stopTopGuard(); });
 
 ipcMain.on('open-external', (_e, url) => {
   if (/^https?:\/\//i.test(url)) shell.openExternal(url);

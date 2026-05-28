@@ -11,6 +11,22 @@ let active = 0;
 
 const livePlayables = new Set();
 
+// Apply volume to a video/audio element using `muted` when 0.
+// HTML5 media elements behave inconsistently with `volume = 0` across
+// browsers / Electron versions — explicitly setting `muted` is reliable.
+function applyVolume(p, vol) {
+  const v = Math.max(0, Math.min(1, vol));
+  try {
+    if (v === 0) {
+      p.muted = true;
+      p.volume = 0;
+    } else {
+      p.muted = false;
+      p.volume = v;
+    }
+  } catch {}
+}
+
 function chooseSpot() {
   const marginX = 14;
   const marginY = 20;
@@ -22,7 +38,7 @@ function chooseSpot() {
 function playPop(volume) {
   try {
     const a = new Audio(popUrl);
-    a.volume = Math.max(0, Math.min(1, volume ?? 0.5));
+    applyVolume(a, volume ?? 0.5);
     a.play().catch(() => {});
   } catch {}
 }
@@ -91,7 +107,7 @@ function playAudioDrop({ media, caption, from, settings }) {
   // Now the actual audio
   const a = document.createElement('audio');
   a.src = media.url;
-  a.volume = settings?.volume ?? 0.75;
+  applyVolume(a, settings?.volume ?? 0.75);
   a.preload = 'auto';
   livePlayables.add(a);
 
@@ -160,7 +176,7 @@ function renderDrop({ media, caption, from, settings }) {
     el.src = media.url;
     el.autoplay = true;
     el.muted = false;
-    el.volume = settings?.volume ?? 0.75;
+    applyVolume(el, settings?.volume ?? 0.75);
     el.playsInline = true;
     el.loop = false;
     livePlayables.add(el);
@@ -251,10 +267,7 @@ window.memedrop.onDrop((payload) => {
 if (window.memedrop.onSettingsUpdate) {
   window.memedrop.onSettingsUpdate((settings) => {
     if (typeof settings?.volume === 'number') {
-      const vol = Math.max(0, Math.min(1, settings.volume));
-      for (const p of livePlayables) {
-        try { p.volume = vol; } catch {}
-      }
+      for (const p of livePlayables) applyVolume(p, settings.volume);
     }
     if (typeof settings?.opacity === 'number') {
       const op = String(Math.max(0.2, Math.min(1, settings.opacity)));

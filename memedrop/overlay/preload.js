@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('memedrop', {
   // Connection
   getConnection:  () => ipcRenderer.invoke('connection:get'),
   reconnect:      () => ipcRenderer.invoke('connection:reconnect'),
+  unlinkGuild:    (guildId) => ipcRenderer.invoke('connection:unlink-guild', guildId),
   onConnection:   (cb) => {
     const handler = (_e, state) => cb(state);
     ipcRenderer.on('connection-state', handler);
@@ -25,7 +26,6 @@ contextBridge.exposeInMainWorld('memedrop', {
     return () => ipcRenderer.removeListener('drop', handler);
   },
 
-  // Live settings push (overlay window only) — fires on volume/opacity slider moves
   onSettingsUpdate: (cb) => {
     const handler = (_e, settings) => cb(settings);
     ipcRenderer.on('settings-update', handler);

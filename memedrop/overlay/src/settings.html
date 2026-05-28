@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:;">
+        content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://cdn.discordapp.com;">
   <title>MemeDrop</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -37,7 +37,7 @@
     </div>
   </header>
 
-  <!-- Pairing card: shown when waiting for /link -->
+  <!-- Pairing card -->
   <section id="pairing-card" class="card pairing hidden">
     <div class="card-eyebrow">step 01</div>
     <h2>Pair this overlay</h2>
@@ -47,15 +47,26 @@
     <button class="ghost" id="copy-code">copy code</button>
   </section>
 
-  <!-- Linked card: shown once a user has paired -->
+  <!-- Linked card -->
   <section id="linked-card" class="card linked hidden">
     <div class="card-eyebrow">live</div>
     <h2>Linked to <span id="linked-user">…</span></h2>
-    <p class="muted">Any <code>/drop</code> they post will land on your screen.</p>
+    <p class="muted">Anyone running <code>/drop</code> on an allowed server below can land memes on your screen.</p>
     <div class="row">
       <button class="ghost danger" id="reconnect-btn">force reconnect</button>
       <button class="primary" id="test-btn">test drop</button>
     </div>
+  </section>
+
+  <!-- NEW: Linked servers panel — only visible when overlay is linked -->
+  <section id="servers-card" class="card hidden">
+    <div class="card-eyebrow">linked servers</div>
+    <h2 id="servers-title">Allowed sources</h2>
+    <p class="muted" id="servers-hint">Toggle off any server you don't want to receive drops from.</p>
+    <div id="server-list" class="server-list"></div>
+    <p class="muted small" id="servers-tip">
+      To add a server, run <code>/link &lt;code&gt;</code> on it. The current pairing code is shown above.
+    </p>
   </section>
 
   <!-- Settings -->
@@ -83,7 +94,7 @@
         <span>Image duration</span>
         <output id="duration-out">4s</output>
       </label>
-      <input type="range" id="duration" min="1" max="15" step="1" value="4">
+      <input type="range" id="duration" min="1" max="30" step="1" value="4">
     </div>
 
     <div class="field toggle">
