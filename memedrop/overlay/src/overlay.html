@@ -62,8 +62,7 @@
       background: #000;
     }
 
-    /* Avatar bubble — circular profile picture above the meme,
-       overlapping the top edge of the media. Replaces the old text tag. */
+    /* Avatar bubble — circular profile picture above the meme */
     .avatar-bubble {
       position: absolute;
       top: 0;
@@ -89,7 +88,6 @@
       object-fit: cover;
       background: #1a1226;
     }
-    /* Username text under the avatar — small, optional flair */
     .avatar-bubble::after {
       content: attr(data-username);
       position: absolute;
@@ -107,8 +105,7 @@
       box-shadow: 0 4px 10px rgba(0,0,0,.35);
     }
 
-    /* Caption — full-width subtitle bar at the bottom of the media,
-       TikTok/MrBeast style. */
+    /* Caption — subtitle bar at bottom of media (or audio card) */
     .caption-bar {
       position: absolute;
       left: 0;
@@ -143,6 +140,88 @@
       animation: caption-rise 420ms cubic-bezier(.18,1.1,.4,1) 160ms backwards;
     }
 
+    /* ──────────────────────────────────────────────────────────────────
+       Audio drop — a slim card that ONLY shows who's playing what.
+       No fake album art, no big visual; just identity + optional caption.
+       Width sized to a max so a long caption can wrap nicely.
+       ────────────────────────────────────────────────────────────────── */
+    .audio-card {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      padding: 18px 22px 16px;
+      min-width: 200px;
+      max-width: 380px;
+      border-radius: 18px;
+      background: linear-gradient(180deg,
+        rgba(28, 20, 44, .92) 0%,
+        rgba(20, 14, 32, .95) 100%);
+      backdrop-filter: blur(8px);
+      box-shadow:
+        0 12px 40px rgba(0,0,0,.55),
+        inset 0 1px 0 rgba(255,255,255,.08);
+      border: 1px solid rgba(255,180,94,.18);
+    }
+
+    .audio-card .audio-username {
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: .02em;
+      color: #fff;
+      text-align: center;
+      margin-top: 2px;
+    }
+
+    /* Animated speaker bars to make the card feel "alive" while audio plays */
+    .audio-bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 4px;
+      height: 18px;
+      margin-top: 4px;
+    }
+    .audio-bars span {
+      display: block;
+      width: 4px;
+      border-radius: 2px;
+      background: linear-gradient(180deg, #ff5e8a, #ffb45e);
+      animation: bars 900ms ease-in-out infinite;
+    }
+    .audio-bars span:nth-child(1) { animation-delay: 0ms;   height: 60%; }
+    .audio-bars span:nth-child(2) { animation-delay: 120ms; height: 90%; }
+    .audio-bars span:nth-child(3) { animation-delay: 240ms; height: 50%; }
+    .audio-bars span:nth-child(4) { animation-delay: 80ms;  height: 80%; }
+    .audio-bars span:nth-child(5) { animation-delay: 200ms; height: 65%; }
+
+    /* Caption variant for audio cards — same look but as part of card flow */
+    .audio-card .audio-caption {
+      max-width: 100%;
+      text-align: center;
+      font-family: 'Impact', 'Arial Black', 'Anton', system-ui, sans-serif;
+      font-weight: 900;
+      font-size: clamp(16px, 2vw, 28px);
+      line-height: 1.1;
+      text-transform: uppercase;
+      color: #fff;
+      -webkit-text-stroke: 1.5px #000;
+      paint-order: stroke fill;
+      text-shadow: 0 2px 6px rgba(0,0,0,.6);
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      margin-top: 4px;
+    }
+
+    /* When inside an audio-card, the bubble doesn't overlap from outside —
+       it sits at the top of the card flow. Override the absolute positioning. */
+    .audio-card .avatar-bubble {
+      position: relative;
+      top: auto;
+      left: auto;
+      transform: none;
+    }
+
     @keyframes drop-in {
       0%   { opacity: 0; transform: translate(-50%, calc(-50% - 80px)) rotate(-8deg) scale(.6); }
       60%  { opacity: 1; transform: translate(-50%, calc(-50% + 12px)) rotate( 2deg) scale(1.04); }
@@ -158,6 +237,10 @@
     @keyframes caption-rise {
       0%   { opacity: 0; transform: translateY(14px); }
       100% { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes bars {
+      0%, 100% { transform: scaleY(.5); }
+      50%      { transform: scaleY(1); }
     }
   </style>
 </head>

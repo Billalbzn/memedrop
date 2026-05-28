@@ -6,10 +6,9 @@ const popUrl = 'data:audio/wav;base64,UklGRoQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQ
 
 const MAX_CONCURRENT = 6;
 const VIDEO_HARD_CAP_SECONDS = 30;
-const AUDIO_HARD_CAP_SECONDS = 10;   // chad-mode audio drops are short by design
+const AUDIO_HARD_CAP_SECONDS = 10;
 let active = 0;
 
-// Track live audio + video elements so we can apply live volume changes
 const livePlayables = new Set();
 
 function chooseSpot() {
@@ -34,14 +33,113 @@ function notifyIfIdle() {
   }
 }
 
+// Fallback when avatar fails to load — first letter on a coral gradient
+function makeInitialFallback(name) {
+  const initial = (name || '?').trim().charAt(0).toUpperCase() || '?';
+  const div = document.createElement('div');
+  div.style.cssText = `
+    width:100%;height:100%;border-radius:50%;
+    background:linear-gradient(135deg,#ff5e8a,#ffb45e);
+    display:flex;align-items:center;justify-content:center;
+    color:#fff;font-weight:800;font-size:24px;font-family:system-ui,sans-serif;
+  `;
+  div.textContent = initial;
+  return div;
+}
+
+function buildAvatarBubble(from, { showLabel = true } = {}) {
+  const bubble = document.createElement('div');
+  bubble.className = 'avatar-bubble';
+  if (showLabel && from?.username) {
+    bubble.setAttribute('data-username', from.username);
+  } else {
+    // No label below the bubble — used for audio cards where we render the
+    // username separately so it's bigger/clearer.
+    bubble.style.setProperty('--hide-label', '1');
+  }
+  if (from?.avatar) {
+    const av = document.createElement('img');
+    av.src = from.avatar;
+    av.alt = '';
+    av.referrerPolicy = 'no-referrer';
+    av.draggable = false;
+    av.addEventListener('error', () => {
+      av.replaceWith(makeInitialFallback(from.username));
+    });
+    bubble.appendChild(av);
+  } else {
+    bubble.appendChild(makeInitialFallback(from?.username));
+  }
+  // Hide the ::after label via inline style on the element when needed.
+  // Easier path: skip data-username attribute (handled above by `showLabel`).
+  return bubble;
+}
+
 // ──────────────────────────────────────────────────────────────────────────
-// Audio drops are CHAD MODE: pure ear-attack, nothing on screen.
-// We bypass the whole stage rendering and just play the file.
+// Audio drops — a slim card with avatar, username, optional caption, and
+// animated speaker bars. The audio plays simultaneously.
 // ──────────────────────────────────────────────────────────────────────────
-function playAudioDrop({ media, settings }) {
+function playAudioDrop({ media, caption, from, settings }) {
   if (active >= MAX_CONCURRENT) return;
   active++;
 
+  const { x, y } = chooseSpot();
+
+  const anchor = document.createElement('div');
+  anchor.className = 'anchor';
+  anchor.style.left = `${x}%`;
+  anchor.style.top  = `${y}%`;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'drop';
+  wrap.style.opacity = String(settings?.opacity ?? 1);
+
+  const card = document.createElement('div');
+  card.className = 'audio-card';
+
+  // Avatar (without floating label — we'll show username explicitly below)
+  // Build a bubble but suppress the ::after label by passing showLabel=false.
+  // We achieve that simply by not setting data-username.
+  const bubble = document.createElement('div');
+  bubble.className = 'avatar-bubble';
+  if (from?.avatar) {
+    const av = document.createElement('img');
+    av.src = from.avatar;
+    av.alt = '';
+    av.referrerPolicy = 'no-referrer';
+    av.draggable = false;
+    av.addEventListener('error', () => av.replaceWith(makeInitialFallback(from.username)));
+    bubble.appendChild(av);
+  } else {
+    bubble.appendChild(makeInitialFallback(from?.username));
+  }
+  card.appendChild(bubble);
+
+  // Username, prominent
+  const name = document.createElement('div');
+  name.className = 'audio-username';
+  name.textContent = `@${from?.username || 'someone'}`;
+  card.appendChild(name);
+
+  // Animated speaker bars
+  const bars = document.createElement('div');
+  bars.className = 'audio-bars';
+  for (let i = 0; i < 5; i++) bars.appendChild(document.createElement('span'));
+  card.appendChild(bars);
+
+  // Optional caption
+  if (caption && String(caption).trim()) {
+    const cap = document.createElement('div');
+    cap.className = 'audio-caption';
+    cap.textContent = String(caption).trim().slice(0, 80);
+    card.appendChild(cap);
+  }
+
+  wrap.appendChild(card);
+  anchor.appendChild(wrap);
+  stage.appendChild(anchor);
+
+  // Now play the actual audio
   const a = document.createElement('audio');
   a.src = media.url;
   a.volume = settings?.volume ?? 0.75;
@@ -54,8 +152,17 @@ function playAudioDrop({ media, settings }) {
     removed = true;
     try { a.pause(); } catch {}
     livePlayables.delete(a);
-    active = Math.max(0, active - 1);
-    notifyIfIdle();
+    if (anchor.isConnected) {
+      wrap.classList.add('leaving');
+      setTimeout(() => {
+        anchor.remove();
+        active = Math.max(0, active - 1);
+        notifyIfIdle();
+      }, 400);
+    } else {
+      active = Math.max(0, active - 1);
+      notifyIfIdle();
+    }
   }
 
   a.addEventListener('timeupdate', () => {
@@ -63,14 +170,14 @@ function playAudioDrop({ media, settings }) {
   });
   a.addEventListener('ended', cleanup);
   a.addEventListener('error', cleanup);
-
   a.play().catch(() => cleanup());
+
+  if (settings?.soundOnArrival) playPop(settings.volume);
 }
 
 function renderDrop({ media, caption, from, settings }) {
-  // Audio = invisible chad-mode drop
   if (media.kind === 'audio') {
-    playAudioDrop({ media, settings });
+    playAudioDrop({ media, caption, from, settings });
     return;
   }
 
@@ -88,29 +195,8 @@ function renderDrop({ media, caption, from, settings }) {
   wrap.className = 'drop';
   wrap.style.opacity = String(settings?.opacity ?? 1);
 
-  // Avatar bubble — replaces the old text tag with a circular profile pic
-  if (from) {
-    const bubble = document.createElement('div');
-    bubble.className = 'avatar-bubble';
-    bubble.setAttribute('data-username', from.username || 'someone');
-
-    if (from.avatar) {
-      const av = document.createElement('img');
-      av.src = from.avatar;
-      av.alt = '';
-      av.referrerPolicy = 'no-referrer';
-      av.draggable = false;
-      // Fallback if Discord CDN hiccups
-      av.addEventListener('error', () => {
-        av.replaceWith(makeInitialFallback(from.username));
-      });
-      bubble.appendChild(av);
-    } else {
-      bubble.appendChild(makeInitialFallback(from.username));
-    }
-
-    wrap.appendChild(bubble);
-  }
+  // Avatar bubble (with label) for visual media drops
+  if (from) wrap.appendChild(buildAvatarBubble(from));
 
   const mediaBox = document.createElement('div');
   mediaBox.className = 'media-box';
@@ -207,20 +293,6 @@ function renderDrop({ media, caption, from, settings }) {
   }
 
   if (!isVideo) scheduleRemoval();
-}
-
-// Fallback when avatar fails to load — first letter on a coral gradient
-function makeInitialFallback(name) {
-  const initial = (name || '?').trim().charAt(0).toUpperCase() || '?';
-  const div = document.createElement('div');
-  div.style.cssText = `
-    width:100%;height:100%;border-radius:50%;
-    background:linear-gradient(135deg,#ff5e8a,#ffb45e);
-    display:flex;align-items:center;justify-content:center;
-    color:#fff;font-weight:800;font-size:24px;font-family:system-ui,sans-serif;
-  `;
-  div.textContent = initial;
-  return div;
 }
 
 window.memedrop.onDrop((payload) => {
