@@ -36,9 +36,6 @@ function sendJson(ws, payload) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(payload));
 }
 
-// Issue a fresh pairing code to an overlay and move it from "linked" → "pending".
-// Used after /unlink and after a forced replacement, so the user doesn't have
-// to restart the app to get a new code.
 function reissuePairingCode(ws) {
   if (!ws || ws.readyState !== ws.OPEN) return;
   const code = generatePairingCode();
@@ -75,6 +72,7 @@ wss.on('connection', (ws) => {
   ws.on('error', (err) => console.error('[ws] error:', err.message));
 });
 
+// Heartbeat — also drops dead sockets so /drop never targets a zombie
 setInterval(() => {
   wss.clients.forEach((ws) => {
     if (ws.readyState === ws.OPEN) sendJson(ws, { type: 'ping' });
@@ -139,23 +137,36 @@ function buildDropPayload(att, caption, fromUser) {
   };
 }
 
+// Safe reply helper: works whether or not we've deferred.
+async function safeReply(interaction, content) {
+  try {
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content });
+    } else {
+      await interaction.reply({ content, flags: MessageFlags.Ephemeral });
+    }
+  } catch (e) {
+    console.error('[bot] reply failed:', e.message);
+  }
+}
+
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
   try {
     switch (interaction.commandName) {
+      // ── /link — must be FAST (no awaits before reply) so it never times out
       case 'link': {
         const code = interaction.options.getString('code', true);
         const ws = pendingOverlays.get(code);
         if (!ws) {
           return interaction.reply({
-            content: '❌ Invalid or expired code. Open the overlay and try again.',
+            content: '❌ Invalid or expired code. Open the overlay (it shows a fresh code) and try again.',
             flags: MessageFlags.Ephemeral,
           });
         }
         const previous = linkedOverlays.get(interaction.user.id);
         if (previous && previous !== ws) {
-          // Notify the old overlay and issue it a fresh pairing code
           sendJson(previous, { type: 'unlinked', reason: 'replaced' });
           linkedOverlays.delete(interaction.user.id);
           reissuePairingCode(previous);
@@ -183,8 +194,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
         linkedOverlays.delete(interaction.user.id);
         sendJson(ws, { type: 'unlinked', reason: 'user' });
-        // The big quality-of-life fix: immediately give the overlay a fresh
-        // pairing code so the user can re-/link without restarting the app.
         reissuePairingCode(ws);
         return interaction.reply({
           content: '✅ Unlinked. Your overlay is back to "awaiting link" with a new code.',
@@ -203,35 +212,30 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
+      // ── /who — does guild member fetches, so DEFER first (anti-timeout)
       case 'who': {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         if (linkedOverlays.size === 0) {
-          return interaction.reply({
-            content: 'Nobody has a linked overlay right now. 😴',
-            flags: MessageFlags.Ephemeral,
-          });
+          return safeReply(interaction, 'Nobody has a linked overlay right now. 😴');
         }
         const list = [];
         for (const [userId, ws] of linkedOverlays) {
           if (ws.readyState !== ws.OPEN) continue;
-          try {
-            const member = await interaction.guild?.members.fetch(userId).catch(() => null);
-            if (member) list.push(`• <@${userId}>`);
-          } catch {}
+          const member = await interaction.guild?.members.fetch(userId).catch(() => null);
+          if (member) list.push(`• <@${userId}>`);
         }
-        return interaction.reply({
-          content: list.length
+        return safeReply(interaction,
+          list.length
             ? `**Potential drop targets in this server:**\n${list.join('\n')}`
-            : 'No drop targets in this server right now. 😴',
-          flags: MessageFlags.Ephemeral,
-        });
+            : 'No drop targets in this server right now. 😴');
       }
 
+      // ── /drop — DEFER first (fetches/validation can exceed 3s under load)
       case 'drop': {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
         if (rateLimited(interaction.user.id)) {
-          return interaction.reply({
-            content: '⏱️ Slow down — one drop every 2 seconds.',
-            flags: MessageFlags.Ephemeral,
-          });
+          return safeReply(interaction, '⏱️ Slow down — one drop every 2 seconds.');
         }
 
         const targets = [];
@@ -243,16 +247,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
           targets.push(u);
         }
         if (targets.length === 0) {
-          return interaction.reply({
-            content: '🤖 No valid targets (bots and duplicates filtered out).',
-            flags: MessageFlags.Ephemeral,
-          });
+          return safeReply(interaction, '🤖 No valid targets (bots and duplicates filtered out).');
         }
 
         const att = interaction.options.getAttachment('media', true);
         const caption = interaction.options.getString('caption', false);
         const err = validateAttachment(att);
-        if (err) return interaction.reply({ content: `❌ ${err}`, flags: MessageFlags.Ephemeral });
+        if (err) return safeReply(interaction, `❌ ${err}`);
 
         const payload = buildDropPayload(att, caption, interaction.user);
         const delivered = [];
@@ -273,23 +274,23 @@ client.on(Events.InteractionCreate, async (interaction) => {
         } else if (delivered.length) {
           msg = `✅ Dropped on **${delivered.join('**, **')}**!`;
         } else {
-          msg = `❌ Nobody received it — none of them have a linked overlay running.`;
+          msg = `❌ Nobody received it — none of them have a linked overlay running. They need to open MemeDrop and \`/link\`.`;
         }
-        return interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
+        return safeReply(interaction, msg);
       }
 
+      // ── /dropall — DEFER first (iterates guild members)
       case 'dropall': {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
         if (rateLimited(interaction.user.id)) {
-          return interaction.reply({
-            content: '⏱️ Slow down — one drop every 2 seconds.',
-            flags: MessageFlags.Ephemeral,
-          });
+          return safeReply(interaction, '⏱️ Slow down — one drop every 2 seconds.');
         }
 
         const att = interaction.options.getAttachment('media', true);
         const caption = interaction.options.getString('caption', false);
         const err = validateAttachment(att);
-        if (err) return interaction.reply({ content: `❌ ${err}`, flags: MessageFlags.Ephemeral });
+        if (err) return safeReply(interaction, `❌ ${err}`);
 
         const recipients = [];
         for (const [userId, ws] of linkedOverlays) {
@@ -298,10 +299,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           if (member) recipients.push({ userId, ws, username: member.user.username });
         }
         if (recipients.length === 0) {
-          return interaction.reply({
-            content: 'Nobody in this server has a linked overlay right now. 😴',
-            flags: MessageFlags.Ephemeral,
-          });
+          return safeReply(interaction, 'Nobody in this server has a linked overlay right now. 😴');
         }
 
         const payload = buildDropPayload(att, caption, interaction.user);
@@ -310,22 +308,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
           sendJson(r.ws, payload);
           names.push(r.username);
         }
-        return interaction.reply({
-          content: `💥 Dropped on **${names.length}** people: ${names.map(n => `**${n}**`).join(', ')}`,
-          flags: MessageFlags.Ephemeral,
-        });
+        return safeReply(interaction,
+          `💥 Dropped on **${names.length}** people: ${names.map(n => `**${n}**`).join(', ')}`);
       }
     }
   } catch (err) {
     console.error('[bot] interaction error:', err);
-    if (!interaction.replied) {
-      try {
-        await interaction.reply({
-          content: '⚠️ Internal error. Try again.',
-          flags: MessageFlags.Ephemeral,
-        });
-      } catch {}
-    }
+    await safeReply(interaction, '⚠️ Internal error. Try again.');
   }
 });
 
