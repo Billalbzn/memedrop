@@ -1,5 +1,5 @@
 // main.js — MemeDrop overlay (Electron main process)
-const { app, BrowserWindow, screen, ipcMain, shell, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, shell, Tray, Menu, nativeImage, globalShortcut } = require('electron');
 const path = require('path');
 const WebSocket = require('ws');
 const Store = require('electron-store');
@@ -173,6 +173,12 @@ function createTray() {
     { label: 'Force on top',     click: enforceTop },
     { type: 'separator' },
     { label: 'Check for updates…', click: () => checkForUpdates(true) },
+    { label: 'Open Overlay DevTools',
+      click: () => {
+        if (overlayWin && !overlayWin.isDestroyed()) {
+          overlayWin.webContents.openDevTools({ mode: 'detach' });
+        }
+      } },
     { type: 'separator' },
     { label: 'Quit',
       click: () => { app.isQuitting = true; app.quit(); } },
@@ -362,11 +368,14 @@ ipcMain.handle('settings:set', (_e, patch) => {
   }
   if ('overlayDisplayId' in patch) { repositionOverlay(); enforceTop(); }
   if (overlayWin && !overlayWin.isDestroyed() &&
-      ('volume' in patch || 'musicVolume' in patch || 'opacity' in patch)) {
+      ('volume' in patch || 'musicVolume' in patch || 'opacity' in patch ||
+       'duration' in patch || 'videoDuration' in patch)) {
     const livePatch = {};
-    if ('volume'      in patch) livePatch.volume      = patch.volume;
-    if ('musicVolume' in patch) livePatch.musicVolume = patch.musicVolume;
-    if ('opacity'     in patch) livePatch.opacity     = patch.opacity;
+    if ('volume'        in patch) livePatch.volume        = patch.volume;
+    if ('musicVolume'   in patch) livePatch.musicVolume   = patch.musicVolume;
+    if ('opacity'       in patch) livePatch.opacity       = patch.opacity;
+    if ('duration'      in patch) livePatch.duration      = patch.duration;
+    if ('videoDuration' in patch) livePatch.videoDuration = patch.videoDuration;
     overlayWin.webContents.send('settings-update', livePatch);
   }
   return true;
@@ -451,6 +460,24 @@ if (!gotLock) {
     createTray();
     connectWS();
 
+    // Debug shortcuts — work even when the overlay (which is non-focusable)
+    // can't receive keyboard events normally. We use Ctrl+Alt+X combos so we
+    // don't collide with GPU monitor overlays (NZXT CAM, MSI Afterburner, etc.)
+    // which often grab Ctrl+Shift+X.
+    //   Ctrl+Alt+S → DevTools on the Settings window
+    //   Ctrl+Alt+M → DevTools on the overlay window (the transparent one
+    //                that actually plays the videos)
+    globalShortcut.register('Control+Alt+S', () => {
+      if (settingsWin && !settingsWin.isDestroyed()) {
+        settingsWin.webContents.openDevTools({ mode: 'detach' });
+      }
+    });
+    globalShortcut.register('Control+Alt+M', () => {
+      if (overlayWin && !overlayWin.isDestroyed()) {
+        overlayWin.webContents.openDevTools({ mode: 'detach' });
+      }
+    });
+
     // Auto-update: check shortly after launch + every 30 min
     setTimeout(() => checkForUpdates(false), 4000);
     setInterval(() => checkForUpdates(false), 30 * 60 * 1000);
@@ -464,5 +491,6 @@ if (!gotLock) {
   });
 
   app.on('window-all-closed', (e) => { e.preventDefault?.(); });
+  app.on('will-quit', () => globalShortcut.unregisterAll());
   app.on('before-quit', () => { app.isQuitting = true; stopTopGuard(); });
 }

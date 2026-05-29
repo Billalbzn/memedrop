@@ -14,6 +14,12 @@ const livePlayables = new Set();
 // independently of the "Video volume" slider.
 const liveAudios = new Set();
 
+// Active drops with metadata. Used by the live settings update so we can
+// react to "Image duration" / "Video max duration" changes mid-play.
+//   { kind: 'image'|'video', startedAt: number, video: HTMLVideoElement|null,
+//     anchor: HTMLElement, removeNow: () => void, scheduleRemoval: (ms) => void }
+const liveDrops = new Set();
+
 // Apply volume to a video/audio element using `muted` when 0.
 // HTML5 media elements behave inconsistently with `volume = 0` across
 // browsers / Electron versions — explicitly setting `muted` is reliable.
@@ -27,7 +33,10 @@ function applyVolume(p, vol) {
       p.muted = false;
       p.volume = v;
     }
-  } catch {}
+    console.log('[volume] applied', v, '→ muted=', p.muted, 'volume=', p.volume, 'on', p.tagName, p.dataset.kind || '');
+  } catch (e) {
+    console.error('[volume] applyVolume failed:', e);
+  }
 }
 
 function chooseSpot() {
@@ -260,16 +269,30 @@ function renderDrop({ media, caption, from, settings }) {
 
   if (settings?.soundOnArrival) playPop(settings.volume);
 
+  // Drop metadata used by the live settings updater to recompute the lifetime
+  // when "Image duration" or "Video max duration" changes mid-play.
+  const dropMeta = {
+    kind: isVideo ? 'video' : 'image',
+    startedAt: Date.now(),
+    video: isVideo ? el : null,
+    anchor,
+    removeNow: null,
+    rescheduleFor: null,
+  };
+
   let removalTimer = null;
   let removed = false;
+
   function scheduleRemoval() {
     if (removalTimer) clearTimeout(removalTimer);
     removalTimer = setTimeout(removeNow, lifetime);
   }
+
   function removeNow() {
     if (removed || !anchor.isConnected) return;
     removed = true;
     if (isVideo) livePlayables.delete(el);
+    liveDrops.delete(dropMeta);
     wrap.classList.add('leaving');
     setTimeout(() => {
       anchor.remove();
@@ -277,6 +300,38 @@ function renderDrop({ media, caption, from, settings }) {
       notifyIfIdle();
     }, 400);
   }
+
+  // Adjust the remaining lifetime based on a new cap (in seconds).
+  // For videos: cap = min(natural duration, newCapSec)
+  // For images: cap = newCapSec
+  // Then compares to elapsed time and either stops now or reschedules.
+  function rescheduleFor(newCapSec) {
+    if (removed) return;
+    const elapsedMs = Date.now() - dropMeta.startedAt;
+    let newCapMs;
+    if (dropMeta.kind === 'video' && dropMeta.video) {
+      const natural = (dropMeta.video.duration || 0) * 1000;
+      newCapMs = Math.min(
+        natural > 0 ? natural : Infinity,
+        newCapSec * 1000
+      );
+    } else {
+      newCapMs = newCapSec * 1000;
+    }
+    lifetime = newCapMs;
+    if (elapsedMs >= newCapMs) {
+      // Already exceeded the new cap — stop right now
+      if (dropMeta.video) { try { dropMeta.video.pause(); } catch {} }
+      removeNow();
+    } else {
+      if (removalTimer) clearTimeout(removalTimer);
+      removalTimer = setTimeout(removeNow, newCapMs - elapsedMs);
+    }
+  }
+
+  dropMeta.removeNow = removeNow;
+  dropMeta.rescheduleFor = rescheduleFor;
+  liveDrops.add(dropMeta);
 
   if (!isVideo) scheduleRemoval();
 }
@@ -288,6 +343,7 @@ window.memedrop.onDrop((payload) => {
 
 if (window.memedrop.onSettingsUpdate) {
   window.memedrop.onSettingsUpdate((settings) => {
+    console.log('[settings-update] received:', settings, 'liveVideos=', livePlayables.size, 'liveAudios=', liveAudios.size, 'liveDrops=', liveDrops.size);
     // Video volume slider → only affects currently-playing videos
     if (typeof settings?.volume === 'number') {
       for (const p of livePlayables) applyVolume(p, settings.volume);
@@ -295,6 +351,18 @@ if (window.memedrop.onSettingsUpdate) {
     // Music volume slider → only affects currently-playing audio drops
     if (typeof settings?.musicVolume === 'number') {
       for (const a of liveAudios) applyVolume(a, settings.musicVolume);
+    }
+    // Image duration → reschedule images currently on screen
+    if (typeof settings?.duration === 'number') {
+      for (const d of liveDrops) {
+        if (d.kind === 'image' && d.rescheduleFor) d.rescheduleFor(settings.duration);
+      }
+    }
+    // Video max duration → reschedule videos currently on screen
+    if (typeof settings?.videoDuration === 'number') {
+      for (const d of liveDrops) {
+        if (d.kind === 'video' && d.rescheduleFor) d.rescheduleFor(settings.videoDuration);
+      }
     }
     if (typeof settings?.opacity === 'number') {
       const op = String(Math.max(0.2, Math.min(1, settings.opacity)));

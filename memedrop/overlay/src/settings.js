@@ -250,13 +250,19 @@ $('#reconnect-btn').addEventListener('click', () => window.memedrop.reconnect())
 $('#test-btn').addEventListener('click', () => window.memedrop.testDrop());
 
 // ── Debounced settings writer ──────────────────────────────────────────────
+//
+// IMPORTANT: `patch = _pending` previously created a shared reference, then
+// clearing `_pending` also wiped `patch` before it was sent. That meant every
+// slider move was sending an empty object to the store — sliders moved on
+// screen but nothing was ever persisted. We now copy the pending dict into a
+// fresh object before clearing.
 const _pending = {};
 let _flushTimer = null;
 function queueSetting(key, value) {
   _pending[key] = value;
   if (_flushTimer) clearTimeout(_flushTimer);
   _flushTimer = setTimeout(() => {
-    const patch = _pending;
+    const patch = { ..._pending };          // copy, don't share reference
     Object.keys(_pending).forEach(k => delete _pending[k]);
     _flushTimer = null;
     window.memedrop.setSettings(patch);
