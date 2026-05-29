@@ -165,8 +165,15 @@ function renderDrop({ media, caption, from, settings }) {
   const mediaBox = document.createElement('div');
   mediaBox.className = 'media-box';
 
-  const userMaxSec = Math.max(1, Math.min(VIDEO_HARD_CAP_SECONDS, Number(settings?.duration) || 4));
-  let lifetime = userMaxSec * 1000;
+  // Two distinct caps now:
+  //  - imageMaxSec : how long an image/GIF stays on screen
+  //  - videoMaxSec : the ceiling for videos (clipped at this many seconds)
+  // Both are bounded by VIDEO_HARD_CAP_SECONDS for safety.
+  const imageMaxSec = Math.max(1, Math.min(VIDEO_HARD_CAP_SECONDS,
+                                            Number(settings?.duration) || 4));
+  const videoMaxSec = Math.max(1, Math.min(VIDEO_HARD_CAP_SECONDS,
+                                            Number(settings?.videoDuration) || 30));
+  let lifetime = imageMaxSec * 1000;
   let el;
   let isVideo = false;
 
@@ -182,15 +189,16 @@ function renderDrop({ media, caption, from, settings }) {
     livePlayables.add(el);
 
     el.addEventListener('loadedmetadata', () => {
+      // For videos: min(real clip duration, user's video cap)
       const natural = el.duration || 0;
-      const effective = Math.min(natural, VIDEO_HARD_CAP_SECONDS, userMaxSec);
+      const effective = Math.min(natural, videoMaxSec);
       if (effective > 0) {
         lifetime = effective * 1000 + 300;
         scheduleRemoval();
       }
     });
     el.addEventListener('timeupdate', () => {
-      if (el.currentTime >= Math.min(VIDEO_HARD_CAP_SECONDS, userMaxSec)) {
+      if (el.currentTime >= videoMaxSec) {
         try { el.pause(); } catch {}
         removeNow();
       }

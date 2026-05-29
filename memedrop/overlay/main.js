@@ -18,6 +18,7 @@ const store = new Store({
     volume: 0.75,
     opacity: 1.0,
     duration: 4,
+    videoDuration: 30,
     soundOnArrival: true,
     language: 'en',
     autostart: false,
@@ -239,6 +240,7 @@ function connectWS() {
             volume: store.get('volume'),
             opacity: store.get('opacity'),
             duration: store.get('duration'),
+            videoDuration: store.get('videoDuration'),
             soundOnArrival: store.get('soundOnArrival'),
           },
         });
@@ -339,6 +341,7 @@ ipcMain.handle('settings:get', () => ({
   volume:         store.get('volume'),
   opacity:        store.get('opacity'),
   duration:       store.get('duration'),
+  videoDuration:  store.get('videoDuration'),
   soundOnArrival: store.get('soundOnArrival'),
   language:       store.get('language'),
   autostart:      store.get('autostart'),
@@ -415,6 +418,7 @@ ipcMain.on('test-drop', () => {
       volume: store.get('volume'),
       opacity: store.get('opacity'),
       duration: store.get('duration'),
+      videoDuration: store.get('videoDuration'),
       soundOnArrival: store.get('soundOnArrival'),
     },
   });

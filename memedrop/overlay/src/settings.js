@@ -273,9 +273,10 @@ function bindRange(id, outId, fmt, key, scale = 1) {
   });
 }
 
-bindRange('volume',   'volume-out',   v => `${v}%`, 'volume',   100);
-bindRange('opacity',  'opacity-out',  v => `${v}%`, 'opacity',  100);
-bindRange('duration', 'duration-out', v => `${v}s`, 'duration', 1);
+bindRange('volume',         'volume-out',         v => `${v}%`, 'volume',        100);
+bindRange('opacity',        'opacity-out',        v => `${v}%`, 'opacity',       100);
+bindRange('duration',       'duration-out',       v => `${v}s`, 'duration',      1);
+bindRange('video-duration', 'video-duration-out', v => `${v}s`, 'videoDuration', 1);
 
 $('#sound').addEventListener('change', (e) => queueSetting('soundOnArrival', e.target.checked));
 $('#autostart').addEventListener('change', (e) => queueSetting('autostart', e.target.checked));
@@ -307,6 +308,11 @@ async function init() {
   durEl.value = s.duration ?? 4;
   $('#duration-out').textContent = `${durEl.value}s`;
   durEl.style.setProperty('--value', `${(durEl.value - 1) * 100 / 29}%`);
+
+  const vidDurEl = $('#video-duration');
+  vidDurEl.value = s.videoDuration ?? 30;
+  $('#video-duration-out').textContent = `${vidDurEl.value}s`;
+  vidDurEl.style.setProperty('--value', `${(vidDurEl.value - 1) * 100 / 29}%`);
 
   $('#sound').checked     = !!s.soundOnArrival;
   $('#autostart').checked = !!s.autostart;
