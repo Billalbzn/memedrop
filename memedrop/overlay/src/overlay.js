@@ -10,6 +10,9 @@ const AUDIO_HARD_CAP_SECONDS = 10;
 let active = 0;
 
 const livePlayables = new Set();
+// Separate set for audio drops so the "Music volume" slider can target them
+// independently of the "Video volume" slider.
+const liveAudios = new Set();
 
 // Apply volume to a video/audio element using `muted` when 0.
 // HTML5 media elements behave inconsistently with `volume = 0` across
@@ -107,16 +110,19 @@ function playAudioDrop({ media, caption, from, settings }) {
   // Now the actual audio
   const a = document.createElement('audio');
   a.src = media.url;
-  applyVolume(a, settings?.volume ?? 0.75);
+  // Music drops use the dedicated music volume slider (falls back to general
+  // volume for old payloads that don't include musicVolume).
+  const musicVol = settings?.musicVolume ?? settings?.volume ?? 0.75;
+  applyVolume(a, musicVol);
   a.preload = 'auto';
-  livePlayables.add(a);
+  liveAudios.add(a);
 
   let removed = false;
   function cleanup() {
     if (removed) return;
     removed = true;
     try { a.pause(); } catch {}
-    livePlayables.delete(a);
+    liveAudios.delete(a);
     if (toast.isConnected) {
       toast.classList.add('leaving');
       setTimeout(() => {
@@ -182,14 +188,20 @@ function renderDrop({ media, caption, from, settings }) {
     el = document.createElement('video');
     el.src = media.url;
     el.autoplay = true;
-    el.muted = false;
-    applyVolume(el, settings?.volume ?? 0.75);
+    // Critical for Chromium autoplay policy: even with `el.autoplay`, the
+    // element may refuse to honor the volume property until certain events
+    // have fired. We apply it both before the source loads and again on
+    // every "ready to play" event to be bulletproof.
+    const initialVideoVol = settings?.volume ?? 0.75;
+    applyVolume(el, initialVideoVol);
     el.playsInline = true;
     el.loop = false;
+    el.dataset.kind = 'video';   // marker for live-update routing
     livePlayables.add(el);
 
     el.addEventListener('loadedmetadata', () => {
-      // For videos: min(real clip duration, user's video cap)
+      // Re-apply volume — some Chromium builds reset it after metadata loads
+      applyVolume(el, initialVideoVol);
       const natural = el.duration || 0;
       const effective = Math.min(natural, videoMaxSec);
       if (effective > 0) {
@@ -197,6 +209,8 @@ function renderDrop({ media, caption, from, settings }) {
         scheduleRemoval();
       }
     });
+    el.addEventListener('canplay', () => applyVolume(el, initialVideoVol));
+    el.addEventListener('play',    () => applyVolume(el, initialVideoVol));
     el.addEventListener('timeupdate', () => {
       if (el.currentTime >= videoMaxSec) {
         try { el.pause(); } catch {}
@@ -274,8 +288,13 @@ window.memedrop.onDrop((payload) => {
 
 if (window.memedrop.onSettingsUpdate) {
   window.memedrop.onSettingsUpdate((settings) => {
+    // Video volume slider → only affects currently-playing videos
     if (typeof settings?.volume === 'number') {
       for (const p of livePlayables) applyVolume(p, settings.volume);
+    }
+    // Music volume slider → only affects currently-playing audio drops
+    if (typeof settings?.musicVolume === 'number') {
+      for (const a of liveAudios) applyVolume(a, settings.musicVolume);
     }
     if (typeof settings?.opacity === 'number') {
       const op = String(Math.max(0.2, Math.min(1, settings.opacity)));

@@ -16,6 +16,7 @@ const store = new Store({
   defaults: {
     serverUrl: DEFAULT_SERVER,
     volume: 0.75,
+    musicVolume: 0.75,
     opacity: 1.0,
     duration: 4,
     videoDuration: 30,
@@ -238,6 +239,7 @@ function connectWS() {
           ...msg,
           settings: {
             volume: store.get('volume'),
+            musicVolume: store.get('musicVolume'),
             opacity: store.get('opacity'),
             duration: store.get('duration'),
             videoDuration: store.get('videoDuration'),
@@ -339,6 +341,7 @@ function checkForUpdates(manual = false) {
 ipcMain.handle('settings:get', () => ({
   serverUrl:      store.get('serverUrl'),
   volume:         store.get('volume'),
+  musicVolume:    store.get('musicVolume'),
   opacity:        store.get('opacity'),
   duration:       store.get('duration'),
   videoDuration:  store.get('videoDuration'),
@@ -359,10 +362,11 @@ ipcMain.handle('settings:set', (_e, patch) => {
   }
   if ('overlayDisplayId' in patch) { repositionOverlay(); enforceTop(); }
   if (overlayWin && !overlayWin.isDestroyed() &&
-      ('volume' in patch || 'opacity' in patch)) {
+      ('volume' in patch || 'musicVolume' in patch || 'opacity' in patch)) {
     const livePatch = {};
-    if ('volume'  in patch) livePatch.volume  = patch.volume;
-    if ('opacity' in patch) livePatch.opacity = patch.opacity;
+    if ('volume'      in patch) livePatch.volume      = patch.volume;
+    if ('musicVolume' in patch) livePatch.musicVolume = patch.musicVolume;
+    if ('opacity'     in patch) livePatch.opacity     = patch.opacity;
     overlayWin.webContents.send('settings-update', livePatch);
   }
   return true;
@@ -416,6 +420,7 @@ ipcMain.on('test-drop', () => {
     ts: Date.now(),
     settings: {
       volume: store.get('volume'),
+      musicVolume: store.get('musicVolume'),
       opacity: store.get('opacity'),
       duration: store.get('duration'),
       videoDuration: store.get('videoDuration'),

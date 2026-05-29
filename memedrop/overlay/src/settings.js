@@ -274,6 +274,7 @@ function bindRange(id, outId, fmt, key, scale = 1) {
 }
 
 bindRange('volume',         'volume-out',         v => `${v}%`, 'volume',        100);
+bindRange('music-volume',   'music-volume-out',   v => `${v}%`, 'musicVolume',   100);
 bindRange('opacity',        'opacity-out',        v => `${v}%`, 'opacity',       100);
 bindRange('duration',       'duration-out',       v => `${v}s`, 'duration',      1);
 bindRange('video-duration', 'video-duration-out', v => `${v}s`, 'videoDuration', 1);
@@ -298,6 +299,11 @@ async function init() {
   volEl.value = Math.round((s.volume ?? .75) * 100);
   $('#volume-out').textContent = `${volEl.value}%`;
   volEl.style.setProperty('--value', `${volEl.value}%`);
+
+  const musicVolEl = $('#music-volume');
+  musicVolEl.value = Math.round((s.musicVolume ?? .75) * 100);
+  $('#music-volume-out').textContent = `${musicVolEl.value}%`;
+  musicVolEl.style.setProperty('--value', `${musicVolEl.value}%`);
 
   const opEl = $('#opacity');
   opEl.value = Math.round((s.opacity ?? 1) * 100);
