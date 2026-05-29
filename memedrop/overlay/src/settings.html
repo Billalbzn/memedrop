@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta http-equiv="Content-Security-Policy"
@@ -13,9 +13,10 @@
 <body>
   <div class="grain"></div>
 
+  <!-- ── En-tête ── -->
   <header class="hero">
     <div class="hero-mark">
-      <svg viewBox="0 0 40 40" width="32" height="32" aria-hidden="true">
+      <svg viewBox="0 0 40 40" width="34" height="34" aria-hidden="true">
         <defs>
           <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
             <stop offset="0%"   stop-color="#ff5e8a"/>
@@ -27,131 +28,225 @@
       </svg>
       <div>
         <h1>MemeDrop</h1>
-        <p class="tagline">drop a meme — <em>watch them suffer</em></p>
+        <p class="tagline">balance un mème — <em>regarde-les souffrir</em></p>
       </div>
     </div>
 
     <div id="conn-pill" class="pill pill--idle">
       <span class="dot"></span>
-      <span class="label">connecting…</span>
+      <span class="label">connexion…</span>
     </div>
   </header>
 
-  <!-- Update card — only visible when there's something interesting to show -->
+  <!-- ── Carte mise à jour ── -->
   <section id="update-card" class="card update hidden">
-    <div class="card-eyebrow"><span id="update-eyebrow">update</span></div>
+    <div class="card-eyebrow">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+      <span id="update-eyebrow">mise à jour</span>
+    </div>
     <h2 id="update-title">Mise à jour disponible</h2>
     <p class="muted" id="update-msg">Une nouvelle version de MemeDrop est prête.</p>
 
-    <!-- Progress bar (only visible during download) -->
     <div class="progress hidden" id="update-progress">
       <div class="progress-fill" id="update-progress-fill"></div>
     </div>
 
     <div class="row" id="update-actions">
-      <button class="ghost" id="update-check-btn">vérifier</button>
-      <button class="primary hidden" id="update-download-btn">télécharger</button>
-      <button class="primary hidden" id="update-install-btn">installer &amp; redémarrer</button>
+      <button class="ghost" id="update-check-btn">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.56"/></svg>
+        vérifier
+      </button>
+      <button class="primary hidden" id="update-download-btn">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        télécharger
+      </button>
+      <button class="primary hidden" id="update-install-btn">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+        installer &amp; redémarrer
+      </button>
     </div>
   </section>
 
-  <!-- Pairing card -->
+  <!-- ── Carte appairage ── -->
   <section id="pairing-card" class="card pairing hidden">
-    <div class="card-eyebrow">step 01</div>
-    <h2>Pair this overlay</h2>
-    <p class="muted">In your Discord server with the bot, run<br>
-      <code>/link &lt;code&gt;</code> using the code below.</p>
+    <div class="card-eyebrow">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      étape 01
+    </div>
+    <h2>Associer l'overlay</h2>
+    <p class="muted">Sur ton serveur Discord, utilise la commande<br>
+      <code>/link &lt;code&gt;</code> avec le code affiché ci-dessous.</p>
     <div class="code" id="pairing-code">000000</div>
-    <button class="ghost" id="copy-code">copy code</button>
+    <button class="ghost btn-icon-center" id="copy-code">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      copier le code
+    </button>
   </section>
 
-  <!-- Linked card -->
+  <!-- ── Carte connecté ── -->
   <section id="linked-card" class="card linked hidden">
-    <div class="card-eyebrow">live</div>
-    <h2>Linked to <span id="linked-user">…</span></h2>
-    <p class="muted">Anyone running <code>/drop</code> on an allowed server below can land memes on your screen.</p>
+    <div class="card-eyebrow">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+      en direct
+    </div>
+    <h2>Connecté à <span id="linked-user" class="username-badge">…</span></h2>
+    <p class="muted">Les membres des serveurs autorisés peuvent t'envoyer des drops via <code>/drop</code>.</p>
     <div class="row">
-      <button class="ghost danger" id="reconnect-btn">force reconnect</button>
-      <button class="primary" id="test-btn">test drop</button>
+      <button class="ghost danger" id="reconnect-btn">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.56"/></svg>
+        reconnecter
+      </button>
+      <button class="primary" id="test-btn">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        test drop
+      </button>
     </div>
   </section>
 
-  <!-- Linked servers panel -->
+  <!-- ── Serveurs liés ── -->
   <section id="servers-card" class="card hidden">
-    <div class="card-eyebrow">linked servers</div>
-    <h2 id="servers-title">Allowed sources</h2>
-    <p class="muted" id="servers-hint">Toggle off any server you don't want to receive drops from.</p>
+    <div class="card-eyebrow">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+      serveurs liés
+    </div>
+    <h2 id="servers-title">Sources autorisées</h2>
+    <p class="muted" id="servers-hint">Désactive un serveur dont tu ne veux plus recevoir de drops.</p>
     <div id="server-list" class="server-list"></div>
     <p class="muted small" id="servers-tip">
-      To add a server, run <code>/link &lt;code&gt;</code> on it. The current pairing code is shown above.
+      Pour ajouter un serveur, tape <code>/link &lt;code&gt;</code> dessus.
     </p>
   </section>
 
-  <!-- Settings -->
+  <!-- ── Audio & Affichage ── -->
   <section class="card">
-    <div class="card-eyebrow">audio &amp; display</div>
-
-    <div class="field">
-      <label for="volume">
-        <span>Video volume</span>
-        <output id="volume-out">75%</output>
-      </label>
-      <input type="range" id="volume" min="0" max="100" step="1" value="75">
+    <div class="card-eyebrow">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+      audio &amp; affichage
     </div>
 
-    <div class="field">
-      <label for="music-volume">
-        <span>Music volume</span>
-        <output id="music-volume-out">75%</output>
-      </label>
-      <input type="range" id="music-volume" min="0" max="100" step="1" value="75">
+    <div class="field-group">
+      <div class="field">
+        <label for="volume">
+          <span class="label-with-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            Volume vidéo
+          </span>
+          <output id="volume-out">75%</output>
+        </label>
+        <input type="range" id="volume" min="0" max="100" step="1" value="75">
+      </div>
+
+      <div class="field">
+        <label for="music-volume">
+          <span class="label-with-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            Volume musique
+          </span>
+          <output id="music-volume-out">75%</output>
+        </label>
+        <input type="range" id="music-volume" min="0" max="100" step="1" value="75" class="range-music">
+      </div>
     </div>
+
+    <div class="field-divider"></div>
 
     <div class="field">
       <label for="opacity">
-        <span>Overlay opacity</span>
+        <span class="label-with-icon">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20"/></svg>
+          Opacité de l'overlay
+        </span>
         <output id="opacity-out">100%</output>
       </label>
-      <input type="range" id="opacity" min="20" max="100" step="1" value="100">
+      <input type="range" id="opacity" min="20" max="100" step="1" value="100" class="range-cool">
     </div>
 
-    <div class="field">
-      <label for="duration">
-        <span>Image duration</span>
-        <output id="duration-out">4s</output>
-      </label>
-      <input type="range" id="duration" min="1" max="30" step="1" value="4">
+    <div class="field-divider"></div>
+
+    <div class="field-group">
+      <div class="field">
+        <label for="duration">
+          <span class="label-with-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+            Durée des images
+          </span>
+          <output id="duration-out">4s</output>
+        </label>
+        <input type="range" id="duration" min="1" max="30" step="1" value="4">
+      </div>
+
+      <div class="field">
+        <label for="video-duration">
+          <span class="label-with-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+            Durée max. vidéos
+          </span>
+          <output id="video-duration-out">30s</output>
+        </label>
+        <input type="range" id="video-duration" min="1" max="30" step="1" value="30">
+      </div>
     </div>
 
-    <div class="field">
-      <label for="video-duration">
-        <span>Video max duration</span>
-        <output id="video-duration-out">30s</output>
-      </label>
-      <input type="range" id="video-duration" min="1" max="30" step="1" value="30">
-    </div>
+    <div class="field-divider"></div>
 
     <div class="field toggle">
-      <label for="sound">Pop sound on arrival</label>
+      <label for="sound" class="label-with-icon">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+        Son d'arrivée (pop)
+      </label>
       <input type="checkbox" id="sound" class="switch">
     </div>
   </section>
 
+  <!-- ── Photo + Musique ── -->
+  <section class="card card--feature">
+    <div class="card-eyebrow">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      photo + musique
+    </div>
+    <h2>Drop avec ambiance
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:middle;margin-left:4px;opacity:.8"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+    </h2>
+    <p class="muted">Joindre une <strong>photo</strong> ET un <strong>MP3</strong> dans le même <code>/drop</code> sur Discord — la musique joue pendant que l'image s'affiche sur l'écran de la cible.</p>
+    <div class="tip-example">
+      <span class="tip-label">exemple</span>
+      <code>/drop @pseudo media:photo.jpg musique:banger.mp3 caption:rip</code>
+    </div>
+    <p class="muted small" style="margin-top:10px;margin-bottom:0">Le volume se règle avec le curseur <strong>Volume musique</strong> ci-dessus.</p>
+  </section>
+
+  <!-- ── Système ── -->
   <section class="card">
-    <div class="card-eyebrow">system</div>
+    <div class="card-eyebrow">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+      système
+    </div>
 
     <div class="field">
-      <label for="display"><span>Display</span></label>
+      <label for="display">
+        <span class="label-with-icon">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          Écran cible
+        </span>
+      </label>
       <select id="display"></select>
     </div>
 
     <div class="field">
-      <label for="server"><span>Bot server URL</span></label>
-      <input type="text" id="server" placeholder="ws://localhost:8765" spellcheck="false">
+      <label for="server">
+        <span class="label-with-icon">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+          URL du serveur bot
+        </span>
+      </label>
+      <input type="text" id="server" placeholder="wss://…" spellcheck="false">
     </div>
 
     <div class="field toggle">
-      <label for="autostart">Launch at startup</label>
+      <label for="autostart" class="label-with-icon">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.08-4.56"/></svg>
+        Lancer au démarrage
+      </label>
       <input type="checkbox" id="autostart" class="switch">
     </div>
   </section>
@@ -159,7 +254,7 @@
   <footer class="foot">
     <span id="app-version">v…</span>
     <span class="dotdiv">·</span>
-    <a href="#" id="open-discord">how it works</a>
+    <a href="#" id="open-discord">comment ça marche</a>
   </footer>
 
   <script src="./settings.js"></script>
