@@ -1,4 +1,4 @@
-// settings.js — renderer logic for the settings window
+// settings.js — logique de la fenêtre de réglages
 const $ = (sel) => document.querySelector(sel);
 
 const pill         = $('#conn-pill');
@@ -13,19 +13,20 @@ const serversTitle = $('#servers-title');
 const serversHint  = $('#servers-hint');
 const serversTip   = $('#servers-tip');
 
-// Update card
-const updateCard       = $('#update-card');
-const updateEyebrow    = $('#update-eyebrow');
-const updateTitle      = $('#update-title');
-const updateMsg        = $('#update-msg');
-const updateProgress   = $('#update-progress');
+// Carte mise à jour
+const updateCard         = $('#update-card');
+const updateEyebrow      = $('#update-eyebrow');
+const updateTitle        = $('#update-title');
+const updateMsg          = $('#update-msg');
+const updateProgress     = $('#update-progress');
 const updateProgressFill = $('#update-progress-fill');
-const updateCheckBtn   = $('#update-check-btn');
-const updateDownloadBtn= $('#update-download-btn');
-const updateInstallBtn = $('#update-install-btn');
+const updateCheckBtn     = $('#update-check-btn');
+const updateDownloadBtn  = $('#update-download-btn');
+const updateInstallBtn   = $('#update-install-btn');
 
 let lastConnState = null;
 
+// ── Panel serveurs liés ────────────────────────────────────────────────
 function renderServersPanel(links) {
   serverList.innerHTML = '';
 
@@ -37,39 +38,38 @@ function renderServersPanel(links) {
   serversCard.classList.remove('hidden');
 
   if (links.scope === 'global') {
-    serversTitle.textContent = 'Reachable everywhere';
-    serversHint.innerHTML = 'Your link uses the legacy <strong>global</strong> mode — any server the bot is in can drop memes on you.';
-    serversTip.innerHTML = 'To switch to per-server mode, use <code>/unlink</code> on Discord, then <code>/link &lt;code&gt;</code> on each server where you want to be reachable.';
+    serversTitle.textContent = 'Accessible partout';
+    serversHint.innerHTML    = 'Ton lien utilise le mode <strong>global</strong> (ancienne version) — n\'importe quel serveur où le bot est présent peut t\'envoyer des drops.';
+    serversTip.innerHTML     = 'Pour passer en mode par serveur, utilise <code>/unlink</code> sur Discord, puis <code>/link &lt;code&gt;</code> sur chaque serveur de ton choix.';
 
     const row = document.createElement('div');
     row.className = 'server-row legacy';
     row.innerHTML = `
       <div class="server-row-pic legacy-pic">∞</div>
       <div class="server-row-name">
-        <strong>All servers</strong>
-        <div class="server-row-sub">Legacy global link</div>
+        <strong>Tous les serveurs</strong>
+        <div class="server-row-sub">Lien global (ancien mode)</div>
       </div>
     `;
     serverList.appendChild(row);
     return;
   }
 
-  // Per-guild mode — show current servers + tip showing the add-server code
-  serversTitle.textContent = 'Allowed sources';
-  serversHint.textContent  = 'Toggle off any server you don\'t want to receive drops from.';
+  // Mode par serveur
+  serversTitle.textContent = 'Sources autorisées';
+  serversHint.textContent  = 'Désactive un serveur dont tu ne veux plus recevoir de drops.';
 
-  // Show the current pairing code (kept alive by the bot for adding new guilds)
   const code = lastConnState?.code;
   if (code) {
-    serversTip.innerHTML = `To add another server, run <code>/link ${code}</code> on it.`;
+    serversTip.innerHTML = `Pour ajouter un serveur, tape <code>/link ${code}</code> dessus.`;
   } else {
-    serversTip.innerHTML = 'To add another server, run <code>/link &lt;code&gt;</code> on it.';
+    serversTip.innerHTML = 'Pour ajouter un serveur, tape <code>/link &lt;code&gt;</code> dessus.';
   }
 
   if (!links.guilds || links.guilds.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'server-empty';
-    empty.textContent = 'No servers yet. Use /link on a Discord server to add it.';
+    empty.textContent = 'Aucun serveur. Utilise /link sur Discord pour en ajouter un.';
     serverList.appendChild(empty);
     return;
   }
@@ -98,16 +98,16 @@ function renderServersPanel(links) {
       <strong></strong>
       <div class="server-row-sub">ID ${g.id}</div>
     `;
-    name.querySelector('strong').textContent = g.name || 'Unknown server';
+    name.querySelector('strong').textContent = g.name || 'Serveur inconnu';
 
     const sw = document.createElement('input');
     sw.type = 'checkbox';
     sw.className = 'switch';
     sw.checked = g.enabled !== false;
-    sw.title = sw.checked ? 'Click to disable this server' : '';
+    sw.title = sw.checked ? 'Cliquer pour désactiver ce serveur' : '';
     sw.addEventListener('change', async () => {
       if (!sw.checked) {
-        const ok = confirm(`Disable drops from "${g.name}"? You can re-add it by running /link on that server again.`);
+        const ok = confirm(`Désactiver les drops venant de « ${g.name} » ? Tu pourras le réactiver en tapant /link sur ce serveur.`);
         if (!ok) { sw.checked = true; return; }
         await window.memedrop.unlinkGuild(g.id);
       }
@@ -120,6 +120,7 @@ function renderServersPanel(links) {
   }
 }
 
+// ── État de connexion ──────────────────────────────────────────────────
 function applyConnState(state) {
   lastConnState = state;
   pill.className = 'pill';
@@ -130,29 +131,29 @@ function applyConnState(state) {
   switch (state.status) {
     case 'connecting':
       pill.classList.add('pill--connecting');
-      pillLabel.textContent = 'connecting';
+      pillLabel.textContent = 'connexion…';
       break;
     case 'awaiting_link':
       pill.classList.add('pill--awaiting');
-      pillLabel.textContent = 'awaiting link';
+      pillLabel.textContent = 'en attente';
       pairingCard.classList.remove('hidden');
       pairingCode.textContent = state.code || '------';
       break;
     case 'linked':
       pill.classList.add('pill--linked');
-      pillLabel.textContent = 'linked';
+      pillLabel.textContent = 'connecté';
       linkedCard.classList.remove('hidden');
       linkedUser.textContent = state.user?.username || '—';
       renderServersPanel(state.links);
       break;
     case 'connected':
       pill.classList.add('pill--connecting');
-      pillLabel.textContent = 'connected';
+      pillLabel.textContent = 'connecté';
       break;
     case 'disconnected':
     default:
       pill.classList.add('pill--down');
-      pillLabel.textContent = 'offline';
+      pillLabel.textContent = 'hors ligne';
       break;
   }
 }
@@ -160,9 +161,8 @@ function applyConnState(state) {
 window.memedrop.onConnection(applyConnState);
 window.memedrop.getConnection().then(applyConnState);
 
-// ── Update card ────────────────────────────────────────────────────────────
+// ── Carte mise à jour ──────────────────────────────────────────────────
 function applyUpdateState(state) {
-  // Reset visibility of action buttons + progress
   updateCheckBtn.classList.add('hidden');
   updateDownloadBtn.classList.add('hidden');
   updateInstallBtn.classList.add('hidden');
@@ -174,53 +174,54 @@ function applyUpdateState(state) {
       break;
     case 'checking':
       updateCard.classList.remove('hidden');
-      updateEyebrow.textContent = 'update';
-      updateTitle.textContent = 'Vérification…';
-      updateMsg.textContent = 'Recherche de nouvelles versions sur GitHub.';
+      updateEyebrow.textContent = 'mise à jour';
+      updateTitle.textContent   = 'Vérification…';
+      updateMsg.textContent     = 'Recherche de nouvelles versions sur GitHub.';
       break;
     case 'up-to-date':
       updateCard.classList.remove('hidden');
       updateEyebrow.textContent = 'à jour';
-      updateTitle.textContent = 'Vous êtes à jour ✓';
-      updateMsg.textContent = 'MemeDrop est dans sa dernière version.';
+      updateTitle.textContent   = 'Tout est à jour ✓';
+      updateMsg.textContent     = 'MemeDrop est dans sa dernière version.';
       updateCheckBtn.classList.remove('hidden');
-      // Auto-hide after 4 seconds
-      setTimeout(() => { if (updateCard.dataset.lastStatus === 'up-to-date') updateCard.classList.add('hidden'); }, 4000);
+      setTimeout(() => {
+        if (updateCard.dataset.lastStatus === 'up-to-date') updateCard.classList.add('hidden');
+      }, 4000);
       break;
     case 'available':
       updateCard.classList.remove('hidden');
       updateEyebrow.textContent = 'nouveauté';
-      updateTitle.textContent = `Mise à jour disponible — v${state.version}`;
-      updateMsg.textContent = 'Cliquez pour la télécharger maintenant.';
+      updateTitle.textContent   = `Mise à jour disponible — v${state.version}`;
+      updateMsg.textContent     = 'Clique pour la télécharger maintenant.';
       updateDownloadBtn.classList.remove('hidden');
       break;
     case 'downloading':
       updateCard.classList.remove('hidden');
       updateEyebrow.textContent = 'téléchargement';
-      updateTitle.textContent = `Téléchargement…`;
-      updateMsg.textContent = `${state.progress ?? 0}% — restez tranquille, ça arrive`;
+      updateTitle.textContent   = 'Téléchargement…';
+      updateMsg.textContent     = `${state.progress ?? 0}% — reste tranquille, ça arrive`;
       updateProgress.classList.remove('hidden');
       updateProgressFill.style.width = `${state.progress ?? 0}%`;
       break;
     case 'downloaded':
       updateCard.classList.remove('hidden');
       updateEyebrow.textContent = 'prêt';
-      updateTitle.textContent = `v${state.version} prête à installer`;
-      updateMsg.textContent = 'Cliquez pour installer et redémarrer MemeDrop.';
+      updateTitle.textContent   = `v${state.version} prête à installer`;
+      updateMsg.textContent     = 'Clique pour installer et relancer MemeDrop.';
       updateInstallBtn.classList.remove('hidden');
       break;
     case 'error':
       updateCard.classList.remove('hidden');
       updateEyebrow.textContent = 'erreur';
-      updateTitle.textContent = 'Mise à jour impossible';
-      updateMsg.textContent = state.error || 'Réessayez plus tard.';
+      updateTitle.textContent   = 'Mise à jour impossible';
+      updateMsg.textContent     = state.error || 'Réessaie plus tard.';
       updateCheckBtn.classList.remove('hidden');
       break;
     case 'dev-mode':
       updateCard.classList.remove('hidden');
       updateEyebrow.textContent = 'dev';
-      updateTitle.textContent = 'Mode développement';
-      updateMsg.textContent = 'L\'auto-update ne fonctionne que dans la version packagée.';
+      updateTitle.textContent   = 'Mode développement';
+      updateMsg.textContent     = 'L\'auto-update ne fonctionne que dans la version packagée.';
       updateCheckBtn.classList.remove('hidden');
       setTimeout(() => updateCard.classList.add('hidden'), 4000);
       break;
@@ -231,38 +232,36 @@ function applyUpdateState(state) {
 window.memedrop.onUpdateState(applyUpdateState);
 window.memedrop.getUpdateState().then(applyUpdateState);
 
-updateCheckBtn.addEventListener('click', () => window.memedrop.checkForUpdate());
+updateCheckBtn.addEventListener('click',    () => window.memedrop.checkForUpdate());
 updateDownloadBtn.addEventListener('click', () => window.memedrop.downloadUpdate());
-updateInstallBtn.addEventListener('click', () => window.memedrop.installUpdate());
+updateInstallBtn.addEventListener('click',  () => window.memedrop.installUpdate());
 
-// ── Pairing code copy ───────────────────────────────────────────────────────
+// ── Copier le code d'appairage ─────────────────────────────────────────
 $('#copy-code').addEventListener('click', async () => {
   try {
     await navigator.clipboard.writeText(pairingCode.textContent);
     const btn = $('#copy-code');
-    const original = btn.textContent;
-    btn.textContent = 'copied ✓';
-    setTimeout(() => { btn.textContent = original; }, 1200);
+    const original = btn.innerHTML;
+    btn.textContent = 'copié ✓';
+    setTimeout(() => { btn.innerHTML = original; }, 1200);
   } catch {}
 });
 
 $('#reconnect-btn').addEventListener('click', () => window.memedrop.reconnect());
-$('#test-btn').addEventListener('click', () => window.memedrop.testDrop());
+$('#test-btn').addEventListener('click',      () => window.memedrop.testDrop());
 
-// ── Debounced settings writer ──────────────────────────────────────────────
+// ── Écriture des réglages (debounce) ───────────────────────────────────
 //
-// IMPORTANT: `patch = _pending` previously created a shared reference, then
-// clearing `_pending` also wiped `patch` before it was sent. That meant every
-// slider move was sending an empty object to the store — sliders moved on
-// screen but nothing was ever persisted. We now copy the pending dict into a
-// fresh object before clearing.
+// On copie `_pending` dans un objet séparé avant de le vider pour éviter
+// que la référence partagée ne s'efface avant l'envoi.
 const _pending = {};
 let _flushTimer = null;
+
 function queueSetting(key, value) {
   _pending[key] = value;
   if (_flushTimer) clearTimeout(_flushTimer);
   _flushTimer = setTimeout(() => {
-    const patch = { ..._pending };          // copy, don't share reference
+    const patch = { ..._pending };
     Object.keys(_pending).forEach(k => delete _pending[k]);
     _flushTimer = null;
     window.memedrop.setSettings(patch);
@@ -281,23 +280,23 @@ function bindRange(id, outId, fmt, key, scale = 1) {
 
 bindRange('volume',         'volume-out',         v => `${v}%`, 'volume',        100);
 bindRange('music-volume',   'music-volume-out',   v => `${v}%`, 'musicVolume',   100);
-bindRange('opacity',        'opacity-out',        v => `${v}%`, 'opacity',       100);
-bindRange('duration',       'duration-out',       v => `${v}s`, 'duration',      1);
-bindRange('video-duration', 'video-duration-out', v => `${v}s`, 'videoDuration', 1);
+bindRange('opacity',        'opacity-out',         v => `${v}%`, 'opacity',       100);
+bindRange('duration',       'duration-out',        v => `${v}s`, 'duration',      1);
+bindRange('video-duration', 'video-duration-out',  v => `${v}s`, 'videoDuration', 1);
 
-$('#sound').addEventListener('change', (e) => queueSetting('soundOnArrival', e.target.checked));
+$('#sound').addEventListener('change',    (e) => queueSetting('soundOnArrival', e.target.checked));
 $('#autostart').addEventListener('change', (e) => queueSetting('autostart', e.target.checked));
-$('#server').addEventListener('change', (e) => {
+$('#server').addEventListener('change',    (e) => {
   const v = e.target.value.trim();
   if (!v) return;
   queueSetting('serverUrl', v);
 });
-$('#display').addEventListener('change', (e) => {
+$('#display').addEventListener('change',   (e) => {
   const id = e.target.value === 'primary' ? null : Number(e.target.value);
   queueSetting('overlayDisplayId', id);
 });
 
-// ── Init ───────────────────────────────────────────────────────────────────
+// ── Initialisation ─────────────────────────────────────────────────────
 async function init() {
   const s = await window.memedrop.getSettings();
 
@@ -335,7 +334,7 @@ async function init() {
   sel.innerHTML = '';
   const primOpt = document.createElement('option');
   primOpt.value = 'primary';
-  primOpt.textContent = '◇  Primary display (auto)';
+  primOpt.textContent = '◇  Écran principal (auto)';
   sel.appendChild(primOpt);
   for (const d of displays) {
     const o = document.createElement('option');
@@ -345,7 +344,6 @@ async function init() {
   }
   sel.value = s.overlayDisplayId == null ? 'primary' : String(s.overlayDisplayId);
 
-  // Show real app version in footer
   try {
     const v = await window.memedrop.getVersion();
     $('#app-version').textContent = `v${v}`;

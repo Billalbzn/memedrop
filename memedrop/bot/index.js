@@ -226,7 +226,7 @@ function classifyMedia(mime) {
   return 'image';
 }
 
-function buildDropPayload(att, caption, fromUser) {
+function buildDropPayload(att, caption, fromUser, musicAtt = null) {
   return {
     type: 'drop',
     media: {
@@ -238,6 +238,13 @@ function buildDropPayload(att, caption, fromUser) {
       width: att.width || null,
       height: att.height || null,
     },
+    // Musique optionnelle jouée en même temps qu'une photo/GIF
+    music: musicAtt ? {
+      url:  musicAtt.url,
+      mime: musicAtt.contentType,
+      name: musicAtt.name,
+      size: musicAtt.size,
+    } : null,
     caption: caption ? String(caption).slice(0, 80) : null,
     from: {
       id: fromUser.id,
@@ -246,6 +253,18 @@ function buildDropPayload(att, caption, fromUser) {
     },
     ts: Date.now(),
   };
+}
+
+// Valide une pièce jointe audio pour l'option "musique"
+function validateMusic(att) {
+  if (!att) return null;
+  if (att.size > MAX_BYTES) {
+    return `Fichier audio trop lourd (${(att.size / 1024 / 1024).toFixed(1)} MB). Limite : 25 MB.`;
+  }
+  if (!att.contentType || !att.contentType.startsWith('audio/')) {
+    return `Le fichier \`musique\` doit être un audio (MP3, etc.). Type reçu : \`${att.contentType || 'inconnu'}\`.`;
+  }
+  return null;
 }
 
 async function safeReply(interaction, content) {
@@ -422,7 +441,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         if (rateLimited(interaction.user.id)) {
-          return safeReply(interaction, '⏱️ Slow down — one drop every 2 seconds.');
+          return safeReply(interaction, '⏱️ Doucement — un drop toutes les 2 secondes.');
         }
 
         const targets = [];
@@ -434,15 +453,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
           targets.push(u);
         }
         if (targets.length === 0) {
-          return safeReply(interaction, '🤖 No valid targets (bots and duplicates filtered out).');
+          return safeReply(interaction, '🤖 Aucune cible valide (bots et doublons filtrés).');
         }
 
-        const att = interaction.options.getAttachment('media', true);
+        const att     = interaction.options.getAttachment('media', true);
         const caption = interaction.options.getString('caption', false);
+        const musicAtt = interaction.options.getAttachment('musique', false);
+
         const err = validateAttachment(att);
         if (err) return safeReply(interaction, `❌ ${err}`);
 
-        const payload = buildDropPayload(att, caption, interaction.user);
+        const musicErr = validateMusic(musicAtt);
+        if (musicErr) return safeReply(interaction, `❌ ${musicErr}`);
+
+        // La musique n'a de sens qu'avec une image/GIF, pas une vidéo ou un audio
+        if (musicAtt && att.contentType && !att.contentType.startsWith('image/')) {
+          return safeReply(interaction, '❌ L\'option `musique` ne fonctionne qu\'avec une image ou un GIF (pas une vidéo).');
+        }
+
+        const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null);
         const delivered = [];
         const notReachable = [];
 
@@ -457,11 +486,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         let msg;
         if (delivered.length && notReachable.length) {
-          msg = `✅ Dropped on **${delivered.join('**, **')}**.\n⚠️ Not reachable from this server: ${notReachable.map(o => `**${o}**`).join(', ')}`;
+          msg = `✅ Drop envoyé sur **${delivered.join('**, **')}**.\n⚠️ Pas atteignables depuis ce serveur : ${notReachable.map(o => `**${o}**`).join(', ')}`;
         } else if (delivered.length) {
-          msg = `✅ Dropped on **${delivered.join('**, **')}**!`;
+          msg = `✅ Drop envoyé sur **${delivered.join('**, **')}** !${musicAtt ? ' 🎵' : ''}`;
         } else {
-          msg = `❌ Nobody was reachable from this server. They need to \`/link\` here too, or check their overlay's server toggles.`;
+          msg = `❌ Personne n'est atteignable depuis ce serveur. Ils doivent faire \`/link\` ici aussi.`;
         }
         return safeReply(interaction, msg);
       }
@@ -471,13 +500,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         if (rateLimited(interaction.user.id)) {
-          return safeReply(interaction, '⏱️ Slow down — one drop every 2 seconds.');
+          return safeReply(interaction, '⏱️ Doucement — un drop toutes les 2 secondes.');
         }
 
-        const att = interaction.options.getAttachment('media', true);
-        const caption = interaction.options.getString('caption', false);
+        const att      = interaction.options.getAttachment('media', true);
+        const caption  = interaction.options.getString('caption', false);
+        const musicAtt = interaction.options.getAttachment('musique', false);
+
         const err = validateAttachment(att);
         if (err) return safeReply(interaction, `❌ ${err}`);
+
+        const musicErr = validateMusic(musicAtt);
+        if (musicErr) return safeReply(interaction, `❌ ${musicErr}`);
+
+        if (musicAtt && att.contentType && !att.contentType.startsWith('image/')) {
+          return safeReply(interaction, '❌ L\'option `musique` ne fonctionne qu\'avec une image ou un GIF (pas une vidéo).');
+        }
 
         const recipients = [];
         for (const [userId, link] of userLinks) {
@@ -487,17 +525,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
           if (member) recipients.push({ userId, ws: link.ws, username: member.user.username });
         }
         if (recipients.length === 0) {
-          return safeReply(interaction, 'Nobody is reachable from this server right now. 😴');
+          return safeReply(interaction, 'Personne n\'est atteignable sur ce serveur pour l\'instant. 😴');
         }
 
-        const payload = buildDropPayload(att, caption, interaction.user);
+        const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null);
         const names = [];
         for (const r of recipients) {
           sendJson(r.ws, payload);
           names.push(r.username);
         }
         return safeReply(interaction,
-          `💥 Dropped on **${names.length}** people: ${names.map(n => `**${n}**`).join(', ')}`);
+          `💥 Drop envoyé à **${names.length}** personne${names.length > 1 ? 's' : ''} : ${names.map(n => `**${n}**`).join(', ')}${musicAtt ? ' 🎵' : ''}`);
       }
     }
   } catch (err) {

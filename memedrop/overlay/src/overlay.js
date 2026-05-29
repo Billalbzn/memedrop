@@ -155,7 +155,7 @@ function playAudioDrop({ media, caption, from, settings }) {
   if (settings?.soundOnArrival) playPop(settings.volume);
 }
 
-function renderDrop({ media, caption, from, settings }) {
+function renderDrop({ media, caption, from, settings, music }) {
   if (media.kind === 'audio') {
     playAudioDrop({ media, caption, from, settings });
     return;
@@ -269,8 +269,23 @@ function renderDrop({ media, caption, from, settings }) {
 
   if (settings?.soundOnArrival) playPop(settings.volume);
 
-  // Drop metadata used by the live settings updater to recompute the lifetime
-  // when "Image duration" or "Video max duration" changes mid-play.
+  // ── Musique accompagnant une image/GIF ──────────────────────────────
+  // Quand le payload contient un champ `music`, on joue l'audio en même
+  // temps que l'image. Le volume suit le curseur "Volume musique".
+  let musicAudio = null;
+  if (music?.url && (media.kind === 'image' || media.kind === 'gif')) {
+    musicAudio = document.createElement('audio');
+    musicAudio.src = music.url;
+    const musicVol = settings?.musicVolume ?? settings?.volume ?? 0.75;
+    applyVolume(musicAudio, musicVol);
+    musicAudio.preload = 'auto';
+    musicAudio.dataset.kind = 'music';
+    liveAudios.add(musicAudio);
+    musicAudio.addEventListener('error', () => liveAudios.delete(musicAudio));
+    musicAudio.play().catch(() => liveAudios.delete(musicAudio));
+  }
+
+  // Métadonnées du drop, utilisées par le gestionnaire de mise à jour en direct.
   const dropMeta = {
     kind: isVideo ? 'video' : 'image',
     startedAt: Date.now(),
@@ -292,6 +307,11 @@ function renderDrop({ media, caption, from, settings }) {
     if (removed || !anchor.isConnected) return;
     removed = true;
     if (isVideo) livePlayables.delete(el);
+    // Stoppe la musique liée à cette image si elle joue encore
+    if (musicAudio) {
+      try { musicAudio.pause(); } catch {}
+      liveAudios.delete(musicAudio);
+    }
     liveDrops.delete(dropMeta);
     wrap.classList.add('leaving');
     setTimeout(() => {
