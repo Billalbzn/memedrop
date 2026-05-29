@@ -13,6 +13,19 @@ const serversTitle = $('#servers-title');
 const serversHint  = $('#servers-hint');
 const serversTip   = $('#servers-tip');
 
+// Update card
+const updateCard       = $('#update-card');
+const updateEyebrow    = $('#update-eyebrow');
+const updateTitle      = $('#update-title');
+const updateMsg        = $('#update-msg');
+const updateProgress   = $('#update-progress');
+const updateProgressFill = $('#update-progress-fill');
+const updateCheckBtn   = $('#update-check-btn');
+const updateDownloadBtn= $('#update-download-btn');
+const updateInstallBtn = $('#update-install-btn');
+
+let lastConnState = null;
+
 function renderServersPanel(links) {
   serverList.innerHTML = '';
 
@@ -23,7 +36,6 @@ function renderServersPanel(links) {
 
   serversCard.classList.remove('hidden');
 
-  // ── Legacy "global" link path ───────────────────────────────────────────
   if (links.scope === 'global') {
     serversTitle.textContent = 'Reachable everywhere';
     serversHint.innerHTML = 'Your link uses the legacy <strong>global</strong> mode — any server the bot is in can drop memes on you.';
@@ -42,10 +54,17 @@ function renderServersPanel(links) {
     return;
   }
 
-  // ── Per-guild link path ─────────────────────────────────────────────────
+  // Per-guild mode — show current servers + tip showing the add-server code
   serversTitle.textContent = 'Allowed sources';
   serversHint.textContent  = 'Toggle off any server you don\'t want to receive drops from.';
-  serversTip.innerHTML     = 'To add a server, run <code>/link &lt;code&gt;</code> on it.';
+
+  // Show the current pairing code (kept alive by the bot for adding new guilds)
+  const code = lastConnState?.code;
+  if (code) {
+    serversTip.innerHTML = `To add another server, run <code>/link ${code}</code> on it.`;
+  } else {
+    serversTip.innerHTML = 'To add another server, run <code>/link &lt;code&gt;</code> on it.';
+  }
 
   if (!links.guilds || links.guilds.length === 0) {
     const empty = document.createElement('div');
@@ -88,12 +107,8 @@ function renderServersPanel(links) {
     sw.title = sw.checked ? 'Click to disable this server' : '';
     sw.addEventListener('change', async () => {
       if (!sw.checked) {
-        // Confirm removal — toggling OFF actually unlinks the server right now.
         const ok = confirm(`Disable drops from "${g.name}"? You can re-add it by running /link on that server again.`);
-        if (!ok) {
-          sw.checked = true;
-          return;
-        }
+        if (!ok) { sw.checked = true; return; }
         await window.memedrop.unlinkGuild(g.id);
       }
     });
@@ -106,6 +121,7 @@ function renderServersPanel(links) {
 }
 
 function applyConnState(state) {
+  lastConnState = state;
   pill.className = 'pill';
   pairingCard.classList.add('hidden');
   linkedCard.classList.add('hidden');
@@ -144,6 +160,82 @@ function applyConnState(state) {
 window.memedrop.onConnection(applyConnState);
 window.memedrop.getConnection().then(applyConnState);
 
+// ── Update card ────────────────────────────────────────────────────────────
+function applyUpdateState(state) {
+  // Reset visibility of action buttons + progress
+  updateCheckBtn.classList.add('hidden');
+  updateDownloadBtn.classList.add('hidden');
+  updateInstallBtn.classList.add('hidden');
+  updateProgress.classList.add('hidden');
+
+  switch (state.status) {
+    case 'idle':
+      updateCard.classList.add('hidden');
+      break;
+    case 'checking':
+      updateCard.classList.remove('hidden');
+      updateEyebrow.textContent = 'update';
+      updateTitle.textContent = 'Vérification…';
+      updateMsg.textContent = 'Recherche de nouvelles versions sur GitHub.';
+      break;
+    case 'up-to-date':
+      updateCard.classList.remove('hidden');
+      updateEyebrow.textContent = 'à jour';
+      updateTitle.textContent = 'Vous êtes à jour ✓';
+      updateMsg.textContent = 'MemeDrop est dans sa dernière version.';
+      updateCheckBtn.classList.remove('hidden');
+      // Auto-hide after 4 seconds
+      setTimeout(() => { if (updateCard.dataset.lastStatus === 'up-to-date') updateCard.classList.add('hidden'); }, 4000);
+      break;
+    case 'available':
+      updateCard.classList.remove('hidden');
+      updateEyebrow.textContent = 'nouveauté';
+      updateTitle.textContent = `Mise à jour disponible — v${state.version}`;
+      updateMsg.textContent = 'Cliquez pour la télécharger maintenant.';
+      updateDownloadBtn.classList.remove('hidden');
+      break;
+    case 'downloading':
+      updateCard.classList.remove('hidden');
+      updateEyebrow.textContent = 'téléchargement';
+      updateTitle.textContent = `Téléchargement…`;
+      updateMsg.textContent = `${state.progress ?? 0}% — restez tranquille, ça arrive`;
+      updateProgress.classList.remove('hidden');
+      updateProgressFill.style.width = `${state.progress ?? 0}%`;
+      break;
+    case 'downloaded':
+      updateCard.classList.remove('hidden');
+      updateEyebrow.textContent = 'prêt';
+      updateTitle.textContent = `v${state.version} prête à installer`;
+      updateMsg.textContent = 'Cliquez pour installer et redémarrer MemeDrop.';
+      updateInstallBtn.classList.remove('hidden');
+      break;
+    case 'error':
+      updateCard.classList.remove('hidden');
+      updateEyebrow.textContent = 'erreur';
+      updateTitle.textContent = 'Mise à jour impossible';
+      updateMsg.textContent = state.error || 'Réessayez plus tard.';
+      updateCheckBtn.classList.remove('hidden');
+      break;
+    case 'dev-mode':
+      updateCard.classList.remove('hidden');
+      updateEyebrow.textContent = 'dev';
+      updateTitle.textContent = 'Mode développement';
+      updateMsg.textContent = 'L\'auto-update ne fonctionne que dans la version packagée.';
+      updateCheckBtn.classList.remove('hidden');
+      setTimeout(() => updateCard.classList.add('hidden'), 4000);
+      break;
+  }
+  updateCard.dataset.lastStatus = state.status;
+}
+
+window.memedrop.onUpdateState(applyUpdateState);
+window.memedrop.getUpdateState().then(applyUpdateState);
+
+updateCheckBtn.addEventListener('click', () => window.memedrop.checkForUpdate());
+updateDownloadBtn.addEventListener('click', () => window.memedrop.downloadUpdate());
+updateInstallBtn.addEventListener('click', () => window.memedrop.installUpdate());
+
+// ── Pairing code copy ───────────────────────────────────────────────────────
 $('#copy-code').addEventListener('click', async () => {
   try {
     await navigator.clipboard.writeText(pairingCode.textContent);
@@ -157,7 +249,7 @@ $('#copy-code').addEventListener('click', async () => {
 $('#reconnect-btn').addEventListener('click', () => window.memedrop.reconnect());
 $('#test-btn').addEventListener('click', () => window.memedrop.testDrop());
 
-// ─── Debounced settings writer ──────────────────────────────────────────────
+// ── Debounced settings writer ──────────────────────────────────────────────
 const _pending = {};
 let _flushTimer = null;
 function queueSetting(key, value) {
@@ -197,6 +289,7 @@ $('#display').addEventListener('change', (e) => {
   queueSetting('overlayDisplayId', id);
 });
 
+// ── Init ───────────────────────────────────────────────────────────────────
 async function init() {
   const s = await window.memedrop.getSettings();
 
@@ -233,10 +326,16 @@ async function init() {
     sel.appendChild(o);
   }
   sel.value = s.overlayDisplayId == null ? 'primary' : String(s.overlayDisplayId);
+
+  // Show real app version in footer
+  try {
+    const v = await window.memedrop.getVersion();
+    $('#app-version').textContent = `v${v}`;
+  } catch {}
 }
 init();
 
 $('#open-discord').addEventListener('click', (e) => {
   e.preventDefault();
-  window.memedrop.openExternal('https://github.com/');
+  window.memedrop.openExternal('https://github.com/Billalbzn/memedrop');
 });

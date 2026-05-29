@@ -1,6 +1,6 @@
 {
   "name": "memedrop-overlay",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Always-on-top overlay that displays memes dropped from Discord",
   "main": "main.js",
   "author": "kalel95190",
@@ -9,10 +9,12 @@
     "start": "electron .",
     "build": "electron-builder",
     "build:win": "electron-builder --win",
-    "build:portable": "electron-builder --win portable"
+    "build:portable": "electron-builder --win portable",
+    "release:win": "electron-builder --win --publish always"
   },
   "dependencies": {
     "electron-store": "^8.2.0",
+    "electron-updater": "^6.3.9",
     "ws": "^8.16.0"
   },
   "devDependencies": {
@@ -34,6 +36,13 @@
       "output": "dist",
       "buildResources": "assets"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Billalbzn",
+        "repo": "memedrop"
+      }
+    ],
     "win": {
       "icon": "assets/icon.ico",
       "target": [

@@ -37,6 +37,24 @@
     </div>
   </header>
 
+  <!-- Update card — only visible when there's something interesting to show -->
+  <section id="update-card" class="card update hidden">
+    <div class="card-eyebrow"><span id="update-eyebrow">update</span></div>
+    <h2 id="update-title">Mise à jour disponible</h2>
+    <p class="muted" id="update-msg">Une nouvelle version de MemeDrop est prête.</p>
+
+    <!-- Progress bar (only visible during download) -->
+    <div class="progress hidden" id="update-progress">
+      <div class="progress-fill" id="update-progress-fill"></div>
+    </div>
+
+    <div class="row" id="update-actions">
+      <button class="ghost" id="update-check-btn">vérifier</button>
+      <button class="primary hidden" id="update-download-btn">télécharger</button>
+      <button class="primary hidden" id="update-install-btn">installer &amp; redémarrer</button>
+    </div>
+  </section>
+
   <!-- Pairing card -->
   <section id="pairing-card" class="card pairing hidden">
     <div class="card-eyebrow">step 01</div>
@@ -58,7 +76,7 @@
     </div>
   </section>
 
-  <!-- NEW: Linked servers panel — only visible when overlay is linked -->
+  <!-- Linked servers panel -->
   <section id="servers-card" class="card hidden">
     <div class="card-eyebrow">linked servers</div>
     <h2 id="servers-title">Allowed sources</h2>
@@ -107,16 +125,12 @@
     <div class="card-eyebrow">system</div>
 
     <div class="field">
-      <label for="display">
-        <span>Display</span>
-      </label>
+      <label for="display"><span>Display</span></label>
       <select id="display"></select>
     </div>
 
     <div class="field">
-      <label for="server">
-        <span>Bot server URL</span>
-      </label>
+      <label for="server"><span>Bot server URL</span></label>
       <input type="text" id="server" placeholder="ws://localhost:8765" spellcheck="false">
     </div>
 
@@ -127,7 +141,7 @@
   </section>
 
   <footer class="foot">
-    <span>v1.0.0</span>
+    <span id="app-version">v…</span>
     <span class="dotdiv">·</span>
     <a href="#" id="open-discord">how it works</a>
   </footer>

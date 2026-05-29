@@ -39,11 +39,16 @@ const pendingOverlays = new Map();
 const userLinks       = new Map();
 const wsMeta          = new WeakMap();
 
+// While an overlay is linked, the bot keeps issuing single-use "extension"
+// codes so the user can /link on additional servers without restarting the
+// app. extensionCodes maps code (string) -> userId.
+const extensionCodes  = new Map();
+
 function generatePairingCode() {
   let code;
   do {
     code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
-  } while (pendingOverlays.has(code));
+  } while (pendingOverlays.has(code) || extensionCodes.has(code));
   return code;
 }
 
@@ -58,6 +63,21 @@ function reissuePairingCode(ws) {
   wsMeta.set(ws, { code, userId: null });
   sendJson(ws, { type: 'pairing_code', code });
   console.log(`[ws] reissued pairing code = ${code}`);
+}
+
+// Issue a single-use code that, when used in a Discord /link command, adds the
+// current guild to the already-linked user's allowed sources.
+function issueExtensionCode(ws, userId) {
+  if (!ws || ws.readyState !== ws.OPEN) return;
+  // Clean any old extension code for this ws
+  for (const [c, uid] of extensionCodes) {
+    if (uid === userId) extensionCodes.delete(c);
+  }
+  const code = generatePairingCode();
+  extensionCodes.set(code, userId);
+  // Reuse the pairing_code message type so the overlay UI shows it naturally
+  sendJson(ws, { type: 'pairing_code', code });
+  console.log(`[ws] extension code ${code} for user ${userId}`);
 }
 
 // Can a user, viewed from a given guild, be targeted by /drop here?
@@ -138,6 +158,10 @@ wss.on('connection', (ws) => {
     if (meta.userId) {
       const link = userLinks.get(meta.userId);
       if (link && link.ws === ws) userLinks.delete(meta.userId);
+      // Clean up any extension codes for this user
+      for (const [c, uid] of extensionCodes) {
+        if (uid === meta.userId) extensionCodes.delete(c);
+      }
     }
     console.log(`[ws] overlay disconnected (user=${meta.userId || 'unlinked'})`);
   });
@@ -246,9 +270,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const code = interaction.options.getString('code', true);
         const ws = pendingOverlays.get(code);
 
-        // If already linked: this /link in a new guild ADDS that guild to
-        // the set (or upgrades a global link's display, but global stays global
-        // until the user explicitly unlinks).
+        // If already linked: the user is adding the current server to an
+        // existing link. The overlay continues to advertise a fresh code for
+        // this exact purpose, so any of those codes can be used here.
         const existing = userLinks.get(interaction.user.id);
 
         // If the code maps to a fresh, unlinked overlay → start a brand-new link
@@ -272,25 +296,62 @@ client.on(Events.InteractionCreate, async (interaction) => {
             user: { id: interaction.user.id, username: interaction.user.username },
             links: buildLinksSnapshot(interaction.user.id),
           });
+          // Immediately issue a NEW pairing code attached to this linked
+          // overlay. The overlay shows it so the user can /link on additional
+          // servers without restarting the app.
+          issueExtensionCode(ws, interaction.user.id);
           return interaction.reply({
-            content: `✅ Linked on **${interaction.guild?.name || 'this server'}**. To be reachable from other servers, run \`/link\` there too.`,
+            content: `✅ Linked on **${interaction.guild?.name || 'this server'}**. To be reachable from other servers, run \`/link\` there too — your overlay shows the code.`,
             flags: MessageFlags.Ephemeral,
           });
         }
 
-        // Code didn't match a pending overlay — maybe the user is already linked
-        // and is trying to add this guild to their existing link? That's the
-        // case if the code is also blank/expired and they have an active link.
+        // Code is from a linked overlay's "extension" code — add this guild
+        // to the existing link.
+        const targetUserId = extensionCodes.get(code);
+        if (targetUserId) {
+          if (targetUserId !== interaction.user.id) {
+            return interaction.reply({
+              content: '❌ This code belongs to another user.',
+              flags: MessageFlags.Ephemeral,
+            });
+          }
+          const link = userLinks.get(targetUserId);
+          if (!link || link.ws.readyState !== link.ws.OPEN) {
+            extensionCodes.delete(code);
+            return interaction.reply({
+              content: '❌ The overlay for that code is no longer connected.',
+              flags: MessageFlags.Ephemeral,
+            });
+          }
+          // Don't allow adding a guild to a legacy global link (no need)
+          if (link.scope === 'global') {
+            return interaction.reply({
+              content: '✅ Your overlay is in legacy global mode — already reachable from every server.',
+              flags: MessageFlags.Ephemeral,
+            });
+          }
+          if (interaction.guildId) {
+            link.guildIds.add(interaction.guildId);
+            pushLinksUpdate(targetUserId);
+          }
+          // Rotate the extension code so each one is single-use
+          extensionCodes.delete(code);
+          issueExtensionCode(link.ws, targetUserId);
+          return interaction.reply({
+            content: `✅ Added **${interaction.guild?.name || 'this server'}** to your linked sources (${link.guildIds.size} total).`,
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+
         if (!existing) {
           return interaction.reply({
             content: '❌ Invalid or expired code. Open the overlay (it shows a fresh code) and try again.',
             flags: MessageFlags.Ephemeral,
           });
         }
-        // Shouldn't typically happen: the existing link still uses a valid code.
-        // Fall through to "invalid code" message.
         return interaction.reply({
-          content: '❌ Invalid or expired code. Open the overlay and try again.',
+          content: '❌ Invalid or expired code. Check the code in your overlay app and try again.',
           flags: MessageFlags.Ephemeral,
         });
       }
