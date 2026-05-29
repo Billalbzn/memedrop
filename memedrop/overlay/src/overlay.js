@@ -4,19 +4,31 @@ const stage = document.getElementById('stage');
 
 // ── Drag & drop des médias ────────────────────────────────────────────
 //
-// L'overlay est en mode setIgnoreMouseEvents(true, {forward:true}) par
-// défaut : les événements passent au jeu ET arrivent au renderer (grâce
-// à forward). On exploite ça pour détecter le survol d'un drop sans
-// bloquer le jeu, puis on bascule en setIgnoreMouseEvents(false) pour
-// capturer le drag.
+// Architecture à deux phases :
 //
-// dragState : null | { anchor, drop, ox, oy }
-//   ox/oy = offset entre la position du curseur et le centre de l'anchor
-//           au moment du mousedown, en pixels.
-let dragState   = null;
-let hoveredDrop = null;   // { anchor, drop } actuellement sous le curseur
+//  Phase 1 — Détection de survol (main process, 16 ms)
+//    Le main process sonde screen.getCursorScreenPoint() et envoie la
+//    position via IPC "overlay:cursor". Le renderer utilise ces coords
+//    pour trouver quel drop est sous le curseur sans jamais bloquer le
+//    jeu (setIgnoreMouseEvents reste true).
+//
+//  Phase 2 — Drag (DOM events)
+//    Dès qu'un drop est détecté, on bascule en setIgnoreMouseEvents(false)
+//    pour capturer la souris. Les événements DOM (mousemove / mousedown /
+//    mouseup) prennent le relais pour le déplacement. Au mouseup ou dès
+//    que le curseur quitte le drop, on revient en mode pass-through.
+//
+// dragState   : null | { anchor, drop, ox, oy }
+// hoveredDrop : null | { anchor, drop }
+// inCapture   : bool — true = overlay capture la souris
+// visualActive: nombre de drops avec .anchor visibles à l'écran
 
-// Renvoie le premier drop dont le bounding-rect contient (x, y), ou null.
+let dragState    = null;
+let hoveredDrop  = null;
+let inCapture    = false;
+let visualActive = 0;
+
+// Renvoie le drop dont le bounding-rect contient (x, y), ou null.
 function findDropAt(x, y) {
   for (const anchor of stage.querySelectorAll('.anchor')) {
     const drop = anchor.querySelector('.drop');
@@ -29,9 +41,37 @@ function findDropAt(x, y) {
   return null;
 }
 
+// Passe en mode capture : l'overlay reçoit les événements souris.
+function enterCapture(hit) {
+  if (inCapture) return;
+  inCapture = true;
+  hoveredDrop = hit;
+  hit.drop.style.cursor = 'grab';
+  window.memedrop.setIgnoreMouse(false);
+}
+
+// Revient en mode pass-through : les clics retournent au jeu.
+function exitCapture() {
+  if (!inCapture || dragState) return;
+  inCapture = false;
+  if (hoveredDrop) { hoveredDrop.drop.style.cursor = ''; hoveredDrop = null; }
+  window.memedrop.setIgnoreMouse(true);
+}
+
+// Phase 1 — position du curseur envoyée par le main process (~60 fps)
+window.memedrop.onCursor((pos) => {
+  if (inCapture) return;          // DOM events gèrent déjà la position
+  const hit = findDropAt(pos.x, pos.y);
+  if (hit) enterCapture(hit);
+});
+
+// Phase 2 — DOM events actifs une fois en mode capture
+
 document.addEventListener('mousemove', (e) => {
-  // ── Pendant un drag : déplacer l'anchor ──────────────────────────
+  if (!inCapture) return;
+
   if (dragState) {
+    // Déplacer l'anchor pendant le drag (en % de la fenêtre)
     const nx = Math.max(0, Math.min(window.innerWidth,  e.clientX - dragState.ox));
     const ny = Math.max(0, Math.min(window.innerHeight, e.clientY - dragState.oy));
     dragState.anchor.style.left = `${nx / window.innerWidth  * 100}%`;
@@ -39,19 +79,13 @@ document.addEventListener('mousemove', (e) => {
     return;
   }
 
-  // ── Détection de survol ──────────────────────────────────────────
+  // Vérifier si le curseur est encore sur un drop
   const hit = findDropAt(e.clientX, e.clientY);
-
-  if (hit) {
-    if (hoveredDrop !== hit) {
-      hoveredDrop = hit;
-      hit.drop.style.cursor = 'grab';
-      window.memedrop.setIgnoreMouse(false);   // capture souris → drag possible
-    }
-  } else if (hoveredDrop) {
-    hoveredDrop.drop.style.cursor = '';
-    hoveredDrop = null;
-    window.memedrop.setIgnoreMouse(true);      // relâche → événements vers le jeu
+  if (!hit) {
+    exitCapture();
+  } else if (hit !== hoveredDrop) {
+    hoveredDrop = hit;
+    hit.drop.style.cursor = 'grab';
   }
 });
 
@@ -60,16 +94,13 @@ document.addEventListener('mousedown', (e) => {
   e.preventDefault();
 
   const { anchor, drop } = hoveredDrop;
-
-  // Position actuelle de l'anchor en pixels
+  // Offset curseur ↔ centre de l'anchor au moment du clic
   const ax = parseFloat(anchor.style.left) / 100 * window.innerWidth;
   const ay = parseFloat(anchor.style.top)  / 100 * window.innerHeight;
 
   dragState = { anchor, drop, ox: e.clientX - ax, oy: e.clientY - ay };
-
   drop.style.cursor = 'grabbing';
-  // Suspendre l'animation de bob pour qu'elle ne gêne pas le déplacement
-  drop.style.animationPlayState = 'paused';
+  drop.style.animationPlayState = 'paused';   // suspend le bob pendant le drag
 });
 
 document.addEventListener('mouseup', () => {
@@ -77,8 +108,7 @@ document.addEventListener('mouseup', () => {
   dragState.drop.style.cursor = 'grab';
   dragState.drop.style.animationPlayState = '';   // reprend le bob
   dragState = null;
-  // Si le curseur n'est plus sur aucun drop, on relâche la capture
-  // (le prochain mousemove mettra hoveredDrop à null et appellera setIgnoreMouse(true))
+  // Le prochain mousemove appellera exitCapture si on n'est plus sur un drop
 });
 
 const popUrl = 'data:audio/wav;base64,UklGRoQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YWAAAAAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA';
@@ -137,6 +167,19 @@ function playPop(volume) {
 function notifyIfIdle() {
   if (active === 0 && window.memedrop && window.memedrop.stageEmpty) {
     window.memedrop.stageEmpty();
+  }
+}
+
+// Démarre / arrête le sondage du curseur selon le nombre de drops visuels.
+function onVisualDropAdded() {
+  visualActive++;
+  if (visualActive === 1) window.memedrop.watchCursor?.();
+}
+function onVisualDropRemoved() {
+  visualActive = Math.max(0, visualActive - 1);
+  if (visualActive === 0) {
+    window.memedrop.unwatchCursor?.();
+    exitCapture();
   }
 }
 
@@ -345,6 +388,7 @@ function renderDrop({ media, caption, from, settings, music }) {
   wrap.appendChild(mediaBox);
   anchor.appendChild(wrap);
   stage.appendChild(anchor);
+  onVisualDropAdded();   // démarre le sondage curseur si c'est le 1er drop visuel
 
   if (settings?.soundOnArrival) playPop(settings.volume);
 
@@ -395,6 +439,7 @@ function renderDrop({ media, caption, from, settings, music }) {
     wrap.classList.add('leaving');
     setTimeout(() => {
       anchor.remove();
+      onVisualDropRemoved();   // arrête le sondage + exitCapture si plus aucun drop
       active = Math.max(0, active - 1);
       notifyIfIdle();
     }, 400);

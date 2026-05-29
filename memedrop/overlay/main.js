@@ -443,10 +443,35 @@ ipcMain.on('open-external', (_e, url) => {
   if (/^https?:\/\//i.test(url)) shell.openExternal(url);
 });
 
-// Permet à l'overlay de capturer ou relâcher la souris à la volée.
-// Appelé par overlay.js quand le curseur entre/sort d'un drop.
-//   ignore = true  → les événements passent au jeu (mode normal)
-//   ignore = false → l'overlay capture la souris (mode drag)
+// ── Drag : sondage du curseur + bascule setIgnoreMouseEvents ─────────────
+//
+// Le renderer ne peut pas détecter le survol des drops via forward:true de
+// façon fiable sur Windows. On sonde donc screen.getCursorScreenPoint() dans
+// le main process (~60 fps) et on envoie la position au renderer.
+// Le renderer demande à démarrer/arrêter le sondage selon qu'il y a des
+// drops visuels à l'écran.
+let _cursorPollTimer = null;
+
+function startCursorPoll() {
+  if (_cursorPollTimer) return;
+  _cursorPollTimer = setInterval(() => {
+    if (!overlayWin || overlayWin.isDestroyed()) return;
+    const pt  = screen.getCursorScreenPoint();
+    const b   = overlayWin.getBounds();
+    overlayWin.webContents.send('overlay:cursor', { x: pt.x - b.x, y: pt.y - b.y });
+  }, 16);
+}
+
+function stopCursorPoll() {
+  if (_cursorPollTimer) { clearInterval(_cursorPollTimer); _cursorPollTimer = null; }
+}
+
+ipcMain.on('overlay:watch-cursor',   () => startCursorPoll());
+ipcMain.on('overlay:unwatch-cursor', () => stopCursorPoll());
+
+// Bascule setIgnoreMouseEvents à la demande du renderer.
+//   ignore = true  → événements vers le jeu  (mode normal)
+//   ignore = false → overlay capture la souris (mode drag)
 ipcMain.on('overlay:set-ignore-mouse', (_e, ignore) => {
   if (!overlayWin || overlayWin.isDestroyed()) return;
   if (ignore) {

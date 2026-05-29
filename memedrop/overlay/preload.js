@@ -48,6 +48,13 @@ contextBridge.exposeInMainWorld('memedrop', {
   testDrop:       () => ipcRenderer.send('test-drop'),
   openExternal:   (url) => ipcRenderer.send('open-external', url),
   stageEmpty:     () => ipcRenderer.send('stage-empty'),
-  // Drag : active/désactive la capture souris sur la fenêtre overlay
+  // Drag — sondage curseur + bascule setIgnoreMouseEvents
+  watchCursor:   () => ipcRenderer.send('overlay:watch-cursor'),
+  unwatchCursor: () => ipcRenderer.send('overlay:unwatch-cursor'),
   setIgnoreMouse: (ignore) => ipcRenderer.send('overlay:set-ignore-mouse', ignore),
+  onCursor: (cb) => {
+    const handler = (_e, pos) => cb(pos);
+    ipcRenderer.on('overlay:cursor', handler);
+    return () => ipcRenderer.removeListener('overlay:cursor', handler);
+  },
 });
