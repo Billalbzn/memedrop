@@ -2,6 +2,85 @@
 
 const stage = document.getElementById('stage');
 
+// ── Drag & drop des médias ────────────────────────────────────────────
+//
+// L'overlay est en mode setIgnoreMouseEvents(true, {forward:true}) par
+// défaut : les événements passent au jeu ET arrivent au renderer (grâce
+// à forward). On exploite ça pour détecter le survol d'un drop sans
+// bloquer le jeu, puis on bascule en setIgnoreMouseEvents(false) pour
+// capturer le drag.
+//
+// dragState : null | { anchor, drop, ox, oy }
+//   ox/oy = offset entre la position du curseur et le centre de l'anchor
+//           au moment du mousedown, en pixels.
+let dragState   = null;
+let hoveredDrop = null;   // { anchor, drop } actuellement sous le curseur
+
+// Renvoie le premier drop dont le bounding-rect contient (x, y), ou null.
+function findDropAt(x, y) {
+  for (const anchor of stage.querySelectorAll('.anchor')) {
+    const drop = anchor.querySelector('.drop');
+    if (!drop || drop.classList.contains('leaving')) continue;
+    const r = drop.getBoundingClientRect();
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+      return { anchor, drop };
+    }
+  }
+  return null;
+}
+
+document.addEventListener('mousemove', (e) => {
+  // ── Pendant un drag : déplacer l'anchor ──────────────────────────
+  if (dragState) {
+    const nx = Math.max(0, Math.min(window.innerWidth,  e.clientX - dragState.ox));
+    const ny = Math.max(0, Math.min(window.innerHeight, e.clientY - dragState.oy));
+    dragState.anchor.style.left = `${nx / window.innerWidth  * 100}%`;
+    dragState.anchor.style.top  = `${ny / window.innerHeight * 100}%`;
+    return;
+  }
+
+  // ── Détection de survol ──────────────────────────────────────────
+  const hit = findDropAt(e.clientX, e.clientY);
+
+  if (hit) {
+    if (hoveredDrop !== hit) {
+      hoveredDrop = hit;
+      hit.drop.style.cursor = 'grab';
+      window.memedrop.setIgnoreMouse(false);   // capture souris → drag possible
+    }
+  } else if (hoveredDrop) {
+    hoveredDrop.drop.style.cursor = '';
+    hoveredDrop = null;
+    window.memedrop.setIgnoreMouse(true);      // relâche → événements vers le jeu
+  }
+});
+
+document.addEventListener('mousedown', (e) => {
+  if (!hoveredDrop || e.button !== 0) return;
+  e.preventDefault();
+
+  const { anchor, drop } = hoveredDrop;
+
+  // Position actuelle de l'anchor en pixels
+  const ax = parseFloat(anchor.style.left) / 100 * window.innerWidth;
+  const ay = parseFloat(anchor.style.top)  / 100 * window.innerHeight;
+
+  dragState = { anchor, drop, ox: e.clientX - ax, oy: e.clientY - ay };
+
+  drop.style.cursor = 'grabbing';
+  // Suspendre l'animation de bob pour qu'elle ne gêne pas le déplacement
+  drop.style.animationPlayState = 'paused';
+});
+
+document.addEventListener('mouseup', () => {
+  if (!dragState) return;
+  dragState.drop.style.cursor = 'grab';
+  dragState.drop.style.animationPlayState = '';   // reprend le bob
+  dragState = null;
+  // Si le curseur n'est plus sur aucun drop, on relâche la capture
+  // (le prochain mousemove mettra hoveredDrop à null et appellera setIgnoreMouse(true))
+});
+
 const popUrl = 'data:audio/wav;base64,UklGRoQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YWAAAAAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA';
 
 const MAX_CONCURRENT = 6;

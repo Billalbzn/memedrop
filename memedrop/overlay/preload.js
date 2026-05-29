@@ -48,4 +48,6 @@ contextBridge.exposeInMainWorld('memedrop', {
   testDrop:       () => ipcRenderer.send('test-drop'),
   openExternal:   (url) => ipcRenderer.send('open-external', url),
   stageEmpty:     () => ipcRenderer.send('stage-empty'),
+  // Drag : active/désactive la capture souris sur la fenêtre overlay
+  setIgnoreMouse: (ignore) => ipcRenderer.send('overlay:set-ignore-mouse', ignore),
 });

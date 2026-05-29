@@ -443,6 +443,19 @@ ipcMain.on('open-external', (_e, url) => {
   if (/^https?:\/\//i.test(url)) shell.openExternal(url);
 });
 
+// Permet à l'overlay de capturer ou relâcher la souris à la volée.
+// Appelé par overlay.js quand le curseur entre/sort d'un drop.
+//   ignore = true  → les événements passent au jeu (mode normal)
+//   ignore = false → l'overlay capture la souris (mode drag)
+ipcMain.on('overlay:set-ignore-mouse', (_e, ignore) => {
+  if (!overlayWin || overlayWin.isDestroyed()) return;
+  if (ignore) {
+    overlayWin.setIgnoreMouseEvents(true, { forward: true });
+  } else {
+    overlayWin.setIgnoreMouseEvents(false);
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // App lifecycle
 // ─────────────────────────────────────────────────────────────────────────────
