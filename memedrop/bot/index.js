@@ -226,7 +226,14 @@ function classifyMedia(mime) {
   return 'image';
 }
 
-function buildDropPayload(att, caption, fromUser, musicAtt = null) {
+// Extrait le premier emoji visuel d'une chaîne (option "pluie")
+function extractEmoji(str) {
+  if (!str) return null;
+  const match = String(str).match(/\p{Extended_Pictographic}/u);
+  return match ? match[0] : null;
+}
+
+function buildDropPayload(att, caption, fromUser, musicAtt = null, rain = null) {
   return {
     type: 'drop',
     media: {
@@ -238,6 +245,8 @@ function buildDropPayload(att, caption, fromUser, musicAtt = null) {
       width: att.width || null,
       height: att.height || null,
     },
+    // Emoji en pluie sur l'écran (optionnel, envoyé par le bot)
+    rain,
     // Musique optionnelle jouée en même temps qu'une photo/GIF
     music: musicAtt ? {
       url:  musicAtt.url,
@@ -471,7 +480,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return safeReply(interaction, '❌ L\'option `musique` ne fonctionne qu\'avec une image ou un GIF (pas une vidéo).');
         }
 
-        const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null);
+        const rain = extractEmoji(interaction.options.getString('pluie', false));
+        const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain);
         const delivered = [];
         const notReachable = [];
 
@@ -528,7 +538,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return safeReply(interaction, 'Personne n\'est atteignable sur ce serveur pour l\'instant. 😴');
         }
 
-        const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null);
+        const rain = extractEmoji(interaction.options.getString('pluie', false));
+        const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain);
         const names = [];
         for (const r of recipients) {
           sendJson(r.ws, payload);
