@@ -22,6 +22,10 @@ const commands = [
         .setRequired(false))
       .addAttachmentOption(o => o.setName('musique')
         .setDescription('MP3 à jouer en même temps que la photo (optionnel)')
+        .setRequired(false))
+      .addStringOption(o => o.setName('pluie')
+        .setDescription('Emoji qui tombera en pluie sur l\'écran (ex: 🔥 💀 🤣)')
+        .setMaxLength(8)
         .setRequired(false));
     for (let i = 2; i <= 5; i++) {
       b.addUserOption(o => o.setName(`target${i}`)
@@ -44,6 +48,10 @@ const commands = [
       .setRequired(false))
     .addAttachmentOption(o => o.setName('musique')
       .setDescription('MP3 à jouer en même temps que la photo (optionnel)')
+      .setRequired(false))
+    .addStringOption(o => o.setName('pluie')
+      .setDescription('Emoji qui tombera en pluie sur l\'écran (ex: 🔥 💀 🤣)')
+      .setMaxLength(8)
       .setRequired(false))
     .toJSON(),
 

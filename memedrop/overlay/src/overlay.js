@@ -111,7 +111,28 @@ document.addEventListener('mouseup', () => {
   // Le prochain mousemove appellera exitCapture si on n'est plus sur un drop
 });
 
-const popUrl = 'data:audio/wav;base64,UklGRoQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YWAAAAAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA/wAA';
+// ── Son d'arrivée généré via Web Audio API ────────────────────────────
+// L'ancien WAV base64 était trop court (~1 ms) et inaudible.
+// On synthétise un "pop" descendant avec un oscillateur + enveloppe gain.
+function playPop(volume) {
+  try {
+    const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    const t = ctx.currentTime;
+    osc.frequency.setValueAtTime(680, t);
+    osc.frequency.exponentialRampToValueAtTime(160, t + 0.13);
+    const v = Math.max(0.001, Math.min(1, (volume ?? 0.5) * 1.1));
+    gain.gain.setValueAtTime(v, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    osc.start(t);
+    osc.stop(t + 0.16);
+    osc.addEventListener('ended', () => ctx.close().catch(() => {}));
+  } catch {}
+}
 
 const MAX_CONCURRENT = 6;
 const VIDEO_HARD_CAP_SECONDS = 30;
@@ -180,6 +201,82 @@ function onVisualDropRemoved() {
   if (visualActive === 0) {
     window.memedrop.unwatchCursor?.();
     exitCapture();
+  }
+}
+
+// ── Spotlight ─────────────────────────────────────────────────────────
+// Voile sombre sur tout l'écran avec un trou centré sur le drop actif.
+// Chaque drop actif pousse son anchor dans spotlightStack.
+// Un rAF met à jour la position en continu (fonctionne aussi pendant le drag).
+const spotlightEl   = document.getElementById('spotlight');
+const spotlightStack = []; // anchors actifs, du plus récent au plus ancien
+let   spotlightRAF   = null;
+
+function tickSpotlight() {
+  const anchor = spotlightStack.find(a => a.isConnected);
+  if (!anchor) {
+    spotlightEl.style.opacity = '0';
+    spotlightRAF = null;
+    return;
+  }
+  const drop = anchor.querySelector('.drop');
+  if (drop) {
+    const r  = drop.getBoundingClientRect();
+    const cx = r.left + r.width  / 2;
+    const cy = r.top  + r.height / 2;
+    const rx = r.width  / 2 + 70;
+    const ry = r.height / 2 + 70;
+    spotlightEl.style.setProperty('--cx', `${cx}px`);
+    spotlightEl.style.setProperty('--cy', `${cy}px`);
+    spotlightEl.style.setProperty('--rx', `${rx}px`);
+    spotlightEl.style.setProperty('--ry', `${ry}px`);
+  }
+  spotlightRAF = requestAnimationFrame(tickSpotlight);
+}
+
+function showSpotlight(anchor) {
+  spotlightStack.unshift(anchor);
+  spotlightEl.style.opacity = '1';
+  if (!spotlightRAF) spotlightRAF = requestAnimationFrame(tickSpotlight);
+}
+
+function hideSpotlight(anchor) {
+  const idx = spotlightStack.indexOf(anchor);
+  if (idx >= 0) spotlightStack.splice(idx, 1);
+  if (spotlightStack.filter(a => a.isConnected).length === 0) {
+    spotlightEl.style.opacity = '0';
+    if (spotlightRAF) { cancelAnimationFrame(spotlightRAF); spotlightRAF = null; }
+  }
+}
+
+// ── Pluie d'émojis ────────────────────────────────────────────────────
+// Crée N particules tombant depuis le haut avec vitesse, taille et dérive
+// aléatoires. Les éléments se retirent automatiquement après la chute.
+function renderRain(emoji) {
+  if (!emoji) return;
+  const COUNT = 38;
+  for (let i = 0; i < COUNT; i++) {
+    const el = document.createElement('div');
+    el.className   = 'rain-emoji';
+    el.textContent = emoji;
+
+    const x     = Math.random() * 98;                     // % horizontal
+    const delay = Math.random() * 2200;                   // ms
+    const dur   = 1600 + Math.random() * 1400;            // ms fall duration
+    const size  = 22 + Math.random() * 30;                // px
+    const sway  = ((Math.random() - 0.5) * 80).toFixed(1); // px derive X
+    const rot   = ((Math.random() - 0.5) * 540).toFixed(1) + 'deg'; // rotation finale
+
+    el.style.cssText = `
+      left: ${x}%;
+      font-size: ${size}px;
+      animation-delay: ${delay}ms;
+      animation-duration: ${dur}ms;
+      --sway: ${sway}px;
+      --rot: ${rot};
+    `;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), delay + dur + 100);
   }
 }
 
@@ -277,7 +374,7 @@ function playAudioDrop({ media, caption, from, settings }) {
   if (settings?.soundOnArrival) playPop(settings.volume);
 }
 
-function renderDrop({ media, caption, from, settings, music }) {
+function renderDrop({ media, caption, from, settings, music, rain }) {
   if (media.kind === 'audio') {
     playAudioDrop({ media, caption, from, settings });
     return;
@@ -389,6 +486,8 @@ function renderDrop({ media, caption, from, settings, music }) {
   anchor.appendChild(wrap);
   stage.appendChild(anchor);
   onVisualDropAdded();   // démarre le sondage curseur si c'est le 1er drop visuel
+  if (settings?.spotlightOnDrop) showSpotlight(anchor);
+  if (rain) renderRain(rain);
 
   if (settings?.soundOnArrival) playPop(settings.volume);
 
@@ -439,6 +538,7 @@ function renderDrop({ media, caption, from, settings, music }) {
     wrap.classList.add('leaving');
     setTimeout(() => {
       anchor.remove();
+      hideSpotlight(anchor);
       onVisualDropRemoved();   // arrête le sondage + exitCapture si plus aucun drop
       active = Math.max(0, active - 1);
       notifyIfIdle();
@@ -511,6 +611,11 @@ if (window.memedrop.onSettingsUpdate) {
     if (typeof settings?.opacity === 'number') {
       const op = String(Math.max(0.2, Math.min(1, settings.opacity)));
       document.querySelectorAll('.drop, .audio-toast').forEach(d => { d.style.opacity = op; });
+    }
+    // Spotlight toggle : si désactivé en direct, on éteint immédiatement
+    if (typeof settings?.spotlightOnDrop === 'boolean' && !settings.spotlightOnDrop) {
+      spotlightEl.style.opacity = '0';
+      if (spotlightRAF) { cancelAnimationFrame(spotlightRAF); spotlightRAF = null; }
     }
   });
 }

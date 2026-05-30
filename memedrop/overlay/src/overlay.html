@@ -221,9 +221,50 @@
     @keyframes audio-out {
       to { opacity: 0; transform: translate(-50%, -16px); }
     }
+
+    /* ── Spotlight ─────────────────────────────────────────────────────
+       Voile sombre sur tout l'écran avec un trou transparent centré sur
+       le drop actif. Position mise à jour via custom properties --cx/--cy
+       et --rx/--ry par requestAnimationFrame dans overlay.js.
+       ────────────────────────────────────────────────────────────────── */
+    #spotlight {
+      position: fixed; inset: 0;
+      pointer-events: none;
+      z-index: 1;
+      background: radial-gradient(
+        ellipse var(--rx, 240px) var(--ry, 240px) at var(--cx, 50%) var(--cy, 50%),
+        transparent 0%,
+        transparent 35%,
+        rgba(0, 0, 0, 0.78) 100%
+      );
+      opacity: 0;
+      transition: opacity 0.45s ease;
+    }
+
+    /* ── Pluie d'émojis ────────────────────────────────────────────────
+       Chaque particule est positionnée aléatoirement en JS et tombe
+       verticalement avec une légère dérive horizontale (--sway).
+       ────────────────────────────────────────────────────────────────── */
+    .rain-emoji {
+      position: fixed;
+      top: -64px;
+      pointer-events: none;
+      user-select: none;
+      z-index: 9999;
+      line-height: 1;
+      will-change: transform, opacity;
+      animation: rain-fall linear forwards;
+    }
+    @keyframes rain-fall {
+      0%   { transform: translateY(0)     translateX(0)           rotate(0deg);   opacity: .95; }
+      15%  { opacity: .95; }
+      85%  { opacity: .9; }
+      100% { transform: translateY(115vh) translateX(var(--sway)) rotate(var(--rot)); opacity: 0; }
+    }
   </style>
 </head>
 <body>
+  <div id="spotlight"></div>
   <div id="stage"></div>
   <script src="./overlay.js"></script>
 </body>

@@ -21,6 +21,7 @@ const store = new Store({
     duration: 4,
     videoDuration: 30,
     soundOnArrival: true,
+    spotlightOnDrop: true,
     language: 'en',
     autostart: false,
     overlayDisplayId: null,
@@ -250,6 +251,7 @@ function connectWS() {
             duration: store.get('duration'),
             videoDuration: store.get('videoDuration'),
             soundOnArrival: store.get('soundOnArrival'),
+            spotlightOnDrop: store.get('spotlightOnDrop'),
           },
         });
         break;
@@ -351,8 +353,9 @@ ipcMain.handle('settings:get', () => ({
   opacity:        store.get('opacity'),
   duration:       store.get('duration'),
   videoDuration:  store.get('videoDuration'),
-  soundOnArrival: store.get('soundOnArrival'),
-  language:       store.get('language'),
+  soundOnArrival:  store.get('soundOnArrival'),
+  spotlightOnDrop: store.get('spotlightOnDrop'),
+  language:        store.get('language'),
   autostart:      store.get('autostart'),
   overlayDisplayId: store.get('overlayDisplayId'),
 }));
@@ -369,13 +372,14 @@ ipcMain.handle('settings:set', (_e, patch) => {
   if ('overlayDisplayId' in patch) { repositionOverlay(); enforceTop(); }
   if (overlayWin && !overlayWin.isDestroyed() &&
       ('volume' in patch || 'musicVolume' in patch || 'opacity' in patch ||
-       'duration' in patch || 'videoDuration' in patch)) {
+       'duration' in patch || 'videoDuration' in patch || 'spotlightOnDrop' in patch)) {
     const livePatch = {};
-    if ('volume'        in patch) livePatch.volume        = patch.volume;
-    if ('musicVolume'   in patch) livePatch.musicVolume   = patch.musicVolume;
-    if ('opacity'       in patch) livePatch.opacity       = patch.opacity;
-    if ('duration'      in patch) livePatch.duration      = patch.duration;
-    if ('videoDuration' in patch) livePatch.videoDuration = patch.videoDuration;
+    if ('volume'          in patch) livePatch.volume          = patch.volume;
+    if ('musicVolume'     in patch) livePatch.musicVolume     = patch.musicVolume;
+    if ('opacity'         in patch) livePatch.opacity         = patch.opacity;
+    if ('duration'        in patch) livePatch.duration        = patch.duration;
+    if ('videoDuration'   in patch) livePatch.videoDuration   = patch.videoDuration;
+    if ('spotlightOnDrop' in patch) livePatch.spotlightOnDrop = patch.spotlightOnDrop;
     overlayWin.webContents.send('settings-update', livePatch);
   }
   return true;

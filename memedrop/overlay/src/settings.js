@@ -284,7 +284,8 @@ bindRange('opacity',        'opacity-out',         v => `${v}%`, 'opacity',     
 bindRange('duration',       'duration-out',        v => `${v}s`, 'duration',      1);
 bindRange('video-duration', 'video-duration-out',  v => `${v}s`, 'videoDuration', 1);
 
-$('#sound').addEventListener('change',    (e) => queueSetting('soundOnArrival', e.target.checked));
+$('#sound').addEventListener('change',      (e) => queueSetting('soundOnArrival', e.target.checked));
+$('#spotlight').addEventListener('change', (e) => queueSetting('spotlightOnDrop', e.target.checked));
 $('#autostart').addEventListener('change', (e) => queueSetting('autostart', e.target.checked));
 $('#server').addEventListener('change',    (e) => {
   const v = e.target.value.trim();
@@ -325,8 +326,9 @@ async function init() {
   $('#video-duration-out').textContent = `${vidDurEl.value}s`;
   vidDurEl.style.setProperty('--value', `${(vidDurEl.value - 1) * 100 / 29}%`);
 
-  $('#sound').checked     = !!s.soundOnArrival;
-  $('#autostart').checked = !!s.autostart;
+  $('#sound').checked      = !!s.soundOnArrival;
+  $('#spotlight').checked  = s.spotlightOnDrop !== false; // true par défaut
+  $('#autostart').checked  = !!s.autostart;
   $('#server').value      = s.serverUrl || 'wss://memedrop-production-3106.up.railway.app';
 
   const displays = await window.memedrop.listDisplays();
