@@ -236,7 +236,7 @@ function extractEmoji(str) {
 function buildDropPayload(att, caption, fromUser, musicAtt = null, rain = null) {
   return {
     type: 'drop',
-    media: {
+    media: att ? {
       url: att.url,
       kind: classifyMedia(att.contentType),
       mime: att.contentType,
@@ -244,7 +244,7 @@ function buildDropPayload(att, caption, fromUser, musicAtt = null, rain = null) 
       size: att.size,
       width: att.width || null,
       height: att.height || null,
-    },
+    } : null,
     // Emoji en pluie sur l'écran (optionnel, envoyé par le bot)
     rain,
     // Musique optionnelle jouée en même temps qu'une photo/GIF
@@ -465,22 +465,31 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return safeReply(interaction, '🤖 Aucune cible valide (bots et doublons filtrés).');
         }
 
-        const att     = interaction.options.getAttachment('media', true);
-        const caption = interaction.options.getString('caption', false);
+        const att      = interaction.options.getAttachment('media', false);
+        const caption  = interaction.options.getString('caption', false);
         const musicAtt = interaction.options.getAttachment('musique', false);
+        const rain     = extractEmoji(interaction.options.getString('pluie', false));
 
-        const err = validateAttachment(att);
-        if (err) return safeReply(interaction, `❌ ${err}`);
+        // Il faut au moins un média ou une pluie
+        if (!att && !rain) {
+          return safeReply(interaction, '❌ Mets au moins un média (`media`) ou un emoji (`pluie`).');
+        }
+
+        if (att) {
+          const err = validateAttachment(att);
+          if (err) return safeReply(interaction, `❌ ${err}`);
+        }
 
         const musicErr = validateMusic(musicAtt);
         if (musicErr) return safeReply(interaction, `❌ ${musicErr}`);
 
-        // La musique n'a de sens qu'avec une image/GIF, pas une vidéo ou un audio
-        if (musicAtt && att.contentType && !att.contentType.startsWith('image/')) {
+        if (musicAtt && !att) {
+          return safeReply(interaction, '❌ L\'option `musique` nécessite un média (image ou GIF).');
+        }
+        if (musicAtt && att && !att.contentType.startsWith('image/')) {
           return safeReply(interaction, '❌ L\'option `musique` ne fonctionne qu\'avec une image ou un GIF (pas une vidéo).');
         }
 
-        const rain = extractEmoji(interaction.options.getString('pluie', false));
         const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain);
         const delivered = [];
         const notReachable = [];
@@ -513,17 +522,27 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return safeReply(interaction, '⏱️ Doucement — un drop toutes les 2 secondes.');
         }
 
-        const att      = interaction.options.getAttachment('media', true);
+        const att      = interaction.options.getAttachment('media', false);
         const caption  = interaction.options.getString('caption', false);
         const musicAtt = interaction.options.getAttachment('musique', false);
+        const rain     = extractEmoji(interaction.options.getString('pluie', false));
 
-        const err = validateAttachment(att);
-        if (err) return safeReply(interaction, `❌ ${err}`);
+        if (!att && !rain) {
+          return safeReply(interaction, '❌ Mets au moins un média (`media`) ou un emoji (`pluie`).');
+        }
+
+        if (att) {
+          const err = validateAttachment(att);
+          if (err) return safeReply(interaction, `❌ ${err}`);
+        }
 
         const musicErr = validateMusic(musicAtt);
         if (musicErr) return safeReply(interaction, `❌ ${musicErr}`);
 
-        if (musicAtt && att.contentType && !att.contentType.startsWith('image/')) {
+        if (musicAtt && !att) {
+          return safeReply(interaction, '❌ L\'option `musique` nécessite un média (image ou GIF).');
+        }
+        if (musicAtt && att && !att.contentType.startsWith('image/')) {
           return safeReply(interaction, '❌ L\'option `musique` ne fonctionne qu\'avec une image ou un GIF (pas une vidéo).');
         }
 
@@ -538,7 +557,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return safeReply(interaction, 'Personne n\'est atteignable sur ce serveur pour l\'instant. 😴');
         }
 
-        const rain = extractEmoji(interaction.options.getString('pluie', false));
         const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain);
         const names = [];
         for (const r of recipients) {

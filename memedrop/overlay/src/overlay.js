@@ -375,6 +375,13 @@ function playAudioDrop({ media, caption, from, settings }) {
 }
 
 function renderDrop({ media, caption, from, settings, music, rain }) {
+  // Drop pluie seule — pas de média visuel, juste les émojis + son
+  if (!media) {
+    if (rain) renderRain(rain);
+    if (settings?.soundOnArrival) playPop(settings.volume);
+    return;
+  }
+
   if (media.kind === 'audio') {
     playAudioDrop({ media, caption, from, settings });
     return;
