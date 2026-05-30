@@ -588,7 +588,8 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
 }
 
 window.memedrop.onDrop((payload) => {
-  if (!payload || !payload.media) return;
+  if (!payload) return;
+  if (!payload.media && !payload.rain) return; // rien à afficher
   renderDrop(payload);
 });
 
