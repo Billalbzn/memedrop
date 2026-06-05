@@ -25,7 +25,10 @@ const store = new Store({
     language: 'en',
     autostart: true,
     overlayDisplayId: null,
-    linkToken: null,
+    // Identité de lien stockée localement → ré-enregistrement auto à chaque
+    // connexion, plus jamais besoin de /link (survit aux redeploys du bot).
+    //   { userId, username, scope:'guild'|'global', guildIds:[...] }
+    linkIdentity: null,
   },
 });
 
@@ -221,11 +224,11 @@ function connectWS() {
   ws.on('open', () => {
     reconnectAttempts = 0;
     console.log('[ws] connected to', url);
-    // Try a silent re-link with our saved token so the user doesn't have to
-    // run /link again after a restart / reconnect.
-    const token = store.get('linkToken');
-    if (token) {
-      try { ws.send(JSON.stringify({ type: 'relink', token })); } catch {}
+    // Ré-enregistrement automatique : on rejoue notre identité stockée pour
+    // que le bot rebuild le lien sans /link. Marche même après un redeploy.
+    const identity = store.get('linkIdentity');
+    if (identity && identity.userId) {
+      try { ws.send(JSON.stringify({ type: 'register', identity })); } catch {}
     }
   });
 
@@ -239,28 +242,49 @@ function connectWS() {
         // guilds. Don't drop the linked state — just update the visible code.
         if (connState.status === 'linked') {
           setState({ code: msg.code });
-        } else if (store.get('linkToken')) {
-          // We have a token and are attempting a silent re-link — keep the
-          // code ready but stay "connecting" rather than flashing "awaiting
-          // link". If the re-link fails the bot sends 'relink_failed'.
+        } else if (store.get('linkIdentity')) {
+          // On a une identité et on tente un ré-enregistrement silencieux —
+          // on garde le code prêt mais on reste "connexion…" plutôt que de
+          // flasher "en attente". Si ça échoue, le bot envoie register_failed.
           setState({ status: 'connecting', code: msg.code, user: null, links: null });
         } else {
           setState({ status: 'awaiting_link', code: msg.code, user: null, links: null });
         }
         break;
-      case 'linked':
-        if (msg.token) store.set('linkToken', msg.token);   // persist for next launch
-        setState({ status: 'linked', code: null, user: msg.user, links: msg.links || { scope: 'guild', guilds: [] } }); break;
-      case 'relink_failed':
-        // Saved token is stale (e.g. bot redeployed) — drop it and fall back
-        // to the normal pairing-code flow.
-        store.set('linkToken', null);
+      case 'linked': {
+        // Mémorise l'identité (depuis l'utilisateur + le snapshot serveurs)
+        // pour le ré-enregistrement automatique des prochaines connexions.
+        const links = msg.links || { scope: 'guild', guilds: [], guildIds: [] };
+        if (msg.user?.id) {
+          store.set('linkIdentity', {
+            userId:   msg.user.id,
+            username: msg.user.username,
+            scope:    links.scope === 'global' ? 'global' : 'guild',
+            guildIds: Array.isArray(links.guildIds) ? links.guildIds : [],
+          });
+        }
+        setState({ status: 'linked', code: null, user: msg.user, links });
+        break;
+      }
+      case 'register_failed':
+        // Identité invalide/obsolète — on l'oublie et on repasse en appairage.
+        store.set('linkIdentity', null);
         setState({ status: 'awaiting_link', code: connState.code || null, user: null, links: null });
         break;
-      case 'links_update':
-        setState({ links: msg.links }); break;
+      case 'links_update': {
+        // Mise à jour autoritaire des serveurs (ajout/retrait) → on persiste
+        // les IDs côté overlay pour le prochain ré-enregistrement.
+        const cur = store.get('linkIdentity');
+        if (cur && msg.links) {
+          cur.scope    = msg.links.scope === 'global' ? 'global' : 'guild';
+          cur.guildIds = Array.isArray(msg.links.guildIds) ? msg.links.guildIds : cur.guildIds;
+          store.set('linkIdentity', cur);
+        }
+        setState({ links: msg.links });
+        break;
+      }
       case 'unlinked':
-        store.set('linkToken', null);   // this overlay is no longer linked
+        store.set('linkIdentity', null);   // this overlay is no longer linked
         setState({ status: 'connecting', code: null, user: null, links: null }); break;
       case 'drop':
         if (!overlayWin || overlayWin.isDestroyed()) createOverlayWindow();
