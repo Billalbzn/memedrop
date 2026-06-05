@@ -44,6 +44,44 @@ const wsMeta          = new WeakMap();
 // app. extensionCodes maps code (string) -> userId.
 const extensionCodes  = new Map();
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Persistent re-link tokens
+//
+// Goal: after a PC reboot / app restart / network blip, the overlay should
+// silently re-establish its link WITHOUT the user running /link again.
+//
+//   savedLinks : userId -> { scope, guildIds:Set, username, token }
+//   tokenIndex : token  -> userId
+//
+// savedLinks survives WS disconnects (unlike userLinks, which is bound to the
+// live socket). The overlay stores its token locally and replays it on every
+// reconnect. NOTE: in-memory only — a bot redeploy clears these, in which case
+// the user simply re-links once.
+// ─────────────────────────────────────────────────────────────────────────────
+const savedLinks = new Map();
+const tokenIndex = new Map();
+
+function generateToken() {
+  return crypto.randomBytes(24).toString('hex');
+}
+
+// Save (or refresh) a user's persistent link. The guildIds Set is shared by
+// reference with the live userLinks entry so the two never drift apart.
+function persistLink(userId, username, scope, guildIds) {
+  const prev = savedLinks.get(userId);
+  if (prev?.token) tokenIndex.delete(prev.token);   // invalidate old token
+  const token = generateToken();
+  savedLinks.set(userId, { scope, guildIds, username, token });
+  tokenIndex.set(token, userId);
+  return token;
+}
+
+function forgetLink(userId) {
+  const prev = savedLinks.get(userId);
+  if (prev?.token) tokenIndex.delete(prev.token);
+  savedLinks.delete(userId);
+}
+
 function generatePairingCode() {
   let code;
   do {
@@ -131,6 +169,39 @@ wss.on('connection', (ws) => {
     try { msg = JSON.parse(raw.toString()); } catch { return; }
     if (msg.type === 'pong') return;
 
+    // Silent re-link after a reconnect: the overlay presents its saved token
+    // instead of making the user run /link again.
+    if (msg.type === 'relink') {
+      const token  = String(msg.token || '');
+      const userId = token ? tokenIndex.get(token) : null;
+      const saved  = userId ? savedLinks.get(userId) : null;
+      if (!userId || !saved || saved.token !== token) {
+        if (token) tokenIndex.delete(token);
+        sendJson(ws, { type: 'relink_failed' });
+        return;
+      }
+      // Drop the pending pairing code this ws was handed on connect
+      const meta = wsMeta.get(ws);
+      if (meta?.code) pendingOverlays.delete(meta.code);
+      // Kick any other live overlay currently bound to this user
+      const existing = userLinks.get(userId);
+      if (existing && existing.ws !== ws) {
+        sendJson(existing.ws, { type: 'unlinked', reason: 'replaced' });
+      }
+      // Re-bind — share the saved guildIds Set so future edits stay in sync
+      userLinks.set(userId, { ws, scope: saved.scope, guildIds: saved.guildIds });
+      wsMeta.set(ws, { code: null, userId });
+      sendJson(ws, {
+        type: 'linked',
+        user: { id: userId, username: saved.username },
+        links: buildLinksSnapshot(userId),
+        token: saved.token,
+      });
+      issueExtensionCode(ws, userId);
+      console.log(`[ws] re-linked user ${userId} via token`);
+      return;
+    }
+
     // The overlay can ask the bot to revoke a specific guild link
     if (msg.type === 'unlink_guild') {
       const meta = wsMeta.get(ws);
@@ -143,6 +214,7 @@ wss.on('connection', (ws) => {
       // If no guilds remain, drop the user fully (they'll need to /link again)
       if (link.guildIds.size === 0) {
         userLinks.delete(meta.userId);
+        forgetLink(meta.userId);
         sendJson(ws, { type: 'unlinked', reason: 'no_guilds_left' });
         reissuePairingCode(ws);
       } else {
@@ -312,17 +384,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
             reissuePairingCode(existing.ws);
           }
           pendingOverlays.delete(code);
-          const link = {
-            ws,
-            scope: 'guild',
-            guildIds: new Set(interaction.guildId ? [interaction.guildId] : []),
-          };
+          const guildIds = new Set(interaction.guildId ? [interaction.guildId] : []);
+          // Persist the link + mint a re-link token (shares the guildIds Set)
+          const token = persistLink(
+            interaction.user.id, interaction.user.username, 'guild', guildIds);
+          const link = { ws, scope: 'guild', guildIds };
           userLinks.set(interaction.user.id, link);
           wsMeta.set(ws, { code: null, userId: interaction.user.id });
           sendJson(ws, {
             type: 'linked',
             user: { id: interaction.user.id, username: interaction.user.username },
             links: buildLinksSnapshot(interaction.user.id),
+            token,
           });
           // Immediately issue a NEW pairing code attached to this linked
           // overlay. The overlay shows it so the user can /link on additional
@@ -395,6 +468,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
         const { ws } = link;
         userLinks.delete(interaction.user.id);
+        forgetLink(interaction.user.id);
         sendJson(ws, { type: 'unlinked', reason: 'user' });
         reissuePairingCode(ws);
         return interaction.reply({
