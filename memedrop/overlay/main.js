@@ -23,8 +23,9 @@ const store = new Store({
     soundOnArrival: true,
     spotlightOnDrop: true,
     language: 'en',
-    autostart: false,
+    autostart: true,
     overlayDisplayId: null,
+    linkToken: null,
   },
 });
 
@@ -217,7 +218,16 @@ function connectWS() {
   try { ws = new WebSocket(url); }
   catch (err) { console.error('[ws] construct error:', err.message); scheduleReconnect(); return; }
 
-  ws.on('open', () => { reconnectAttempts = 0; console.log('[ws] connected to', url); });
+  ws.on('open', () => {
+    reconnectAttempts = 0;
+    console.log('[ws] connected to', url);
+    // Try a silent re-link with our saved token so the user doesn't have to
+    // run /link again after a restart / reconnect.
+    const token = store.get('linkToken');
+    if (token) {
+      try { ws.send(JSON.stringify({ type: 'relink', token })); } catch {}
+    }
+  });
 
   ws.on('message', (raw) => {
     let msg;
@@ -229,15 +239,28 @@ function connectWS() {
         // guilds. Don't drop the linked state — just update the visible code.
         if (connState.status === 'linked') {
           setState({ code: msg.code });
+        } else if (store.get('linkToken')) {
+          // We have a token and are attempting a silent re-link — keep the
+          // code ready but stay "connecting" rather than flashing "awaiting
+          // link". If the re-link fails the bot sends 'relink_failed'.
+          setState({ status: 'connecting', code: msg.code, user: null, links: null });
         } else {
           setState({ status: 'awaiting_link', code: msg.code, user: null, links: null });
         }
         break;
       case 'linked':
+        if (msg.token) store.set('linkToken', msg.token);   // persist for next launch
         setState({ status: 'linked', code: null, user: msg.user, links: msg.links || { scope: 'guild', guilds: [] } }); break;
+      case 'relink_failed':
+        // Saved token is stale (e.g. bot redeployed) — drop it and fall back
+        // to the normal pairing-code flow.
+        store.set('linkToken', null);
+        setState({ status: 'awaiting_link', code: connState.code || null, user: null, links: null });
+        break;
       case 'links_update':
         setState({ links: msg.links }); break;
       case 'unlinked':
+        store.set('linkToken', null);   // this overlay is no longer linked
         setState({ status: 'connecting', code: null, user: null, links: null }); break;
       case 'drop':
         if (!overlayWin || overlayWin.isDestroyed()) createOverlayWindow();
@@ -363,7 +386,9 @@ ipcMain.handle('settings:get', () => ({
 ipcMain.handle('settings:set', (_e, patch) => {
   for (const [k, v] of Object.entries(patch)) store.set(k, v);
   if ('autostart' in patch) {
-    app.setLoginItemSettings({ openAtLogin: !!patch.autostart, openAsHidden: true });
+    // openAsHidden = macOS; args ['--hidden'] = Windows (start to tray, no
+    // settings window) so the app boots silently and connects on its own.
+    app.setLoginItemSettings({ openAtLogin: !!patch.autostart, openAsHidden: true, args: ['--hidden'] });
   }
   if ('serverUrl' in patch) {
     try { ws && ws.close(); } catch {}
@@ -496,9 +521,23 @@ if (!gotLock) {
 
   if (process.platform === 'win32') app.setAppUserModelId('com.memedrop.overlay');
 
+  // The OS launches us with --hidden when starting at login (see the args we
+  // register below). In that case we boot straight to the tray + overlay and
+  // skip the settings window so the user can troll immediately, no clicks.
+  const startedHidden =
+    process.argv.includes('--hidden') || app.getLoginItemSettings().wasOpenedAtLogin;
+
   app.whenReady().then(() => {
+    // Reconcile the OS login item with the stored setting on every launch, so
+    // autostart actually takes effect even if the user never opened settings.
+    app.setLoginItemSettings({
+      openAtLogin: !!store.get('autostart'),
+      openAsHidden: true,
+      args: ['--hidden'],
+    });
+
     createOverlayWindow();
-    createSettingsWindow();
+    if (!startedHidden) createSettingsWindow();
     createTray();
     connectWS();
 
