@@ -43,6 +43,11 @@
       animation: drop-out 380ms cubic-bezier(.5,0,.75,0) forwards;
     }
 
+    /* Fermeture manuelle (croix) — fondu doux, sans la chute de drop-out */
+    .drop.closing {
+      animation: drop-close-out 220ms cubic-bezier(.4,0,.2,1) forwards;
+    }
+
     .media-box {
       position: relative;
       display: inline-block;
@@ -244,6 +249,9 @@
     }
     @keyframes drop-out {
       to { opacity: 0; transform: translate(-50%, calc(-50% + 40px)) rotate(6deg) scale(.92); }
+    }
+    @keyframes drop-close-out {
+      to { opacity: 0; transform: translate(-50%, -50%) scale(.85); }
     }
     @keyframes caption-rise {
       0%   { opacity: 0; transform: translateY(14px); }
