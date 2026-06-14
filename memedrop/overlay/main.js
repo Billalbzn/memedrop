@@ -22,15 +22,51 @@ const store = new Store({
     videoDuration: 30,
     soundOnArrival: true,
     spotlightOnDrop: true,
-    language: 'en',
     autostart: true,
     overlayDisplayId: null,
     // Identité de lien stockée localement → ré-enregistrement auto à chaque
     // connexion, plus jamais besoin de /link (survit aux redeploys du bot).
-    //   { userId, username, scope:'guild'|'global', guildIds:[...] }
+    //   { userId, username, scope:'guild'|'global', guildIds:[...], token,
+    //     blockedUsers:[...] }
     linkIdentity: null,
+    // Pause manuelle : l'utilisateur a coupé la connexion lui-même depuis les
+    // réglages. L'app reste lancée (tray) mais ne se connecte pas au bot.
+    paused: false,
+    // Mode tranquille : timestamp jusqu'auquel on ignore les drops entrants
+    // (-1 = jusqu'à réactivation manuelle, null = désactivé).
+    muteUntil: null,
+    // Historique local des derniers drops reçus (pour les réglages).
+    dropHistory: [],
   },
 });
+
+const MAX_HISTORY = 20;
+
+// muteUntil: null = pas de mode tranquille, -1 = jusqu'à réactivation
+// manuelle, sinon un timestamp (ms) jusqu'auquel les drops sont coupés.
+// (-1 plutôt qu'Infinity car electron-store sérialise en JSON, qui ne
+// supporte pas Infinity.)
+function isMuted() {
+  const until = store.get('muteUntil');
+  if (!until) return false;
+  if (until === -1 || until > Date.now()) return true;
+  store.set('muteUntil', null);
+  return false;
+}
+
+function recordHistory(payload) {
+  const entry = {
+    from: payload.from?.username || 'inconnu',
+    kind: payload.media?.kind || (payload.rain ? 'rain' : 'unknown'),
+    caption: payload.caption || null,
+    ts: payload.ts || Date.now(),
+  };
+  const history = [entry, ...store.get('dropHistory')].slice(0, MAX_HISTORY);
+  store.set('dropHistory', history);
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send('history-update', history);
+  }
+}
 
 let overlayWin = null;
 let settingsWin = null;
@@ -162,36 +198,59 @@ function createSettingsWindow() {
   return settingsWin;
 }
 
-function createTray() {
-  const icon = nativeImage.createFromPath(iconPath());
-  tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon.resize({ width: 16, height: 16 }));
+// `minutes`: falsy → désactive, -1 → jusqu'à réactivation, sinon durée en minutes.
+function setMute(minutes) {
+  const until = !minutes ? null : (minutes === -1 ? -1 : Date.now() + minutes * 60_000);
+  store.set('muteUntil', until);
+  setState({ muteUntil: until });
+  rebuildTrayMenu();
+}
+
+function rebuildTrayMenu() {
+  if (!tray) return;
+  const muted = isMuted();
+  const muteSubmenu = muted
+    ? [{ label: '🔊 Réactiver les drops', click: () => setMute(null) }]
+    : [
+        { label: '🔇 Mode tranquille — 30 min', click: () => setMute(30) },
+        { label: '🔇 Mode tranquille — 2 h',    click: () => setMute(120) },
+        { label: '🔇 Mode tranquille — jusqu\'à réactivation', click: () => setMute(-1) },
+      ];
 
   const menu = Menu.buildFromTemplate([
     { label: 'MemeDrop',         enabled: false },
     { type: 'separator' },
-    { label: 'Open settings…',   click: () => createSettingsWindow() },
-    { label: 'Toggle overlay',
+    { label: 'Ouvrir les réglages…', click: () => createSettingsWindow() },
+    { label: 'Afficher / masquer l\'overlay',
       click: () => {
         if (overlayWin && overlayWin.isVisible()) overlayWin.hide();
         else { createOverlayWindow(); overlayWin.show(); }
       } },
-    { label: 'Force on top',     click: enforceTop },
+    { label: 'Forcer au premier plan', click: enforceTop },
     { type: 'separator' },
-    { label: 'Check for updates…', click: () => checkForUpdates(true) },
-    { label: 'Open Overlay DevTools',
+    ...muteSubmenu,
+    { type: 'separator' },
+    { label: 'Vérifier les mises à jour…', click: () => checkForUpdates(true) },
+    { label: 'Ouvrir les DevTools (overlay)',
       click: () => {
         if (overlayWin && !overlayWin.isDestroyed()) {
           overlayWin.webContents.openDevTools({ mode: 'detach' });
         }
       } },
     { type: 'separator' },
-    { label: 'Quit',
+    { label: 'Quitter',
       click: () => { app.isQuitting = true; app.quit(); } },
   ]);
 
-  tray.setToolTip('MemeDrop');
-  tray.on('click', () => createSettingsWindow());
   tray.setContextMenu(menu);
+  tray.setToolTip(muted ? 'MemeDrop — mode tranquille 🔇' : 'MemeDrop');
+}
+
+function createTray() {
+  const icon = nativeImage.createFromPath(iconPath());
+  tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon.resize({ width: 16, height: 16 }));
+  rebuildTrayMenu();
+  tray.on('click', () => createSettingsWindow());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -200,7 +259,7 @@ function createTray() {
 let ws = null;
 let reconnectTimer = null;
 let reconnectAttempts = 0;
-let connState = { status: 'disconnected', code: null, user: null, links: null };
+let connState = { status: 'disconnected', code: null, user: null, links: null, muteUntil: store.get('muteUntil') };
 
 function broadcastState() {
   for (const w of BrowserWindow.getAllWindows()) {
@@ -215,6 +274,10 @@ function setState(patch) {
 
 function connectWS() {
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  if (store.get('paused')) {
+    setState({ status: 'paused', code: null, user: null, links: null });
+    return;
+  }
   const url = store.get('serverUrl');
   setState({ status: 'connecting', code: null, user: null, links: null });
 
@@ -224,8 +287,9 @@ function connectWS() {
   ws.on('open', () => {
     reconnectAttempts = 0;
     console.log('[ws] connected to', url);
-    // Ré-enregistrement automatique : on rejoue notre identité stockée pour
-    // que le bot rebuild le lien sans /link. Marche même après un redeploy.
+    // Ré-enregistrement automatique : on rejoue notre identité stockée (avec
+    // son token de sécurité) pour que le bot rebuild le lien sans /link.
+    // Marche même après un redeploy (tant que le token reste valide).
     const identity = store.get('linkIdentity');
     if (identity && identity.userId) {
       try { ws.send(JSON.stringify({ type: 'register', identity })); } catch {}
@@ -254,13 +318,15 @@ function connectWS() {
       case 'linked': {
         // Mémorise l'identité (depuis l'utilisateur + le snapshot serveurs)
         // pour le ré-enregistrement automatique des prochaines connexions.
-        const links = msg.links || { scope: 'guild', guilds: [], guildIds: [] };
+        const links = msg.links || { scope: 'guild', guilds: [], guildIds: [], blocked: [], blockedIds: [] };
         if (msg.user?.id) {
           store.set('linkIdentity', {
             userId:   msg.user.id,
             username: msg.user.username,
             scope:    links.scope === 'global' ? 'global' : 'guild',
             guildIds: Array.isArray(links.guildIds) ? links.guildIds : [],
+            token:    msg.token || null,
+            blockedIds: Array.isArray(links.blockedIds) ? links.blockedIds : [],
           });
         }
         setState({ status: 'linked', code: null, user: msg.user, links });
@@ -272,12 +338,13 @@ function connectWS() {
         setState({ status: 'awaiting_link', code: connState.code || null, user: null, links: null });
         break;
       case 'links_update': {
-        // Mise à jour autoritaire des serveurs (ajout/retrait) → on persiste
-        // les IDs côté overlay pour le prochain ré-enregistrement.
+        // Mise à jour autoritaire des serveurs/blocages (ajout/retrait) → on
+        // persiste les IDs côté overlay pour le prochain ré-enregistrement.
         const cur = store.get('linkIdentity');
         if (cur && msg.links) {
-          cur.scope    = msg.links.scope === 'global' ? 'global' : 'guild';
-          cur.guildIds = Array.isArray(msg.links.guildIds) ? msg.links.guildIds : cur.guildIds;
+          cur.scope      = msg.links.scope === 'global' ? 'global' : 'guild';
+          cur.guildIds   = Array.isArray(msg.links.guildIds) ? msg.links.guildIds : cur.guildIds;
+          cur.blockedIds = Array.isArray(msg.links.blockedIds) ? msg.links.blockedIds : cur.blockedIds;
           store.set('linkIdentity', cur);
         }
         setState({ links: msg.links });
@@ -287,6 +354,8 @@ function connectWS() {
         store.set('linkIdentity', null);   // this overlay is no longer linked
         setState({ status: 'connecting', code: null, user: null, links: null }); break;
       case 'drop':
+        recordHistory(msg);
+        if (isMuted()) break; // mode tranquille : on note le drop mais on ne l'affiche pas
         if (!overlayWin || overlayWin.isDestroyed()) createOverlayWindow();
         startTopGuard(); enforceTop();
         overlayWin.webContents.send('drop', {
@@ -307,7 +376,11 @@ function connectWS() {
     }
   });
 
-  ws.on('close', () => { setState({ status: 'disconnected', code: null, links: null }); scheduleReconnect(); });
+  ws.on('close', () => {
+    if (store.get('paused')) { setState({ status: 'paused', code: null, user: null, links: null }); return; }
+    setState({ status: 'disconnected', code: null, links: null });
+    scheduleReconnect();
+  });
   ws.on('error', (err) => console.error('[ws] error:', err.message));
 }
 
@@ -402,9 +475,10 @@ ipcMain.handle('settings:get', () => ({
   videoDuration:  store.get('videoDuration'),
   soundOnArrival:  store.get('soundOnArrival'),
   spotlightOnDrop: store.get('spotlightOnDrop'),
-  language:        store.get('language'),
   autostart:      store.get('autostart'),
   overlayDisplayId: store.get('overlayDisplayId'),
+  paused:         store.get('paused'),
+  muteUntil:      store.get('muteUntil'),
 }));
 
 ipcMain.handle('settings:set', (_e, patch) => {
@@ -417,6 +491,15 @@ ipcMain.handle('settings:set', (_e, patch) => {
   if ('serverUrl' in patch) {
     try { ws && ws.close(); } catch {}
     connectWS();
+  }
+  if ('paused' in patch) {
+    if (patch.paused) {
+      try { ws && ws.close(); } catch {}
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+      setState({ status: 'paused', code: null, user: null, links: null });
+    } else {
+      connectWS();
+    }
   }
   if ('overlayDisplayId' in patch) { repositionOverlay(); enforceTop(); }
   if (overlayWin && !overlayWin.isDestroyed() &&
@@ -451,6 +534,23 @@ ipcMain.handle('connection:unlink-guild', (_e, guildId) => {
   try { ws.send(JSON.stringify({ type: 'unlink_guild', guildId })); return true; }
   catch { return false; }
 });
+ipcMain.handle('connection:unblock-user', (_e, userId) => {
+  if (!ws || ws.readyState !== ws.OPEN) return false;
+  try { ws.send(JSON.stringify({ type: 'unblock_user', userId })); return true; }
+  catch { return false; }
+});
+
+// ── Mode tranquille ────────────────────────────────────────────────────
+// `minutes` null/0 → désactive. -1 → tranquille jusqu'à réactivation.
+ipcMain.handle('mute:set', (_e, minutes) => {
+  setMute(minutes);
+  return store.get('muteUntil');
+});
+ipcMain.handle('mute:get', () => (isMuted() ? store.get('muteUntil') : null));
+
+// ── Historique des drops ──────────────────────────────────────────────
+ipcMain.handle('history:get', () => store.get('dropHistory'));
+ipcMain.handle('history:clear', () => { store.set('dropHistory', []); return true; });
 
 // App version + update IPC
 ipcMain.handle('app:get-version', () => app.getVersion());

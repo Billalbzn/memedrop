@@ -47,6 +47,7 @@ function enterCapture(hit) {
   inCapture = true;
   hoveredDrop = hit;
   hit.drop.style.cursor = 'grab';
+  hit.drop.classList.add('hover');
   window.memedrop.setIgnoreMouse(false);
 }
 
@@ -54,7 +55,11 @@ function enterCapture(hit) {
 function exitCapture() {
   if (!inCapture || dragState) return;
   inCapture = false;
-  if (hoveredDrop) { hoveredDrop.drop.style.cursor = ''; hoveredDrop = null; }
+  if (hoveredDrop) {
+    hoveredDrop.drop.style.cursor = '';
+    hoveredDrop.drop.classList.remove('hover');
+    hoveredDrop = null;
+  }
   window.memedrop.setIgnoreMouse(true);
 }
 
@@ -84,8 +89,10 @@ document.addEventListener('mousemove', (e) => {
   if (!hit) {
     exitCapture();
   } else if (hit !== hoveredDrop) {
+    if (hoveredDrop) hoveredDrop.drop.classList.remove('hover');
     hoveredDrop = hit;
     hit.drop.style.cursor = 'grab';
+    hit.drop.classList.add('hover');
   }
 });
 
@@ -252,13 +259,17 @@ function hideSpotlight(anchor) {
 // ── Pluie d'émojis ────────────────────────────────────────────────────
 // Crée N particules tombant depuis le haut avec vitesse, taille et dérive
 // aléatoires. Les éléments se retirent automatiquement après la chute.
-function renderRain(emoji) {
-  if (!emoji) return;
+// `emojis` peut être une chaîne unique (rétro-compat) ou un tableau —
+// chaque particule choisit un emoji au hasard parmi ceux fournis.
+function renderRain(emojis) {
+  if (!emojis) return;
+  const pool = Array.isArray(emojis) ? emojis : [emojis];
+  if (pool.length === 0) return;
   const COUNT = 38;
   for (let i = 0; i < COUNT; i++) {
     const el = document.createElement('div');
     el.className   = 'rain-emoji';
-    el.textContent = emoji;
+    el.textContent = pool[Math.floor(Math.random() * pool.length)];
 
     const x     = Math.random() * 98;                     // % horizontal
     const delay = Math.random() * 2200;                   // ms
@@ -402,6 +413,21 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
   wrap.style.opacity = String(settings?.opacity ?? 1);
 
   if (from) wrap.appendChild(buildAvatarBubble(from));
+
+  // Bouton fermer — visible au survol, permet de virer un drop gênant tout
+  // de suite sans attendre sa durée de vie.
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'drop-close';
+  closeBtn.type = 'button';
+  closeBtn.title = 'Fermer';
+  closeBtn.textContent = '✕';
+  closeBtn.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isVideo && el) { try { el.pause(); } catch {} }
+    removeNow();
+  });
+  wrap.appendChild(closeBtn);
 
   const mediaBox = document.createElement('div');
   mediaBox.className = 'media-box';

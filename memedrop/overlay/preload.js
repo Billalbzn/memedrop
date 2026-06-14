@@ -13,10 +13,24 @@ contextBridge.exposeInMainWorld('memedrop', {
   getConnection:  () => ipcRenderer.invoke('connection:get'),
   reconnect:      () => ipcRenderer.invoke('connection:reconnect'),
   unlinkGuild:    (guildId) => ipcRenderer.invoke('connection:unlink-guild', guildId),
+  unblockUser:    (userId) => ipcRenderer.invoke('connection:unblock-user', userId),
   onConnection:   (cb) => {
     const handler = (_e, state) => cb(state);
     ipcRenderer.on('connection-state', handler);
     return () => ipcRenderer.removeListener('connection-state', handler);
+  },
+
+  // Mode tranquille (mute)
+  setMute:        (minutes) => ipcRenderer.invoke('mute:set', minutes),
+  getMute:        () => ipcRenderer.invoke('mute:get'),
+
+  // Historique des drops reçus
+  getHistory:     () => ipcRenderer.invoke('history:get'),
+  clearHistory:   () => ipcRenderer.invoke('history:clear'),
+  onHistory:      (cb) => {
+    const handler = (_e, history) => cb(history);
+    ipcRenderer.on('history-update', handler);
+    return () => ipcRenderer.removeListener('history-update', handler);
   },
 
   // Drops (overlay window)
