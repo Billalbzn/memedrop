@@ -418,6 +418,7 @@ bindRange('video-duration', 'video-duration-out',  v => `${v}s`, 'videoDuration'
 
 $('#sound').addEventListener('change',      (e) => queueSetting('soundOnArrival', e.target.checked));
 $('#spotlight').addEventListener('change', (e) => queueSetting('spotlightOnDrop', e.target.checked));
+$('#theme').addEventListener('change',     (e) => queueSetting('theme', e.target.value));
 $('#autostart').addEventListener('change', (e) => queueSetting('autostart', e.target.checked));
 $('#server').addEventListener('change',    (e) => {
   const v = e.target.value.trim();
@@ -460,6 +461,7 @@ async function init() {
 
   $('#sound').checked      = !!s.soundOnArrival;
   $('#spotlight').checked  = s.spotlightOnDrop !== false; // true par défaut
+  $('#theme').value        = s.theme || 'classic';
   $('#autostart').checked  = !!s.autostart;
   $('#server').value      = s.serverUrl || 'wss://memedrop-production-3106.up.railway.app';
 

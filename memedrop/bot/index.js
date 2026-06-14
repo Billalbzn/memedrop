@@ -5,6 +5,7 @@ const { Client, GatewayIntentBits, Events, MessageFlags } = require('discord.js'
 const { WebSocketServer } = require('ws');
 const http = require('http');
 const crypto = require('crypto');
+const store = require('./store');
 
 const PORT = Number(process.env.PORT || process.env.WS_PORT || 8765);
 
@@ -38,6 +39,28 @@ const wss = new WebSocketServer({ server: httpServer });
 const pendingOverlays = new Map();
 const userLinks       = new Map();
 const wsMeta          = new WeakMap();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Favoris & groupes cibles — persistés sur disque (voir store.js) car ils
+// n'ont aucune copie côté overlay, contrairement aux liens.
+//
+// favorites : discordUserId -> [{ name, url, mime, kind, size, caption, savedAt }]
+// groups    : discordUserId -> { groupName: [discordUserId, ...] }
+// ─────────────────────────────────────────────────────────────────────────────
+const persisted = store.load();
+const favorites = new Map(Object.entries(persisted.favorites).map(([k, v]) => [k, v]));
+const groups    = new Map(Object.entries(persisted.groups).map(([k, v]) => [k, new Map(Object.entries(v))]));
+
+const MAX_FAVORITES     = 10;
+const MAX_GROUPS        = 10;
+const MAX_GROUP_MEMBERS = 5;
+
+function persistStore() {
+  store.save({
+    favorites: Object.fromEntries(favorites),
+    groups: Object.fromEntries([...groups].map(([k, v]) => [k, Object.fromEntries(v)])),
+  });
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Re-link tokens
@@ -328,20 +351,21 @@ const DROPALL_COOLDOWN_MS = 15_000;
 const lastDropAt    = new Map();
 const lastDropAllAt = new Map();
 
-function cooledDown(map, userId, cooldownMs) {
+// Retourne le temps restant (ms) avant que `userId` puisse réutiliser `map`,
+// ou 0 si c'est bon. N'enregistre rien — voir `markCooldown`.
+function cooldownRemaining(map, userId, cooldownMs) {
   const now = Date.now();
   const prev = map.get(userId) || 0;
-  if (now - prev < cooldownMs) return false;
-  map.set(userId, now);
-  return true;
+  const remaining = cooldownMs - (now - prev);
+  return remaining > 0 ? remaining : 0;
 }
 
-function rateLimited(userId) {
-  return !cooledDown(lastDropAt, userId, DROP_COOLDOWN_MS);
+function markCooldown(map, userId) {
+  map.set(userId, Date.now());
 }
 
-function dropallRateLimited(userId) {
-  return !cooledDown(lastDropAllAt, userId, DROPALL_COOLDOWN_MS);
+function formatCooldown(ms) {
+  return (ms / 1000).toFixed(1).replace(/\.0$/, '');
 }
 
 function validateAttachment(att) {
@@ -401,6 +425,40 @@ function buildDropPayload(att, caption, fromUser, musicAtt = null, rain = null) 
     },
     ts: Date.now(),
   };
+}
+
+// Récupère jusqu'à 5 utilisateurs depuis les options target/target2..target5,
+// filtre les bots et les doublons. Réutilisé par /drop, /dropfav, /dropgroup.
+function resolveTargets(interaction, { required = true } = {}) {
+  const targets = [];
+  const seen = new Set();
+  for (const optName of ['target', 'target2', 'target3', 'target4', 'target5']) {
+    const u = interaction.options.getUser(optName, required && optName === 'target');
+    if (!u || u.bot || seen.has(u.id)) continue;
+    seen.add(u.id);
+    targets.push(u);
+  }
+  return targets;
+}
+
+// Envoie `payload` aux cibles atteignables et renvoie un message récapitulatif.
+function dispatchToTargets(interaction, targets, payload, musicAtt) {
+  const delivered = [];
+  const notReachable = [];
+  for (const t of targets) {
+    if (canDrop(interaction.user.id, t.id, interaction.guildId)) {
+      sendJson(userLinks.get(t.id).ws, payload);
+      delivered.push(t.username);
+    } else {
+      notReachable.push(t.username);
+    }
+  }
+  if (delivered.length && notReachable.length) {
+    return `✅ Drop envoyé sur **${delivered.join('**, **')}**.\n⚠️ Pas atteignables depuis ce serveur : ${notReachable.map(o => `**${o}**`).join(', ')}`;
+  } else if (delivered.length) {
+    return `✅ Drop envoyé sur **${delivered.join('**, **')}** !${musicAtt ? ' 🎵' : ''}`;
+  }
+  return `❌ Personne n'est atteignable depuis ce serveur. Ils doivent faire \`/link\` ici aussi.`;
 }
 
 // Valide une pièce jointe audio pour l'option "musique"
@@ -593,18 +651,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
       case 'drop': {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-        if (rateLimited(interaction.user.id)) {
-          return safeReply(interaction, '⏱️ Doucement — un drop toutes les 2 secondes.');
+        {
+          const remain = cooldownRemaining(lastDropAt, interaction.user.id, DROP_COOLDOWN_MS);
+          if (remain > 0) {
+            return safeReply(interaction, `⏱️ Doucement — encore ${formatCooldown(remain)}s avant le prochain \`/drop\`.`);
+          }
+          markCooldown(lastDropAt, interaction.user.id);
         }
 
-        const targets = [];
-        const seen = new Set();
-        for (const optName of ['target', 'target2', 'target3', 'target4', 'target5']) {
-          const u = interaction.options.getUser(optName, optName === 'target');
-          if (!u || u.bot || seen.has(u.id)) continue;
-          seen.add(u.id);
-          targets.push(u);
-        }
+        const targets = resolveTargets(interaction);
         if (targets.length === 0) {
           return safeReply(interaction, '🤖 Aucune cible valide (bots et doublons filtrés).');
         }
@@ -635,35 +690,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
 
         const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain);
-        const delivered = [];
-        const notReachable = [];
-
-        for (const t of targets) {
-          if (canDrop(interaction.user.id, t.id, interaction.guildId)) {
-            sendJson(userLinks.get(t.id).ws, payload);
-            delivered.push(t.username);
-          } else {
-            notReachable.push(t.username);
-          }
-        }
-
-        let msg;
-        if (delivered.length && notReachable.length) {
-          msg = `✅ Drop envoyé sur **${delivered.join('**, **')}**.\n⚠️ Pas atteignables depuis ce serveur : ${notReachable.map(o => `**${o}**`).join(', ')}`;
-        } else if (delivered.length) {
-          msg = `✅ Drop envoyé sur **${delivered.join('**, **')}** !${musicAtt ? ' 🎵' : ''}`;
-        } else {
-          msg = `❌ Personne n'est atteignable depuis ce serveur. Ils doivent faire \`/link\` ici aussi.`;
-        }
-        return safeReply(interaction, msg);
+        return safeReply(interaction, dispatchToTargets(interaction, targets, payload, musicAtt));
       }
 
       // ── /dropall — only reachable users in this guild ──────────────────
       case 'dropall': {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-        if (dropallRateLimited(interaction.user.id)) {
-          return safeReply(interaction, `⏱️ Doucement — un \`/dropall\` toutes les ${DROPALL_COOLDOWN_MS / 1000} secondes.`);
+        {
+          const remain = cooldownRemaining(lastDropAllAt, interaction.user.id, DROPALL_COOLDOWN_MS);
+          if (remain > 0) {
+            return safeReply(interaction, `⏱️ Doucement — encore ${formatCooldown(remain)}s avant le prochain \`/dropall\`.`);
+          }
+          markCooldown(lastDropAllAt, interaction.user.id);
         }
 
         const att      = interaction.options.getAttachment('media', false);
@@ -760,6 +799,209 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const blocked = await buildBlockedSnapshot(interaction.user.id);
         return safeReply(interaction,
           `**Utilisateurs bloqués :**\n${blocked.map(b => `• ${b.username} (\`${b.id}\`)`).join('\n')}`);
+      }
+
+      // ── /fav — gérer ses médias favoris ─────────────────────────────────
+      case 'fav': {
+        const sub = interaction.options.getSubcommand();
+        const userId = interaction.user.id;
+
+        if (sub === 'add') {
+          const name = interaction.options.getString('name', true).trim();
+          const att = interaction.options.getAttachment('media', true);
+          const caption = interaction.options.getString('caption', false);
+          if (!name) {
+            return interaction.reply({ content: '❌ Nom invalide.', flags: MessageFlags.Ephemeral });
+          }
+          const err = validateAttachment(att);
+          if (err) return interaction.reply({ content: `❌ ${err}`, flags: MessageFlags.Ephemeral });
+
+          const list = favorites.get(userId) || [];
+          const idx = list.findIndex(f => f.name.toLowerCase() === name.toLowerCase());
+          const entry = {
+            name,
+            url: att.url,
+            mime: att.contentType,
+            kind: classifyMedia(att.contentType),
+            size: att.size,
+            caption: caption ? String(caption).slice(0, 80) : null,
+            savedAt: Date.now(),
+          };
+          if (idx !== -1) {
+            list[idx] = entry;
+          } else {
+            if (list.length >= MAX_FAVORITES) {
+              return interaction.reply({
+                content: `❌ Limite de ${MAX_FAVORITES} favoris atteinte. Supprime-en un avec \`/fav remove\`.`,
+                flags: MessageFlags.Ephemeral,
+              });
+            }
+            list.push(entry);
+          }
+          favorites.set(userId, list);
+          persistStore();
+          return interaction.reply({
+            content: `⭐ Favori **${name}** enregistré ! Utilise \`/dropfav ${name}\` pour le renvoyer.\n⚠️ Les liens Discord expirent après ~24h : si le drop ne s'affiche plus, refais \`/fav add ${name}\`.`,
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+
+        if (sub === 'list') {
+          const list = favorites.get(userId) || [];
+          if (list.length === 0) {
+            return interaction.reply({ content: 'Tu n\'as aucun favori. Ajoute-en avec `/fav add`.', flags: MessageFlags.Ephemeral });
+          }
+          const lines = list.map(f => `• **${f.name}** (${f.kind})${f.caption ? ` — _${f.caption}_` : ''}`);
+          return interaction.reply({ content: `**Tes favoris :**\n${lines.join('\n')}`, flags: MessageFlags.Ephemeral });
+        }
+
+        if (sub === 'remove') {
+          const name = interaction.options.getString('name', true).trim();
+          const list = favorites.get(userId) || [];
+          const idx = list.findIndex(f => f.name.toLowerCase() === name.toLowerCase());
+          if (idx === -1) {
+            return interaction.reply({ content: `❌ Aucun favori nommé **${name}**.`, flags: MessageFlags.Ephemeral });
+          }
+          list.splice(idx, 1);
+          favorites.set(userId, list);
+          persistStore();
+          return interaction.reply({ content: `🗑️ Favori **${name}** supprimé.`, flags: MessageFlags.Ephemeral });
+        }
+        break;
+      }
+
+      // ── /dropfav — renvoyer un favori enregistré ────────────────────────
+      case 'dropfav': {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+        const remain = cooldownRemaining(lastDropAt, interaction.user.id, DROP_COOLDOWN_MS);
+        if (remain > 0) {
+          return safeReply(interaction, `⏱️ Doucement — encore ${formatCooldown(remain)}s avant le prochain \`/drop\`.`);
+        }
+        markCooldown(lastDropAt, interaction.user.id);
+
+        const name = interaction.options.getString('name', true).trim();
+        const list = favorites.get(interaction.user.id) || [];
+        const fav = list.find(f => f.name.toLowerCase() === name.toLowerCase());
+        if (!fav) {
+          return safeReply(interaction, `❌ Aucun favori nommé **${name}**. Vois \`/fav list\`.`);
+        }
+
+        const targets = resolveTargets(interaction);
+        if (targets.length === 0) {
+          return safeReply(interaction, '🤖 Aucune cible valide (bots et doublons filtrés).');
+        }
+
+        const rain = extractEmojis(interaction.options.getString('pluie', false));
+        const att = { url: fav.url, contentType: fav.mime, name: fav.name, size: fav.size, width: null, height: null };
+        const payload = buildDropPayload(att, fav.caption, interaction.user, null, rain);
+        return safeReply(interaction, dispatchToTargets(interaction, targets, payload, null));
+      }
+
+      // ── /group — gérer des groupes de cibles ────────────────────────────
+      case 'group': {
+        const sub = interaction.options.getSubcommand();
+        const userId = interaction.user.id;
+        const userGroups = groups.get(userId) || new Map();
+
+        if (sub === 'set') {
+          const name = interaction.options.getString('name', true).trim();
+          if (!name) {
+            return interaction.reply({ content: '❌ Nom invalide.', flags: MessageFlags.Ephemeral });
+          }
+          const members = resolveTargets(interaction).map(u => u.id);
+          if (members.length === 0) {
+            return interaction.reply({ content: '🤖 Aucun membre valide (bots et doublons filtrés).', flags: MessageFlags.Ephemeral });
+          }
+          const existingKey = [...userGroups.keys()].find(k => k.toLowerCase() === name.toLowerCase());
+          if (!existingKey && userGroups.size >= MAX_GROUPS) {
+            return interaction.reply({
+              content: `❌ Limite de ${MAX_GROUPS} groupes atteinte. Supprime-en un avec \`/group delete\`.`,
+              flags: MessageFlags.Ephemeral,
+            });
+          }
+          if (existingKey) userGroups.delete(existingKey);
+          userGroups.set(name, members);
+          groups.set(userId, userGroups);
+          persistStore();
+          return interaction.reply({
+            content: `📁 Groupe **${name}** enregistré avec ${members.length} membre${members.length > 1 ? 's' : ''}. Utilise \`/dropgroup ${name}\` pour leur envoyer un mème.`,
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+
+        if (sub === 'list') {
+          if (userGroups.size === 0) {
+            return interaction.reply({ content: 'Tu n\'as aucun groupe. Crée-en un avec `/group set`.', flags: MessageFlags.Ephemeral });
+          }
+          const lines = [...userGroups].map(([gName, ids]) => `• **${gName}** — ${ids.map(id => `<@${id}>`).join(', ')}`);
+          return interaction.reply({ content: `**Tes groupes :**\n${lines.join('\n')}`, flags: MessageFlags.Ephemeral });
+        }
+
+        if (sub === 'delete') {
+          const name = interaction.options.getString('name', true).trim();
+          const existingKey = [...userGroups.keys()].find(k => k.toLowerCase() === name.toLowerCase());
+          if (!existingKey) {
+            return interaction.reply({ content: `❌ Aucun groupe nommé **${name}**.`, flags: MessageFlags.Ephemeral });
+          }
+          userGroups.delete(existingKey);
+          groups.set(userId, userGroups);
+          persistStore();
+          return interaction.reply({ content: `🗑️ Groupe **${existingKey}** supprimé.`, flags: MessageFlags.Ephemeral });
+        }
+        break;
+      }
+
+      // ── /dropgroup — envoyer un mème à un groupe de cibles ──────────────
+      case 'dropgroup': {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+        const remain = cooldownRemaining(lastDropAt, interaction.user.id, DROP_COOLDOWN_MS);
+        if (remain > 0) {
+          return safeReply(interaction, `⏱️ Doucement — encore ${formatCooldown(remain)}s avant le prochain \`/drop\`.`);
+        }
+        markCooldown(lastDropAt, interaction.user.id);
+
+        const name = interaction.options.getString('name', true).trim();
+        const userGroups = groups.get(interaction.user.id) || new Map();
+        const groupKey = [...userGroups.keys()].find(k => k.toLowerCase() === name.toLowerCase());
+        if (!groupKey) {
+          return safeReply(interaction, `❌ Aucun groupe nommé **${name}**. Vois \`/group list\`.`);
+        }
+
+        const memberIds = userGroups.get(groupKey);
+        const targets = [];
+        for (const id of memberIds) {
+          const u = await client.users.fetch(id).catch(() => null);
+          if (u && !u.bot) targets.push(u);
+        }
+        if (targets.length === 0) {
+          return safeReply(interaction, `❌ Aucun membre du groupe **${groupKey}** n'est joignable (utilisateurs introuvables).`);
+        }
+
+        const att      = interaction.options.getAttachment('media', false);
+        const caption  = interaction.options.getString('caption', false);
+        const musicAtt = interaction.options.getAttachment('musique', false);
+        const rain     = extractEmojis(interaction.options.getString('pluie', false));
+
+        if (!att && !rain) {
+          return safeReply(interaction, '❌ Mets au moins un média (`media`) ou un emoji (`pluie`).');
+        }
+        if (att) {
+          const err = validateAttachment(att);
+          if (err) return safeReply(interaction, `❌ ${err}`);
+        }
+        const musicErr = validateMusic(musicAtt);
+        if (musicErr) return safeReply(interaction, `❌ ${musicErr}`);
+        if (musicAtt && !att) {
+          return safeReply(interaction, '❌ L\'option `musique` nécessite un média (image ou GIF).');
+        }
+        if (musicAtt && att && !att.contentType.startsWith('image/')) {
+          return safeReply(interaction, '❌ L\'option `musique` ne fonctionne qu\'avec une image ou un GIF (pas une vidéo).');
+        }
+
+        const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain);
+        return safeReply(interaction, dispatchToTargets(interaction, targets, payload, musicAtt));
       }
     }
   } catch (err) {

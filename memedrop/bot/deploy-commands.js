@@ -100,6 +100,119 @@ const commands = [
     .setName('blocklist')
     .setDescription('Affiche la liste des personnes que tu as bloquées')
     .toJSON(),
+
+  // /fav add|list|remove — médias favoris réutilisables avec /dropfav
+  new SlashCommandBuilder()
+    .setName('fav')
+    .setDescription('Gère tes médias favoris')
+    .addSubcommand(sc => sc
+      .setName('add')
+      .setDescription('Enregistre un média comme favori')
+      .addStringOption(o => o.setName('name')
+        .setDescription('Nom du favori (ex: tomato)')
+        .setMaxLength(24)
+        .setRequired(true))
+      .addAttachmentOption(o => o.setName('media')
+        .setDescription('Image, GIF ou vidéo à enregistrer')
+        .setRequired(true))
+      .addStringOption(o => o.setName('caption')
+        .setDescription('Texte affiché en surimpression (80 caractères max.)')
+        .setMaxLength(80)
+        .setRequired(false)))
+    .addSubcommand(sc => sc
+      .setName('list')
+      .setDescription('Liste tes favoris'))
+    .addSubcommand(sc => sc
+      .setName('remove')
+      .setDescription('Supprime un favori')
+      .addStringOption(o => o.setName('name')
+        .setDescription('Nom du favori à supprimer')
+        .setMaxLength(24)
+        .setRequired(true)))
+    .toJSON(),
+
+  // /dropfav <name> @cible — renvoie un favori enregistré
+  (() => {
+    const b = new SlashCommandBuilder()
+      .setName('dropfav')
+      .setDescription('Envoie un favori enregistré sur l\'écran d\'une ou plusieurs personnes')
+      .addStringOption(o => o.setName('name')
+        .setDescription('Nom du favori (voir /fav list)')
+        .setMaxLength(24)
+        .setRequired(true))
+      .addUserOption(o => o.setName('target')
+        .setDescription('Qui reçoit le drop (utilise target2..5 pour en ajouter)')
+        .setRequired(true))
+      .addStringOption(o => o.setName('pluie')
+        .setDescription('Emoji(s) qui tomberont en pluie sur l\'écran (ex: 🔥💀🤣, jusqu\'à 5)')
+        .setMaxLength(40)
+        .setRequired(false));
+    for (let i = 2; i <= 5; i++) {
+      b.addUserOption(o => o.setName(`target${i}`)
+        .setDescription(`Cible supplémentaire ${i}`)
+        .setRequired(false));
+    }
+    return b.toJSON();
+  })(),
+
+  // /group set|list|delete — groupes de cibles nommés
+  (() => {
+    const b = new SlashCommandBuilder()
+      .setName('group')
+      .setDescription('Gère des groupes de cibles nommés')
+      .addSubcommand(sc => {
+        sc.setName('set')
+          .setDescription('Crée ou remplace un groupe de cibles')
+          .addStringOption(o => o.setName('name')
+            .setDescription('Nom du groupe (ex: famille)')
+            .setMaxLength(24)
+            .setRequired(true))
+          .addUserOption(o => o.setName('target')
+            .setDescription('Membre du groupe (utilise target2..5 pour en ajouter)')
+            .setRequired(true));
+        for (let i = 2; i <= 5; i++) {
+          sc.addUserOption(o => o.setName(`target${i}`)
+            .setDescription(`Membre supplémentaire ${i}`)
+            .setRequired(false));
+        }
+        return sc;
+      })
+      .addSubcommand(sc => sc
+        .setName('list')
+        .setDescription('Liste tes groupes'))
+      .addSubcommand(sc => sc
+        .setName('delete')
+        .setDescription('Supprime un groupe')
+        .addStringOption(o => o.setName('name')
+          .setDescription('Nom du groupe à supprimer')
+          .setMaxLength(24)
+          .setRequired(true)));
+    return b.toJSON();
+  })(),
+
+  // /dropgroup <name> media [caption] [musique] [pluie] — envoie à un groupe
+  new SlashCommandBuilder()
+    .setName('dropgroup')
+    .setDescription('Envoie un mème à tous les membres d\'un groupe de cibles')
+    .addStringOption(o => o.setName('name')
+      .setDescription('Nom du groupe (voir /group list)')
+      .setMaxLength(24)
+      .setRequired(true))
+    .addAttachmentOption(o => o.setName('media')
+      .setDescription('Image, GIF ou vidéo à afficher (optionnel si pluie fournie)')
+      .setRequired(false))
+    .addStringOption(o => o.setName('caption')
+      .setDescription('Texte affiché en surimpression (80 caractères max.)')
+      .setMaxLength(80)
+      .setRequired(false))
+    .addAttachmentOption(o => o.setName('musique')
+      .setDescription('MP3 à jouer en même temps que la photo (optionnel)')
+      .setRequired(false))
+    .addStringOption(o => o.setName('pluie')
+      .setDescription('Emoji(s) qui tomberont en pluie sur l\'écran (ex: 🔥💀🤣, jusqu\'à 5)')
+      .setMaxLength(40)
+      .setRequired(false))
+    .toJSON(),
 ];
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);

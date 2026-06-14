@@ -14,6 +14,26 @@
       font-family: ui-sans-serif, system-ui, sans-serif;
     }
 
+    /* ── Thèmes ────────────────────────────────────────────────────────
+       --accent-a/--accent-b pilotent le dégradé de la bulle avatar (et son
+       libellé). "classique" reprend les couleurs historiques de l'overlay. */
+    :root, html[data-theme="classic"] {
+      --accent-a: #ff5e8a;
+      --accent-b: #ffb45e;
+    }
+    html[data-theme="neon"] {
+      --accent-a: #7c3aed;
+      --accent-b: #22d3ee;
+    }
+    html[data-theme="fire"] {
+      --accent-a: #ef4444;
+      --accent-b: #facc15;
+    }
+    html[data-theme="mono"] {
+      --accent-a: #6b7280;
+      --accent-b: #d1d5db;
+    }
+
     #stage {
       position: fixed; inset: 0;
       pointer-events: none;
@@ -77,8 +97,8 @@
       height: 56px;
       border-radius: 50%;
       background:
-        linear-gradient(135deg, #ff5e8a 0%, #ffb45e 100%) padding-box,
-        linear-gradient(135deg, #ff5e8a 0%, #ffb45e 100%) border-box;
+        linear-gradient(135deg, var(--accent-a) 0%, var(--accent-b) 100%) padding-box,
+        linear-gradient(135deg, var(--accent-a) 0%, var(--accent-b) 100%) border-box;
       padding: 3px;
       box-shadow:
         0 8px 22px rgba(0,0,0,.5),
