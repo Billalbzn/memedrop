@@ -117,6 +117,58 @@
     </p>
   </section>
 
+  <!-- ── Tranquillité & connexion ── -->
+  <section class="card">
+    <div class="card-eyebrow">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 15s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+      tranquillité
+    </div>
+    <h2>Besoin de calme ?</h2>
+
+    <div class="field toggle">
+      <label for="connection-toggle" class="label-with-icon">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+        Connecté au bot
+      </label>
+      <input type="checkbox" id="connection-toggle" class="switch">
+    </div>
+    <p class="muted small">Désactive pour couper la connexion entièrement — personne ne peut t'envoyer de drop. L'appli reste ouverte, réactive quand tu veux.</p>
+
+    <div class="field-divider"></div>
+
+    <p class="muted" id="mute-status">Les drops s'affichent normalement sur ton écran.</p>
+    <div class="row">
+      <button class="ghost" id="mute-30">🔇 30 min</button>
+      <button class="ghost" id="mute-120">🔇 2 h</button>
+      <button class="ghost danger" id="mute-forever">🔇 longue durée</button>
+      <button class="primary hidden" id="mute-off">🔊 réactiver les drops</button>
+    </div>
+    <p class="muted small">En mode tranquille, les drops sont reçus mais pas affichés — tu les retrouveras dans l'historique ci-dessous.</p>
+  </section>
+
+  <!-- ── Utilisateurs bloqués ── -->
+  <section id="blocked-card" class="card hidden">
+    <div class="card-eyebrow">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+      bloqués
+    </div>
+    <h2>Utilisateurs bloqués</h2>
+    <p class="muted">Ils ne peuvent plus t'envoyer de drops. Utilise <code>/block @qui</code> sur Discord pour en ajouter.</p>
+    <div id="blocked-list" class="server-list"></div>
+  </section>
+
+  <!-- ── Historique ── -->
+  <section class="card">
+    <div class="card-eyebrow">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+      historique
+    </div>
+    <h2>Derniers drops reçus</h2>
+    <div id="history-list" class="server-list"></div>
+    <p class="muted small hidden" id="history-empty">Rien pour l'instant — envoie-toi un <code>test drop</code> pour voir !</p>
+    <button class="ghost" id="history-clear">vider l'historique</button>
+  </section>
+
   <!-- ── Audio & Affichage ── -->
   <section class="card">
     <div class="card-eyebrow">

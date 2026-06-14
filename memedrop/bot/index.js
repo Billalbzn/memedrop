@@ -39,6 +39,31 @@ const pendingOverlays = new Map();
 const userLinks       = new Map();
 const wsMeta          = new WeakMap();
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Re-link tokens
+//
+// `register` lets an overlay reconnect without /link by replaying its stored
+// identity. Without a secret, that identity is just a Discord user ID — public
+// information — so anyone could impersonate any user. To prevent that, every
+// successful /link issues a token = HMAC(LINK_SECRET, userId). The overlay
+// stores it and must present it on every future `register`. The bot verifies
+// it by recomputing the HMAC — no server-side storage needed, so it survives
+// redeploys as long as LINK_SECRET stays the same.
+//
+// If LINK_SECRET isn't set, we generate an ephemeral one at boot. Re-links
+// then only survive until the next restart (same as before this change), but
+// at least within a single run, identities can't be forged.
+// ─────────────────────────────────────────────────────────────────────────────
+const LINK_SECRET = process.env.LINK_SECRET || crypto.randomBytes(32).toString('hex');
+if (!process.env.LINK_SECRET) {
+  console.warn('[security] LINK_SECRET not set — using an ephemeral secret. ' +
+    'Zero-touch re-link will require a fresh /link after every restart. ' +
+    'Set LINK_SECRET to a long random string in your environment to persist links across redeploys.');
+}
+function tokenFor(userId) {
+  return crypto.createHmac('sha256', LINK_SECRET).update(String(userId)).digest('hex');
+}
+
 // While an overlay is linked, the bot keeps issuing single-use "extension"
 // codes so the user can /link on additional servers without restarting the
 // app. extensionCodes maps code (string) -> userId.
@@ -99,12 +124,39 @@ function isReachable(userId, fromGuildId) {
   return link.guildIds.has(fromGuildId);
 }
 
-// Build the guild-list payload sent to overlays — they use it to render the
-// "Linked servers" toggle panel.
-function buildLinksSnapshot(userId) {
+// Same as isReachable, but also respects the target's per-sender blocklist.
+function canDrop(fromUserId, targetUserId, fromGuildId) {
+  const link = userLinks.get(targetUserId);
+  if (link?.blockedUsers?.has(fromUserId)) return false;
+  return isReachable(targetUserId, fromGuildId);
+}
+
+// Resolve the usernames of users this person has blocked, for display in the
+// overlay's "blocked senders" panel. `blockedIds` stays the authoritative,
+// persisted list; `blocked` (with usernames) is display-only.
+async function buildBlockedSnapshot(userId) {
   const link = userLinks.get(userId);
-  if (!link) return { scope: 'none', guilds: [], guildIds: [] };
-  if (link.scope === 'global') return { scope: 'global', guilds: [], guildIds: [] };
+  if (!link || !link.blockedUsers || link.blockedUsers.size === 0) return [];
+  const out = [];
+  for (const id of link.blockedUsers) {
+    let username = id;
+    try {
+      const u = await client.users.fetch(id);
+      username = u.username;
+    } catch {}
+    out.push({ id, username });
+  }
+  return out;
+}
+
+// Build the guild-list payload sent to overlays — they use it to render the
+// "Linked servers" and "blocked senders" toggle panels.
+async function buildLinksSnapshot(userId) {
+  const link = userLinks.get(userId);
+  const blocked = await buildBlockedSnapshot(userId);
+  const blockedIds = link ? [...(link.blockedUsers || [])] : [];
+  if (!link) return { scope: 'none', guilds: [], guildIds: [], blocked, blockedIds };
+  if (link.scope === 'global') return { scope: 'global', guilds: [], guildIds: [], blocked, blockedIds };
   const guilds = [];
   for (const gid of link.guildIds) {
     const g = client.guilds.cache.get(gid);
@@ -120,15 +172,15 @@ function buildLinksSnapshot(userId) {
   // `guildIds` is the authoritative, complete list of IDs (some may not be in
   // the cache yet right after boot, so `guilds` can be a subset). The overlay
   // persists from `guildIds` and only displays from `guilds`.
-  return { scope: 'guild', guilds, guildIds: [...link.guildIds] };
+  return { scope: 'guild', guilds, guildIds: [...link.guildIds], blocked, blockedIds };
 }
 
-function pushLinksUpdate(userId) {
+async function pushLinksUpdate(userId) {
   const link = userLinks.get(userId);
   if (!link) return;
   sendJson(link.ws, {
     type: 'links_update',
-    links: buildLinksSnapshot(userId),
+    links: await buildLinksSnapshot(userId),
   });
 }
 
@@ -140,7 +192,7 @@ wss.on('connection', (ws) => {
   sendJson(ws, { type: 'pairing_code', code });
   console.log(`[ws] overlay connected, pairing code = ${code}`);
 
-  ws.on('message', (raw) => {
+  ws.on('message', async (raw) => {
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
     if (msg.type === 'pong') return;
@@ -154,8 +206,16 @@ wss.on('connection', (ws) => {
       const username = String(id.username || 'unknown');
       const scope    = id.scope === 'global' ? 'global' : 'guild';
       const guildIds = new Set(Array.isArray(id.guildIds) ? id.guildIds.map(String) : []);
+      const blockedUsers = new Set(Array.isArray(id.blockedIds) ? id.blockedIds.map(String) : []);
       // Need a usable identity with at least one reachable source
       if (!userId || (scope === 'guild' && guildIds.size === 0)) {
+        sendJson(ws, { type: 'register_failed' });
+        return;
+      }
+      // Verify the re-link token. Without a valid token (e.g. an overlay
+      // linked before this check existed, or a forged identity), force a
+      // fresh /link instead of trusting the claimed userId.
+      if (String(id.token || '') !== tokenFor(userId)) {
         sendJson(ws, { type: 'register_failed' });
         return;
       }
@@ -167,12 +227,13 @@ wss.on('connection', (ws) => {
       if (existing && existing.ws !== ws) {
         sendJson(existing.ws, { type: 'unlinked', reason: 'replaced' });
       }
-      userLinks.set(userId, { ws, scope, guildIds });
+      userLinks.set(userId, { ws, scope, guildIds, blockedUsers });
       wsMeta.set(ws, { code: null, userId });
       sendJson(ws, {
         type: 'linked',
         user: { id: userId, username },
-        links: buildLinksSnapshot(userId),
+        token: tokenFor(userId),
+        links: await buildLinksSnapshot(userId),
       });
       issueExtensionCode(ws, userId);
       console.log(`[ws] auto-registered user ${userId} (${scope}, ${guildIds.size} guild(s))`);
@@ -194,8 +255,21 @@ wss.on('connection', (ws) => {
         sendJson(ws, { type: 'unlinked', reason: 'no_guilds_left' });
         reissuePairingCode(ws);
       } else {
-        pushLinksUpdate(meta.userId);
+        await pushLinksUpdate(meta.userId);
       }
+      return;
+    }
+
+    // The overlay can ask the bot to unblock a sender it previously blocked
+    if (msg.type === 'unblock_user') {
+      const meta = wsMeta.get(ws);
+      if (!meta?.userId) return;
+      const link = userLinks.get(meta.userId);
+      if (!link) return;
+      const targetId = String(msg.userId || '');
+      if (!targetId || !link.blockedUsers) return;
+      link.blockedUsers.delete(targetId);
+      await pushLinksUpdate(meta.userId);
     }
   });
 
@@ -248,13 +322,26 @@ const ACCEPTED_MIME =
   /^(image\/(png|jpe?g|gif|webp)|video\/(mp4|webm|quicktime)|audio\/(mpeg|mp3))$/i;
 const MAX_BYTES = 25 * 1024 * 1024;
 
-const lastDropAt = new Map();
-function rateLimited(userId) {
+const DROP_COOLDOWN_MS    = 2_000;
+const DROPALL_COOLDOWN_MS = 15_000;
+
+const lastDropAt    = new Map();
+const lastDropAllAt = new Map();
+
+function cooledDown(map, userId, cooldownMs) {
   const now = Date.now();
-  const prev = lastDropAt.get(userId) || 0;
-  if (now - prev < 2000) return true;
-  lastDropAt.set(userId, now);
-  return false;
+  const prev = map.get(userId) || 0;
+  if (now - prev < cooldownMs) return false;
+  map.set(userId, now);
+  return true;
+}
+
+function rateLimited(userId) {
+  return !cooledDown(lastDropAt, userId, DROP_COOLDOWN_MS);
+}
+
+function dropallRateLimited(userId) {
+  return !cooledDown(lastDropAllAt, userId, DROPALL_COOLDOWN_MS);
 }
 
 function validateAttachment(att) {
@@ -274,11 +361,15 @@ function classifyMedia(mime) {
   return 'image';
 }
 
-// Extrait le premier emoji visuel d'une chaîne (option "pluie")
-function extractEmoji(str) {
+// Extrait jusqu'à 5 emojis visuels distincts d'une chaîne (option "pluie") —
+// permet de faire pleuvoir une combinaison d'emojis plutôt qu'un seul.
+const MAX_RAIN_EMOJIS = 5;
+function extractEmojis(str) {
   if (!str) return null;
-  const match = String(str).match(/\p{Extended_Pictographic}/u);
-  return match ? match[0] : null;
+  const matches = String(str).match(/\p{Extended_Pictographic}/gu);
+  if (!matches) return null;
+  const unique = [...new Set(matches)].slice(0, MAX_RAIN_EMOJIS);
+  return unique.length ? unique : null;
 }
 
 function buildDropPayload(att, caption, fromUser, musicAtt = null, rain = null) {
@@ -360,17 +451,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
             reissuePairingCode(existing.ws);
           }
           pendingOverlays.delete(code);
+          // Preserve any existing blocklist if this user already had a link
+          // (e.g. re-linking after the overlay lost its token)
+          const blockedUsers = existing?.blockedUsers || new Set();
           const link = {
             ws,
             scope: 'guild',
             guildIds: new Set(interaction.guildId ? [interaction.guildId] : []),
+            blockedUsers,
           };
           userLinks.set(interaction.user.id, link);
           wsMeta.set(ws, { code: null, userId: interaction.user.id });
           sendJson(ws, {
             type: 'linked',
             user: { id: interaction.user.id, username: interaction.user.username },
-            links: buildLinksSnapshot(interaction.user.id),
+            token: tokenFor(interaction.user.id),
+            links: await buildLinksSnapshot(interaction.user.id),
           });
           // Immediately issue a NEW pairing code attached to this linked
           // overlay. The overlay shows it so the user can /link on additional
@@ -409,7 +505,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
           if (interaction.guildId) {
             link.guildIds.add(interaction.guildId);
-            pushLinksUpdate(targetUserId);
+            await pushLinksUpdate(targetUserId);
           }
           // Rotate the extension code so each one is single-use
           extensionCodes.delete(code);
@@ -482,7 +578,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const list = [];
         for (const [userId, link] of userLinks) {
           if (link.ws.readyState !== link.ws.OPEN) continue;
-          if (!isReachable(userId, guildId)) continue;
+          if (!canDrop(interaction.user.id, userId, guildId)) continue;
           // Filter to actual members of this guild
           const member = await interaction.guild?.members.fetch(userId).catch(() => null);
           if (member) list.push(`• <@${userId}>`);
@@ -516,7 +612,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const att      = interaction.options.getAttachment('media', false);
         const caption  = interaction.options.getString('caption', false);
         const musicAtt = interaction.options.getAttachment('musique', false);
-        const rain     = extractEmoji(interaction.options.getString('pluie', false));
+        const rain     = extractEmojis(interaction.options.getString('pluie', false));
 
         // Il faut au moins un média ou une pluie
         if (!att && !rain) {
@@ -543,7 +639,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const notReachable = [];
 
         for (const t of targets) {
-          if (isReachable(t.id, interaction.guildId)) {
+          if (canDrop(interaction.user.id, t.id, interaction.guildId)) {
             sendJson(userLinks.get(t.id).ws, payload);
             delivered.push(t.username);
           } else {
@@ -566,14 +662,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
       case 'dropall': {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-        if (rateLimited(interaction.user.id)) {
-          return safeReply(interaction, '⏱️ Doucement — un drop toutes les 2 secondes.');
+        if (dropallRateLimited(interaction.user.id)) {
+          return safeReply(interaction, `⏱️ Doucement — un \`/dropall\` toutes les ${DROPALL_COOLDOWN_MS / 1000} secondes.`);
         }
 
         const att      = interaction.options.getAttachment('media', false);
         const caption  = interaction.options.getString('caption', false);
         const musicAtt = interaction.options.getAttachment('musique', false);
-        const rain     = extractEmoji(interaction.options.getString('pluie', false));
+        const rain     = extractEmojis(interaction.options.getString('pluie', false));
 
         if (!att && !rain) {
           return safeReply(interaction, '❌ Mets au moins un média (`media`) ou un emoji (`pluie`).');
@@ -597,7 +693,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const recipients = [];
         for (const [userId, link] of userLinks) {
           if (link.ws.readyState !== link.ws.OPEN) continue;
-          if (!isReachable(userId, interaction.guildId)) continue;
+          if (!canDrop(interaction.user.id, userId, interaction.guildId)) continue;
           const member = await interaction.guild?.members.fetch(userId).catch(() => null);
           if (member) recipients.push({ userId, ws: link.ws, username: member.user.username });
         }
@@ -613,6 +709,57 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
         return safeReply(interaction,
           `💥 Drop envoyé à **${names.length}** personne${names.length > 1 ? 's' : ''} : ${names.map(n => `**${n}**`).join(', ')}${musicAtt ? ' 🎵' : ''}`);
+      }
+
+      // ── /block — stop a specific user from being able to /drop you ─────
+      case 'block': {
+        const link = userLinks.get(interaction.user.id);
+        if (!link) {
+          return interaction.reply({
+            content: '❌ Lance ton overlay et fais `/link <code>` avant de bloquer quelqu\'un.',
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+        const target = interaction.options.getUser('user', true);
+        if (target.id === interaction.user.id) {
+          return interaction.reply({ content: '🤔 Tu ne peux pas te bloquer toi-même.', flags: MessageFlags.Ephemeral });
+        }
+        link.blockedUsers.add(target.id);
+        await pushLinksUpdate(interaction.user.id);
+        return interaction.reply({
+          content: `🔇 **${target.username}** ne pourra plus t'envoyer de drops.`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      // ── /unblock — re-allow a previously blocked user ───────────────────
+      case 'unblock': {
+        const link = userLinks.get(interaction.user.id);
+        const target = interaction.options.getUser('user', true);
+        if (!link || !link.blockedUsers.has(target.id)) {
+          return interaction.reply({
+            content: `**${target.username}** n'est pas bloqué.`,
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+        link.blockedUsers.delete(target.id);
+        await pushLinksUpdate(interaction.user.id);
+        return interaction.reply({
+          content: `🔊 **${target.username}** peut à nouveau t'envoyer des drops.`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      // ── /blocklist — list who you've blocked ────────────────────────────
+      case 'blocklist': {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        const link = userLinks.get(interaction.user.id);
+        if (!link || link.blockedUsers.size === 0) {
+          return safeReply(interaction, 'Tu n\'as bloqué personne. 🕊️');
+        }
+        const blocked = await buildBlockedSnapshot(interaction.user.id);
+        return safeReply(interaction,
+          `**Utilisateurs bloqués :**\n${blocked.map(b => `• ${b.username} (\`${b.id}\`)`).join('\n')}`);
       }
     }
   } catch (err) {

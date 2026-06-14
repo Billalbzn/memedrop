@@ -13,6 +13,19 @@ const serversTitle = $('#servers-title');
 const serversHint  = $('#servers-hint');
 const serversTip   = $('#servers-tip');
 
+// Tranquillité / connexion / bloqués / historique
+const connectionToggle = $('#connection-toggle');
+const muteStatus   = $('#mute-status');
+const mute30Btn    = $('#mute-30');
+const mute120Btn   = $('#mute-120');
+const muteForeverBtn = $('#mute-forever');
+const muteOffBtn  = $('#mute-off');
+const blockedCard = $('#blocked-card');
+const blockedList = $('#blocked-list');
+const historyList  = $('#history-list');
+const historyEmpty = $('#history-empty');
+const historyClearBtn = $('#history-clear');
+
 // Carte mise à jour
 const updateCard         = $('#update-card');
 const updateEyebrow      = $('#update-eyebrow');
@@ -120,6 +133,117 @@ function renderServersPanel(links) {
   }
 }
 
+// ── Panel utilisateurs bloqués ──────────────────────────────────────────
+function renderBlockedPanel(blocked) {
+  blockedList.innerHTML = '';
+  if (!blocked || blocked.length === 0) {
+    blockedCard.classList.add('hidden');
+    return;
+  }
+  blockedCard.classList.remove('hidden');
+
+  for (const b of blocked) {
+    const row = document.createElement('div');
+    row.className = 'server-row';
+
+    const pic = document.createElement('div');
+    pic.className = 'server-row-pic initial';
+    pic.textContent = (b.username || '?').trim().charAt(0).toUpperCase() || '?';
+
+    const name = document.createElement('div');
+    name.className = 'server-row-name';
+    name.innerHTML = `<strong></strong><div class="server-row-sub">ID ${b.id}</div>`;
+    name.querySelector('strong').textContent = b.username || 'Inconnu';
+
+    const btn = document.createElement('button');
+    btn.className = 'ghost';
+    btn.textContent = 'débloquer';
+    btn.addEventListener('click', async () => {
+      await window.memedrop.unblockUser(b.id);
+    });
+
+    row.appendChild(pic);
+    row.appendChild(name);
+    row.appendChild(btn);
+    blockedList.appendChild(row);
+  }
+}
+
+// ── Mode tranquille ──────────────────────────────────────────────────────
+function applyMuteState(muteUntil) {
+  const muted = muteUntil && (muteUntil === -1 || muteUntil > Date.now());
+  pill.classList.remove('pill--muted');
+  [mute30Btn, mute120Btn, muteForeverBtn].forEach(b => b.classList.toggle('hidden', !!muted));
+  muteOffBtn.classList.toggle('hidden', !muted);
+
+  if (!muted) {
+    muteStatus.textContent = 'Les drops s\'affichent normalement sur ton écran.';
+    return;
+  }
+  pill.classList.add('pill--muted');
+  if (muteUntil === -1) {
+    muteStatus.textContent = '🔇 Mode tranquille activé — jusqu\'à ce que tu le désactives.';
+  } else {
+    const mins = Math.max(1, Math.round((muteUntil - Date.now()) / 60000));
+    muteStatus.textContent = `🔇 Mode tranquille activé — encore ~${mins} min.`;
+  }
+}
+
+mute30Btn.addEventListener('click', async () => applyMuteState(await window.memedrop.setMute(30)));
+mute120Btn.addEventListener('click', async () => applyMuteState(await window.memedrop.setMute(120)));
+muteForeverBtn.addEventListener('click', async () => applyMuteState(await window.memedrop.setMute(-1)));
+muteOffBtn.addEventListener('click', async () => applyMuteState(await window.memedrop.setMute(null)));
+
+// Rafraîchit le compte à rebours pendant qu'un mute temporisé est actif
+setInterval(() => {
+  if (lastConnState?.muteUntil && lastConnState.muteUntil !== -1) applyMuteState(lastConnState.muteUntil);
+}, 30_000);
+
+// ── Pause de connexion ───────────────────────────────────────────────────
+connectionToggle.addEventListener('change', (e) => {
+  window.memedrop.setSettings({ paused: !e.target.checked });
+});
+
+// ── Historique des drops ──────────────────────────────────────────────────
+const HISTORY_KIND_ICON = { image: '🖼️', gif: '🎞️', video: '🎬', audio: '🎵', rain: '🌧️', test: '🧪', unknown: '❓' };
+
+function renderHistory(history) {
+  historyList.innerHTML = '';
+  if (!history || history.length === 0) {
+    historyEmpty.classList.remove('hidden');
+    return;
+  }
+  historyEmpty.classList.add('hidden');
+
+  for (const h of history) {
+    const row = document.createElement('div');
+    row.className = 'server-row';
+
+    const pic = document.createElement('div');
+    pic.className = 'server-row-pic initial';
+    pic.textContent = HISTORY_KIND_ICON[h.kind] || '❓';
+
+    const name = document.createElement('div');
+    name.className = 'server-row-name';
+    const when = new Date(h.ts);
+    const time = when.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    name.innerHTML = `<strong></strong><div class="server-row-sub"></div>`;
+    name.querySelector('strong').textContent = h.from;
+    name.querySelector('.server-row-sub').textContent = h.caption ? `"${h.caption}" — ${time}` : time;
+
+    row.appendChild(pic);
+    row.appendChild(name);
+    historyList.appendChild(row);
+  }
+}
+
+window.memedrop.onHistory(renderHistory);
+window.memedrop.getHistory().then(renderHistory);
+historyClearBtn.addEventListener('click', async () => {
+  await window.memedrop.clearHistory();
+  renderHistory([]);
+});
+
 // ── État de connexion ──────────────────────────────────────────────────
 function applyConnState(state) {
   lastConnState = state;
@@ -145,10 +269,15 @@ function applyConnState(state) {
       linkedCard.classList.remove('hidden');
       linkedUser.textContent = state.user?.username || '—';
       renderServersPanel(state.links);
+      renderBlockedPanel(state.links?.blocked);
       break;
     case 'connected':
       pill.classList.add('pill--connecting');
       pillLabel.textContent = 'connecté';
+      break;
+    case 'paused':
+      pill.classList.add('pill--paused');
+      pillLabel.textContent = 'en pause';
       break;
     case 'disconnected':
     default:
@@ -156,6 +285,9 @@ function applyConnState(state) {
       pillLabel.textContent = 'hors ligne';
       break;
   }
+
+  connectionToggle.checked = state.status !== 'paused';
+  applyMuteState(state.muteUntil);
 }
 
 window.memedrop.onConnection(applyConnState);

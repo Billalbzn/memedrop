@@ -123,6 +123,8 @@ body::before {
 .pill--awaiting .dot   { background: var(--accent-a); animation: pulse .8s ease-in-out infinite; }
 .pill--linked .dot     { background: var(--accent-c); box-shadow: 0 0 10px rgba(106,255,224,.7); }
 .pill--down .dot       { background: #ff4d4d; }
+.pill--paused .dot     { background: #9b8cff; }
+.pill--muted .dot      { background: #ffb45e; }
 
 @keyframes pulse {
   0%, 100% { transform: scale(1);    opacity: 1; }

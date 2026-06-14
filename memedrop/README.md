@@ -7,7 +7,7 @@ Two pieces:
 - **`bot/`** → Discord bot + WebSocket hub. Hosted once on Railway, runs 24/7.
 - **`overlay/`** → Electron app. Each friend installs the `.exe` on their PC.
 
-The bot exposes `/drop @target`, `/link`, `/unlink`, `/status`, `/who`. The overlay is a transparent click-through window that sits on top of the user's game.
+The bot exposes `/drop @target`, `/dropall`, `/link`, `/unlink`, `/status`, `/who`, `/block`, `/unblock`, `/blocklist`. The overlay is a transparent click-through window that sits on top of the user's game, launches automatically at login, and re-connects to your bot on its own.
 
 ---
 
@@ -60,6 +60,13 @@ Everyone shares **one bot** on one Railway service. Each PC runs its own overlay
 4. In the Railway dashboard, open the service → **Variables** tab → add:
    - `DISCORD_TOKEN` = your bot token from step 1.1
    - `CLIENT_ID` = your application ID (visible on the bot's Discord dev page → General Info)
+   - `LINK_SECRET` = a long random string, used to sign the tokens that let the
+     overlay re-link automatically after a restart. Generate one with:
+     ```bash
+     node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+     ```
+     **Keep this stable** across redeploys. If it ever changes (or is left
+     unset), every overlay needs to run `/link` again once.
 
 5. Still in Railway → **Settings** tab → **Networking** → **Generate Domain**. You get something like `memedrop-bot.up.railway.app`. **Copy this domain**, you'll need it.
 
@@ -120,13 +127,19 @@ For each friend, once:
 3. On Discord, in the server where the bot lives, type `/link <code>`.
 4. App pill turns green **LINKED**. They're done.
 
+The app starts automatically with Windows from now on (tray icon only — no
+window) and reconnects to the bot on its own. To pause incoming drops without
+quitting the app, open the tray menu or the settings window and use the
+"connecté au bot" toggle or "mode tranquille".
+
 Now anyone in the server can target them:
 
 ```
 /drop target:@friend  media:[drag&drop image]
 ```
 
-Boom — meme on their screen.
+Boom — meme on their screen. Add a `pluie` option (up to 5 emojis, e.g. `🔥💀🤣`)
+to make them rain down the screen too.
 
 ### Useful commands
 
@@ -136,7 +149,21 @@ Boom — meme on their screen.
 | `/unlink`           | Cut the link                                             |
 | `/status`           | Is your overlay connected?                               |
 | `/who`              | List everyone in this server with a live overlay         |
-| `/drop @who <file>` | Send a meme to that person's screen                      |
+| `/drop @who <file>` | Send a meme to that person's screen (2s cooldown)        |
+| `/dropall <file>`   | Send a meme to everyone reachable in this server (15s cooldown) |
+| `/block @who`       | Stop receiving drops from someone                        |
+| `/unblock @who`     | Allow drops from them again                              |
+| `/blocklist`        | List who you've blocked                                  |
+
+### On the overlay side
+
+- **Mode tranquille** (tray icon or settings): mute incoming drops for 30 min,
+  2 h, or until you turn it back on. Muted drops are still saved to your
+  **history** (settings window) so you don't miss anything.
+- **Pause connection** (settings window): fully disconnect from the bot —
+  nobody can reach you — without closing the app. Flip it back on anytime.
+- Hover a drop and click the **✕** that appears in the corner to dismiss it
+  early.
 
 ---
 
@@ -168,7 +195,7 @@ The overlay tries `wss://memedrop-bot.up.railway.app` by default — change the 
 - The overlay is click-through by design. To interact (close, drag), use the tray icon menu.
 - This app does NOT inject into game processes, hook APIs, or read game memory. It's just a transparent OS window. That's safe with anti-cheats — but always check your game's ToS.
 - Discord CDN URLs expire after ~24h. Drops are real-time, so this doesn't matter for normal use, but don't expect to "replay" old drops.
-- The bot keeps pairings in memory. If it restarts (e.g. Railway redeploys), everyone re-runs `/link`. Add SQLite/Postgres if you want persistence.
+- The bot keeps pairings in memory. If it restarts (e.g. Railway redeploys), the overlay re-links itself automatically using a token saved locally — as long as `LINK_SECRET` stays the same across deploys. If `LINK_SECRET` changes (or was never set), everyone re-runs `/link` once. Add SQLite/Postgres if you want full persistence.
 
 ---
 

@@ -24,8 +24,8 @@ const commands = [
         .setDescription('MP3 à jouer en même temps que la photo (optionnel)')
         .setRequired(false))
       .addStringOption(o => o.setName('pluie')
-        .setDescription('Emoji qui tombera en pluie sur l\'écran (ex: 🔥 💀 🤣)')
-        .setMaxLength(8)
+        .setDescription('Emoji(s) qui tomberont en pluie sur l\'écran (ex: 🔥💀🤣, jusqu\'à 5)')
+        .setMaxLength(40)
         .setRequired(false));
     for (let i = 2; i <= 5; i++) {
       b.addUserOption(o => o.setName(`target${i}`)
@@ -50,8 +50,8 @@ const commands = [
       .setDescription('MP3 à jouer en même temps que la photo (optionnel)')
       .setRequired(false))
     .addStringOption(o => o.setName('pluie')
-      .setDescription('Emoji qui tombera en pluie sur l\'écran (ex: 🔥 💀 🤣)')
-      .setMaxLength(8)
+      .setDescription('Emoji(s) qui tomberont en pluie sur l\'écran (ex: 🔥💀🤣, jusqu\'à 5)')
+      .setMaxLength(40)
       .setRequired(false))
     .toJSON(),
 
@@ -78,6 +78,27 @@ const commands = [
   new SlashCommandBuilder()
     .setName('who')
     .setDescription('Voir qui sur ce serveur a un overlay lié (cibles potentielles)')
+    .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName('block')
+    .setDescription('Empêche quelqu\'un de t\'envoyer des drops')
+    .addUserOption(o => o.setName('user')
+      .setDescription('La personne à bloquer')
+      .setRequired(true))
+    .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName('unblock')
+    .setDescription('Autorise à nouveau quelqu\'un à t\'envoyer des drops')
+    .addUserOption(o => o.setName('user')
+      .setDescription('La personne à débloquer')
+      .setRequired(true))
+    .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName('blocklist')
+    .setDescription('Affiche la liste des personnes que tu as bloquées')
     .toJSON(),
 ];
 
