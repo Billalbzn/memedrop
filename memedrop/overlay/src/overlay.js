@@ -28,13 +28,21 @@ let hoveredDrop  = null;
 let inCapture    = false;
 let visualActive = 0;
 
-// Renvoie le drop dont le bounding-rect contient (x, y), ou null.
+// Marge de détection autour du drop, pour couvrir le bouton fermer qui
+// dépasse du cadre (top:-10px / right:-10px, 26px de large) — sans ça, le
+// curseur n'est jamais considéré "sur le drop" quand il est sur la croix et
+// le clic passe au travers vers le jeu.
+const HOVER_MARGIN = 14;
+
+// Renvoie le drop dont le bounding-rect (élargi de HOVER_MARGIN) contient
+// (x, y), ou null.
 function findDropAt(x, y) {
   for (const anchor of stage.querySelectorAll('.anchor')) {
     const drop = anchor.querySelector('.drop');
-    if (!drop || drop.classList.contains('leaving')) continue;
+    if (!drop || drop.classList.contains('leaving') || drop.classList.contains('closing')) continue;
     const r = drop.getBoundingClientRect();
-    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+    if (x >= r.left - HOVER_MARGIN && x <= r.right + HOVER_MARGIN &&
+        y >= r.top - HOVER_MARGIN && y <= r.bottom + HOVER_MARGIN) {
       return { anchor, drop };
     }
   }
@@ -425,7 +433,7 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
     e.preventDefault();
     e.stopPropagation();
     if (isVideo && el) { try { el.pause(); } catch {} }
-    removeNow();
+    removeNow({ smooth: true });
   });
   wrap.appendChild(closeBtn);
 
@@ -558,7 +566,10 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
     removalTimer = setTimeout(removeNow, lifetime);
   }
 
-  function removeNow() {
+  // `smooth: true` (fermeture manuelle via la croix) → fondu doux, plus
+  // rapide que l'animation "drop-out" habituelle (qui simule une chute en
+  // fin de vie).
+  function removeNow({ smooth = false } = {}) {
     if (removed || !anchor.isConnected) return;
     removed = true;
     if (isVideo) livePlayables.delete(el);
@@ -568,14 +579,14 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
       liveAudios.delete(musicAudio);
     }
     liveDrops.delete(dropMeta);
-    wrap.classList.add('leaving');
+    wrap.classList.add(smooth ? 'closing' : 'leaving');
     setTimeout(() => {
       anchor.remove();
       hideSpotlight(anchor);
       onVisualDropRemoved();   // arrête le sondage + exitCapture si plus aucun drop
       active = Math.max(0, active - 1);
       notifyIfIdle();
-    }, 400);
+    }, smooth ? 220 : 400);
   }
 
   // Adjust the remaining lifetime based on a new cap (in seconds).
