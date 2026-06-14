@@ -154,6 +154,14 @@ to make them rain down the screen too.
 | `/block @who`       | Stop receiving drops from someone                        |
 | `/unblock @who`     | Allow drops from them again                              |
 | `/blocklist`        | List who you've blocked                                  |
+| `/fav add <name> <file>` | Save a media as a favorite (max 10)                  |
+| `/fav list` / `/fav remove <name>` | List or delete your favorites             |
+| `/dropfav <name> @who` | Re-send a saved favorite (2s cooldown)                |
+| `/group set <name> @who...` | Create/replace a named target group (max 5 members, 10 groups) |
+| `/group list` / `/group delete <name>` | List or delete your groups          |
+| `/dropgroup <name> <file>` | Send a meme to everyone in a group (2s cooldown)   |
+
+> ⏱️ If you're on cooldown, `/drop`, `/dropall`, `/dropfav` and `/dropgroup` now reply with the exact time left.
 
 ### On the overlay side
 
@@ -164,6 +172,8 @@ to make them rain down the screen too.
   nobody can reach you — without closing the app. Flip it back on anytime.
 - Hover a drop and click the **✕** that appears in the corner to dismiss it
   early.
+- **Theme** (settings window, audio & display section): pick a color skin for
+  the avatar bubble — Classique, Néon, Feu, or Mono.
 
 ---
 
@@ -194,8 +204,9 @@ The overlay tries `wss://memedrop-bot.up.railway.app` by default — change the 
 - **Fullscreen exclusive mode** hides the overlay (OS-level limit). Friends must play in **borderless** or **windowed**. Most modern games default to borderless.
 - The overlay is click-through by design. To interact (close, drag), use the tray icon menu.
 - This app does NOT inject into game processes, hook APIs, or read game memory. It's just a transparent OS window. That's safe with anti-cheats — but always check your game's ToS.
-- Discord CDN URLs expire after ~24h. Drops are real-time, so this doesn't matter for normal use, but don't expect to "replay" old drops.
-- The bot keeps pairings in memory. If it restarts (e.g. Railway redeploys), the overlay re-links itself automatically using a token saved locally — as long as `LINK_SECRET` stays the same across deploys. If `LINK_SECRET` changes (or was never set), everyone re-runs `/link` once. Add SQLite/Postgres if you want full persistence.
+- Discord CDN URLs expire after ~24h. Drops are real-time, so this doesn't matter for normal use, but don't expect to "replay" old drops — including favorites saved with `/fav add`: if a favorite stops showing up after a day or so, just re-run `/fav add` to refresh its URL.
+- The bot keeps pairings in memory. If it restarts (e.g. Railway redeploys), the overlay re-links itself automatically using a token saved locally — as long as `LINK_SECRET` stays the same across deploys. If `LINK_SECRET` changes (or was never set), everyone re-runs `/link` once.
+- Favorites and groups (`/fav`, `/group`) are saved to `bot/data/store.json`. On Railway this disk is wiped on every redeploy — mount a persistent volume at `bot/data` (set `DATA_DIR` to its path if different) if you want favorites/groups to survive redeploys, not just restarts.
 
 ---
 

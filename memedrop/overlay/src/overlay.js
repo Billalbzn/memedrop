@@ -662,5 +662,14 @@ if (window.memedrop.onSettingsUpdate) {
       spotlightEl.style.opacity = '0';
       if (spotlightRAF) { cancelAnimationFrame(spotlightRAF); spotlightRAF = null; }
     }
+    // Thème — change les couleurs d'accent (bulle avatar) à la volée
+    if (typeof settings?.theme === 'string') {
+      document.documentElement.dataset.theme = settings.theme;
+    }
   });
 }
+
+// Applique le thème choisi au chargement de l'overlay
+window.memedrop.getSettings().then((s) => {
+  if (s?.theme) document.documentElement.dataset.theme = s.theme;
+}).catch(() => {});

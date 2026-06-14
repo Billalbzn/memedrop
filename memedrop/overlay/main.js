@@ -37,6 +37,8 @@ const store = new Store({
     muteUntil: null,
     // Historique local des derniers drops reçus (pour les réglages).
     dropHistory: [],
+    // Thème visuel de l'overlay : 'classic' | 'neon' | 'fire' | 'mono'.
+    theme: 'classic',
   },
 });
 
@@ -479,6 +481,7 @@ ipcMain.handle('settings:get', () => ({
   overlayDisplayId: store.get('overlayDisplayId'),
   paused:         store.get('paused'),
   muteUntil:      store.get('muteUntil'),
+  theme:          store.get('theme'),
 }));
 
 ipcMain.handle('settings:set', (_e, patch) => {
@@ -504,7 +507,8 @@ ipcMain.handle('settings:set', (_e, patch) => {
   if ('overlayDisplayId' in patch) { repositionOverlay(); enforceTop(); }
   if (overlayWin && !overlayWin.isDestroyed() &&
       ('volume' in patch || 'musicVolume' in patch || 'opacity' in patch ||
-       'duration' in patch || 'videoDuration' in patch || 'spotlightOnDrop' in patch)) {
+       'duration' in patch || 'videoDuration' in patch || 'spotlightOnDrop' in patch ||
+       'theme' in patch)) {
     const livePatch = {};
     if ('volume'          in patch) livePatch.volume          = patch.volume;
     if ('musicVolume'     in patch) livePatch.musicVolume     = patch.musicVolume;
@@ -512,6 +516,7 @@ ipcMain.handle('settings:set', (_e, patch) => {
     if ('duration'        in patch) livePatch.duration        = patch.duration;
     if ('videoDuration'   in patch) livePatch.videoDuration   = patch.videoDuration;
     if ('spotlightOnDrop' in patch) livePatch.spotlightOnDrop = patch.spotlightOnDrop;
+    if ('theme'           in patch) livePatch.theme           = patch.theme;
     overlayWin.webContents.send('settings-update', livePatch);
   }
   return true;
