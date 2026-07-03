@@ -1,6 +1,6 @@
 {
   "name": "memedrop-overlay",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Always-on-top overlay that displays memes dropped from Discord",
   "main": "main.js",
   "author": "kalel95190",

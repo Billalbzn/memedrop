@@ -232,14 +232,35 @@ function chooseSpot(avoidZone) {
 }
 
 // ── Synthèse vocale (drops TTS) ───────────────────────────────────────
-function speakTTS(text, settings) {
+// L'audio est généré côté serveur (endpoint /tts du bot Railway) et fourni
+// via payload.ttsUrl : le speechSynthesis du renderer Electron est muet sur
+// la plupart des PC (Chromium n'embarque aucune voix). La synthèse locale ne
+// sert plus que de secours si l'URL manque ou si la lecture échoue.
+function speakTTS(text, ttsUrl, settings) {
+  const vol = Math.max(0, Math.min(1, settings?.volume ?? 0.75));
+  let spoke = false;
+  const speakLocal = () => {
+    if (spoke) return;   // évite la double lecture (error + play().catch)
+    spoke = true;
+    try {
+      const u = new SpeechSynthesisUtterance(String(text).slice(0, 200));
+      u.lang = 'fr-FR';
+      u.rate = 1.05;
+      u.volume = vol;
+      speechSynthesis.speak(u);
+    } catch {}
+  };
+  if (!ttsUrl) return speakLocal();
   try {
-    const u = new SpeechSynthesisUtterance(String(text).slice(0, 200));
-    u.lang = 'fr-FR';
-    u.rate = 1.05;
-    u.volume = Math.max(0, Math.min(1, settings?.volume ?? 0.75));
-    speechSynthesis.speak(u);
-  } catch {}
+    const a = document.createElement('audio');
+    a.src = ttsUrl;
+    applyVolume(a, vol);
+    a.preload = 'auto';
+    a.addEventListener('error', speakLocal);
+    a.play().catch(speakLocal);
+  } catch {
+    speakLocal();
+  }
 }
 
 // Toast pour un drop TTS sans média : avatar + texte lu, en haut au centre.
@@ -478,7 +499,7 @@ function playAudioDrop({ media, caption, from, settings }) {
 }
 
 function renderDrop(payload) {
-  const { media, caption, from, settings, music, rain, tts, effect, dropId } = payload;
+  const { media, caption, from, settings, music, rain, tts, ttsUrl, effect, dropId } = payload;
 
   // Plafond atteint → file d'attente (uniquement pour les drops qui
   // consomment un slot, c.-à-d. ceux avec média). Le check vient AVANT le
@@ -489,7 +510,7 @@ function renderDrop(payload) {
   }
 
   // Texte lu à voix haute — peut accompagner un média ou venir seul
-  if (tts) speakTTS(tts, settings);
+  if (tts) speakTTS(tts, ttsUrl, settings);
 
   // Drop sans média visuel : pluie et/ou TTS + son
   if (!media) {

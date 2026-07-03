@@ -9,10 +9,50 @@ const store = require('./store');
 
 const PORT = Number(process.env.PORT || process.env.WS_PORT || 8765);
 
+// ── TTS servi par le bot ─────────────────────────────────────────────────────
+// La synthèse vocale du renderer Electron (speechSynthesis) est muette sur la
+// plupart des PC : Chromium n'embarque aucune voix. Le bot expose donc
+// GET /tts?text=... qui relaie le MP3 généré par Google Translate TTS ;
+// l'overlay le joue dans un simple élément <audio>.
+async function handleTts(u, res) {
+  const text = (u.searchParams.get('text') || '').trim().slice(0, MAX_TTS_CHARS);
+  if (!text) {
+    res.writeHead(400, { 'Content-Type': 'text/plain' });
+    res.end('missing text');
+    return;
+  }
+  const rawLang = u.searchParams.get('lang') || '';
+  const lang = /^[a-z]{2}(-[A-Z]{2})?$/.test(rawLang) ? rawLang : 'fr';
+  try {
+    const g = await fetch(
+      'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob' +
+      `&tl=${lang}&q=${encodeURIComponent(text)}`,
+      { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } },
+    );
+    if (!g.ok) throw new Error(`upstream ${g.status}`);
+    const buf = Buffer.from(await g.arrayBuffer());
+    res.writeHead(200, {
+      'Content-Type': 'audio/mpeg',
+      'Content-Length': buf.length,
+      'Cache-Control': 'public, max-age=86400',
+    });
+    res.end(buf);
+  } catch (e) {
+    console.error('[tts] failed:', e.message);
+    res.writeHead(502, { 'Content-Type': 'text/plain' });
+    res.end('tts failed');
+  }
+}
+
 const httpServer = http.createServer((req, res) => {
-  if (req.url === '/health' || req.url === '/') {
+  const u = new URL(req.url, 'http://localhost');
+  if (u.pathname === '/health' || u.pathname === '/') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('MemeDrop bot online');
+    return;
+  }
+  if (u.pathname === '/tts' && req.method === 'GET') {
+    handleTts(u, res);
     return;
   }
   res.writeHead(404);
@@ -461,13 +501,30 @@ function extractEmojis(str) {
 const EFFECTS = new Set(['zoom', 'tornade', 'glitch', 'shake']);
 const MAX_TTS_CHARS = 200;
 
+// Base publique du bot, utilisée pour construire les URL /tts envoyées aux
+// overlays. Railway fournit RAILWAY_PUBLIC_DOMAIN automatiquement ; sinon on
+// retombe sur le domaine prod connu (même fallback codé en dur que dans le
+// main.js de l'overlay).
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL ||
+  (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '') ||
+  'https://memedrop-production-3106.up.railway.app'
+).replace(/\/+$/, '');
+
+function ttsUrlFor(text) {
+  if (!text) return null;
+  return `${PUBLIC_BASE_URL}/tts?text=${encodeURIComponent(text)}`;
+}
+
 function buildDropPayload(att, caption, fromUser, musicAtt = null, rain = null, extra = {}) {
+  const ttsText = extra.tts ? String(extra.tts).slice(0, MAX_TTS_CHARS) : null;
   return {
     type: 'drop',
     // Identifiant du drop — permet au receveur de réagir depuis l'overlay
     dropId: crypto.randomBytes(8).toString('hex'),
-    // Texte lu à voix haute par la synthèse vocale du receveur (optionnel)
-    tts: extra.tts ? String(extra.tts).slice(0, MAX_TTS_CHARS) : null,
+    // Texte lu à voix haute chez le receveur (optionnel) + URL de l'audio
+    // généré côté serveur (voir handleTts) que l'overlay joue directement
+    tts: ttsText,
+    ttsUrl: ttsUrlFor(ttsText),
     // Effet d'apparition spécial (zoom / tornade / glitch / shake)
     effect: EFFECTS.has(extra.effect) ? extra.effect : null,
     media: att ? {
