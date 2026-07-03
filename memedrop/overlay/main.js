@@ -609,13 +609,19 @@ ipcMain.on('open-external', (_e, url) => {
 // Le renderer demande à démarrer/arrêter le sondage selon qu'il y a des
 // drops visuels à l'écran.
 let _cursorPollTimer = null;
+let _lastCursor = null;
 
 function startCursorPoll() {
   if (_cursorPollTimer) return;
+  _lastCursor = null;
   _cursorPollTimer = setInterval(() => {
     if (!overlayWin || overlayWin.isDestroyed()) return;
-    const pt  = screen.getCursorScreenPoint();
-    const b   = overlayWin.getBounds();
+    const pt = screen.getCursorScreenPoint();
+    // Souris immobile → rien à signaler, on économise ~60 IPC/s pendant
+    // qu'un drop est affiché (le renderer ne réagit qu'aux mouvements).
+    if (_lastCursor && _lastCursor.x === pt.x && _lastCursor.y === pt.y) return;
+    _lastCursor = pt;
+    const b = overlayWin.getBounds();
     overlayWin.webContents.send('overlay:cursor', { x: pt.x - b.x, y: pt.y - b.y });
   }, 16);
 }
@@ -624,7 +630,9 @@ function stopCursorPoll() {
   if (_cursorPollTimer) { clearInterval(_cursorPollTimer); _cursorPollTimer = null; }
 }
 
-ipcMain.on('overlay:watch-cursor',   () => startCursorPoll());
+// Un nouveau drop peut apparaître sous un curseur immobile : on force le
+// renvoi de la position au prochain tick pour que le survol soit détecté.
+ipcMain.on('overlay:watch-cursor',   () => { _lastCursor = null; startCursorPoll(); });
 ipcMain.on('overlay:unwatch-cursor', () => stopCursorPoll());
 
 // Bascule setIgnoreMouseEvents à la demande du renderer.

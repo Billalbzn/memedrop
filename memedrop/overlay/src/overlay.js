@@ -129,9 +129,15 @@ document.addEventListener('mouseup', () => {
 // ── Son d'arrivée généré via Web Audio API ────────────────────────────
 // L'ancien WAV base64 était trop court (~1 ms) et inaudible.
 // On synthétise un "pop" descendant avec un oscillateur + enveloppe gain.
+// Un seul AudioContext partagé : en créer un par pop finit par épuiser les
+// contextes audio de Chromium quand les drops s'enchaînent.
+let popCtx = null;
 function playPop(volume) {
   try {
-    const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+    if (!popCtx || popCtx.state === 'closed') {
+      popCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    const ctx  = popCtx;
     const osc  = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
@@ -145,7 +151,7 @@ function playPop(volume) {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
     osc.start(t);
     osc.stop(t + 0.16);
-    osc.addEventListener('ended', () => ctx.close().catch(() => {}));
+    osc.addEventListener('ended', () => { osc.disconnect(); gain.disconnect(); });
   } catch {}
 }
 
@@ -178,10 +184,7 @@ function applyVolume(p, vol) {
       p.muted = false;
       p.volume = v;
     }
-    console.log('[volume] applied', v, '→ muted=', p.muted, 'volume=', p.volume, 'on', p.tagName, p.dataset.kind || '');
-  } catch (e) {
-    console.error('[volume] applyVolume failed:', e);
-  }
+  } catch {}
 }
 
 function chooseSpot() {
@@ -190,14 +193,6 @@ function chooseSpot() {
   const x = marginX + Math.random() * (100 - marginX * 2);
   const y = marginY + Math.random() * (100 - marginY * 2);
   return { x, y };
-}
-
-function playPop(volume) {
-  try {
-    const a = new Audio(popUrl);
-    applyVolume(a, volume ?? 0.5);
-    a.play().catch(() => {});
-  } catch {}
 }
 
 function notifyIfIdle() {
@@ -632,7 +627,6 @@ window.memedrop.onDrop((payload) => {
 
 if (window.memedrop.onSettingsUpdate) {
   window.memedrop.onSettingsUpdate((settings) => {
-    console.log('[settings-update] received:', settings, 'liveVideos=', livePlayables.size, 'liveAudios=', liveAudios.size, 'liveDrops=', liveDrops.size);
     // Video volume slider → only affects currently-playing videos
     if (typeof settings?.volume === 'number') {
       for (const p of livePlayables) applyVolume(p, settings.volume);
