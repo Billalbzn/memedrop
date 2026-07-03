@@ -27,6 +27,10 @@ contextBridge.exposeInMainWorld('memedrop', {
   // Historique des drops reçus
   getHistory:     () => ipcRenderer.invoke('history:get'),
   clearHistory:   () => ipcRenderer.invoke('history:clear'),
+  replayDrop:     (ts) => ipcRenderer.invoke('history:replay', ts),
+
+  // Réaction emoji à un drop (relayée au bot → canal Discord d'origine)
+  reactDrop:      (dropId, emoji) => ipcRenderer.send('drop:react', { dropId, emoji }),
   onHistory:      (cb) => {
     const handler = (_e, history) => cb(history);
     ipcRenderer.on('history-update', handler);

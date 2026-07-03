@@ -28,13 +28,14 @@ let hoveredDrop  = null;
 let inCapture    = false;
 let visualActive = 0;
 
-// Marge de détection autour du drop, pour couvrir le bouton fermer qui
-// dépasse du cadre (top:-10px / right:-10px, 26px de large) — sans ça, le
-// curseur n'est jamais considéré "sur le drop" quand il est sur la croix et
-// le clic passe au travers vers le jeu.
-const HOVER_MARGIN = 14;
+// Marges de détection autour du drop, pour couvrir les contrôles qui
+// dépassent du cadre : la croix de fermeture (top:-10px / right:-10px) et
+// la barre de réactions (sous le drop) — sans ça, le curseur n'est jamais
+// considéré "sur le drop" quand il est dessus et le clic passe au jeu.
+const HOVER_MARGIN        = 14;
+const HOVER_MARGIN_BOTTOM = 40;   // barre de réactions en dessous
 
-// Renvoie le drop dont le bounding-rect (élargi de HOVER_MARGIN) contient
+// Renvoie le drop dont le bounding-rect (élargi des marges) contient
 // (x, y), ou null.
 function findDropAt(x, y) {
   for (const anchor of stage.querySelectorAll('.anchor')) {
@@ -42,7 +43,7 @@ function findDropAt(x, y) {
     if (!drop || drop.classList.contains('leaving') || drop.classList.contains('closing')) continue;
     const r = drop.getBoundingClientRect();
     if (x >= r.left - HOVER_MARGIN && x <= r.right + HOVER_MARGIN &&
-        y >= r.top - HOVER_MARGIN && y <= r.bottom + HOVER_MARGIN) {
+        y >= r.top - HOVER_MARGIN && y <= r.bottom + HOVER_MARGIN_BOTTOM) {
       return { anchor, drop };
     }
   }
@@ -160,6 +161,26 @@ const VIDEO_HARD_CAP_SECONDS = 30;
 const AUDIO_HARD_CAP_SECONDS = 10;
 let active = 0;
 
+// ── File d'attente ────────────────────────────────────────────────────
+// Au-delà de MAX_CONCURRENT drops simultanés, les suivants étaient jetés
+// en silence. On les met désormais en file et on les joue dès qu'une place
+// se libère. MAX_QUEUE évite l'empilement infini en cas de spam.
+const MAX_QUEUE = 12;
+const dropQueue = [];
+
+function drainQueue() {
+  while (dropQueue.length && active < MAX_CONCURRENT) {
+    renderDrop(dropQueue.shift());
+  }
+}
+
+// Décrémente le compteur de drops actifs + notifie + vide la file.
+function releaseSlot() {
+  active = Math.max(0, active - 1);
+  notifyIfIdle();
+  drainQueue();
+}
+
 const livePlayables = new Set();
 // Separate set for audio drops so the "Music volume" slider can target them
 // independently of the "Video volume" slider.
@@ -187,12 +208,58 @@ function applyVolume(p, vol) {
   } catch {}
 }
 
-function chooseSpot() {
+// Tire une position (en %) hors de la zone d'exclusion configurée.
+// Rejection sampling borné : si la zone couvre presque tout, on garde le
+// dernier tirage plutôt que de boucler indéfiniment.
+function chooseSpot(avoidZone) {
   const marginX = 14;
   const marginY = 20;
-  const x = marginX + Math.random() * (100 - marginX * 2);
-  const y = marginY + Math.random() * (100 - marginY * 2);
-  return { x, y };
+  const rand = () => ({
+    x: marginX + Math.random() * (100 - marginX * 2),
+    y: marginY + Math.random() * (100 - marginY * 2),
+  });
+  const inZone = (p) => {
+    switch (avoidZone) {
+      case 'center': return p.x > 28 && p.x < 72 && p.y > 28 && p.y < 72;
+      case 'top':    return p.y < 45;
+      case 'bottom': return p.y > 55;
+      default:       return false;
+    }
+  };
+  let p = rand();
+  for (let i = 0; i < 24 && inZone(p); i++) p = rand();
+  return p;
+}
+
+// ── Synthèse vocale (drops TTS) ───────────────────────────────────────
+function speakTTS(text, settings) {
+  try {
+    const u = new SpeechSynthesisUtterance(String(text).slice(0, 200));
+    u.lang = 'fr-FR';
+    u.rate = 1.05;
+    u.volume = Math.max(0, Math.min(1, settings?.volume ?? 0.75));
+    speechSynthesis.speak(u);
+  } catch {}
+}
+
+// Toast pour un drop TTS sans média : avatar + texte lu, en haut au centre.
+// Ne compte pas dans `active` (discret, hors des slots de drops visuels).
+function showTtsToast({ tts, from, settings }) {
+  const toast = document.createElement('div');
+  toast.className = 'audio-toast';
+  toast.style.opacity = String(settings?.opacity ?? 1);
+  toast.appendChild(buildAvatarBubble(from));
+  const cap = document.createElement('div');
+  cap.className = 'audio-caption';
+  cap.textContent = `🗣️ ${String(tts).trim().slice(0, 120)}`;
+  toast.appendChild(cap);
+  document.body.appendChild(toast);
+  // Durée ~ lecture : 60 ms par caractère, entre 3 et 12 s
+  const ms = Math.max(3000, Math.min(12000, String(tts).length * 60));
+  setTimeout(() => {
+    toast.classList.add('leaving');
+    setTimeout(() => toast.remove(), 300);
+  }, ms);
 }
 
 function notifyIfIdle() {
@@ -331,7 +398,7 @@ function buildAvatarBubble(from) {
 // time. Designed to barely interrupt the game.
 // ──────────────────────────────────────────────────────────────────────────
 function playAudioDrop({ media, caption, from, settings }) {
-  if (active >= MAX_CONCURRENT) return;
+  // Le plafond MAX_CONCURRENT est géré en amont par renderDrop (file d'attente).
   active++;
 
   const toast = document.createElement('div');
@@ -369,12 +436,10 @@ function playAudioDrop({ media, caption, from, settings }) {
       toast.classList.add('leaving');
       setTimeout(() => {
         toast.remove();
-        active = Math.max(0, active - 1);
-        notifyIfIdle();
+        releaseSlot();
       }, 300);
     } else {
-      active = Math.max(0, active - 1);
-      notifyIfIdle();
+      releaseSlot();
     }
   }
 
@@ -388,10 +453,24 @@ function playAudioDrop({ media, caption, from, settings }) {
   if (settings?.soundOnArrival) playPop(settings.volume);
 }
 
-function renderDrop({ media, caption, from, settings, music, rain }) {
-  // Drop pluie seule — pas de média visuel, juste les émojis + son
+function renderDrop(payload) {
+  const { media, caption, from, settings, music, rain, tts, effect, dropId } = payload;
+
+  // Plafond atteint → file d'attente (uniquement pour les drops qui
+  // consomment un slot, c.-à-d. ceux avec média). Le check vient AVANT le
+  // TTS pour ne pas le lire deux fois (à l'empilement puis au défilement).
+  if (media && active >= MAX_CONCURRENT) {
+    if (dropQueue.length < MAX_QUEUE) dropQueue.push(payload);
+    return;
+  }
+
+  // Texte lu à voix haute — peut accompagner un média ou venir seul
+  if (tts) speakTTS(tts, settings);
+
+  // Drop sans média visuel : pluie et/ou TTS + son
   if (!media) {
     if (rain) renderRain(rain);
+    if (tts) showTtsToast({ tts, from, settings });
     if (settings?.soundOnArrival) playPop(settings.volume);
     return;
   }
@@ -401,10 +480,9 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
     return;
   }
 
-  if (active >= MAX_CONCURRENT) return;
   active++;
 
-  const { x, y } = chooseSpot();
+  const { x, y } = chooseSpot(settings?.avoidZone);
 
   const anchor = document.createElement('div');
   anchor.className = 'anchor';
@@ -414,6 +492,15 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
   const wrap = document.createElement('div');
   wrap.className = 'drop';
   wrap.style.opacity = String(settings?.opacity ?? 1);
+
+  // Effet d'apparition spécial. 'shake' secoue tout l'écran en plus de
+  // l'animation d'entrée normale ; les autres remplacent l'animation d'entrée.
+  if (effect === 'shake') {
+    document.body.classList.add('fx-shake');
+    setTimeout(() => document.body.classList.remove('fx-shake'), 700);
+  } else if (effect === 'zoom' || effect === 'tornade' || effect === 'glitch') {
+    wrap.classList.add(`fx-${effect}`);
+  }
 
   if (from) wrap.appendChild(buildAvatarBubble(from));
 
@@ -431,6 +518,30 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
     removeNow({ smooth: true });
   });
   wrap.appendChild(closeBtn);
+
+  // Barre de réactions — le receveur peut réagir d'un emoji, relayé par le
+  // bot dans le canal Discord d'où venait le /drop. Une seule réaction.
+  if (dropId && from) {
+    const REACTION_EMOJIS = ['😂', '💀', '🔥', '😭', '🖕'];
+    const bar = document.createElement('div');
+    bar.className = 'react-bar';
+    for (const emoji of REACTION_EMOJIS) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'react-btn';
+      btn.textContent = emoji;
+      btn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (bar.classList.contains('reacted')) return;
+        bar.classList.add('reacted');
+        btn.classList.add('chosen');
+        window.memedrop.reactDrop?.(dropId, emoji);
+      });
+      bar.appendChild(btn);
+    }
+    wrap.appendChild(bar);
+  }
 
   const mediaBox = document.createElement('div');
   mediaBox.className = 'media-box';
@@ -579,8 +690,7 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
       anchor.remove();
       hideSpotlight(anchor);
       onVisualDropRemoved();   // arrête le sondage + exitCapture si plus aucun drop
-      active = Math.max(0, active - 1);
-      notifyIfIdle();
+      releaseSlot();
     }, smooth ? 220 : 400);
   }
 
@@ -621,7 +731,7 @@ function renderDrop({ media, caption, from, settings, music, rain }) {
 
 window.memedrop.onDrop((payload) => {
   if (!payload) return;
-  if (!payload.media && !payload.rain) return; // rien à afficher
+  if (!payload.media && !payload.rain && !payload.tts) return; // rien à afficher
   renderDrop(payload);
 });
 

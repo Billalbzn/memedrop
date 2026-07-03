@@ -23,9 +23,10 @@ function load() {
     return {
       favorites: data.favorites || {},
       groups: data.groups || {},
+      stats: data.stats || {},
     };
   } catch {
-    return { favorites: {}, groups: {} };
+    return { favorites: {}, groups: {}, stats: {} };
   }
 }
 
