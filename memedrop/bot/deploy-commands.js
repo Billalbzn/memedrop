@@ -2,6 +2,27 @@
 require('dotenv').config();
 const { REST, Routes, SlashCommandBuilder } = require('discord.js');
 
+const EFFECT_CHOICES = [
+  { name: '💥 Zoom (gros plan qui claque)', value: 'zoom' },
+  { name: '🌪️ Tornade (arrive en tourbillon)', value: 'tornade' },
+  { name: '👾 Glitch (tremblement corrompu)', value: 'glitch' },
+  { name: '📳 Shake (secoue tout l\'écran)', value: 'shake' },
+];
+
+// Options communes aux commandes de drop (tts + effet)
+function addTtsOption(b) {
+  return b.addStringOption(o => o.setName('tts')
+    .setDescription('Texte lu à voix haute sur le PC de la cible (200 caractères max.)')
+    .setMaxLength(200)
+    .setRequired(false));
+}
+function addEffectOption(b) {
+  return b.addStringOption(o => o.setName('effet')
+    .setDescription('Effet d\'apparition du drop')
+    .addChoices(...EFFECT_CHOICES)
+    .setRequired(false));
+}
+
 const commands = [
   // /drop @cible media [musique] [caption]
   // Discord ne supporte pas nativement les sélecteurs multi-utilisateurs,
@@ -21,12 +42,19 @@ const commands = [
         .setMaxLength(80)
         .setRequired(false))
       .addAttachmentOption(o => o.setName('musique')
-        .setDescription('MP3 à jouer en même temps que la photo (optionnel)')
+        .setDescription('MP3 ou MP4 (seul le son est joué) en même temps que la photo')
         .setRequired(false))
       .addStringOption(o => o.setName('pluie')
         .setDescription('Emoji(s) qui tomberont en pluie sur l\'écran (ex: 🔥💀🤣, jusqu\'à 5)')
         .setMaxLength(40)
         .setRequired(false));
+    addTtsOption(b);
+    addEffectOption(b);
+    b.addIntegerOption(o => o.setName('delai')
+      .setDescription('Retarde l\'envoi de N minutes (effet surprise, 1 à 60)')
+      .setMinValue(1)
+      .setMaxValue(60)
+      .setRequired(false));
     for (let i = 2; i <= 5; i++) {
       b.addUserOption(o => o.setName(`target${i}`)
         .setDescription(`Cible supplémentaire ${i}`)
@@ -36,24 +64,28 @@ const commands = [
   })(),
 
   // /dropall — envoie à tous les overlays liés de ce serveur
-  new SlashCommandBuilder()
-    .setName('dropall')
-    .setDescription('Envoie un mème à tout le monde ayant un overlay lié sur ce serveur')
-    .addAttachmentOption(o => o.setName('media')
-      .setDescription('Image, GIF ou vidéo à afficher (optionnel si pluie fournie)')
-      .setRequired(false))
-    .addStringOption(o => o.setName('caption')
-      .setDescription('Texte affiché en surimpression (80 caractères max.)')
-      .setMaxLength(80)
-      .setRequired(false))
-    .addAttachmentOption(o => o.setName('musique')
-      .setDescription('MP3 à jouer en même temps que la photo (optionnel)')
-      .setRequired(false))
-    .addStringOption(o => o.setName('pluie')
-      .setDescription('Emoji(s) qui tomberont en pluie sur l\'écran (ex: 🔥💀🤣, jusqu\'à 5)')
-      .setMaxLength(40)
-      .setRequired(false))
-    .toJSON(),
+  (() => {
+    const b = new SlashCommandBuilder()
+      .setName('dropall')
+      .setDescription('Envoie un mème à tout le monde ayant un overlay lié sur ce serveur')
+      .addAttachmentOption(o => o.setName('media')
+        .setDescription('Image, GIF ou vidéo à afficher (optionnel si pluie fournie)')
+        .setRequired(false))
+      .addStringOption(o => o.setName('caption')
+        .setDescription('Texte affiché en surimpression (80 caractères max.)')
+        .setMaxLength(80)
+        .setRequired(false))
+      .addAttachmentOption(o => o.setName('musique')
+        .setDescription('MP3 ou MP4 (seul le son est joué) en même temps que la photo')
+        .setRequired(false))
+      .addStringOption(o => o.setName('pluie')
+        .setDescription('Emoji(s) qui tomberont en pluie sur l\'écran (ex: 🔥💀🤣, jusqu\'à 5)')
+        .setMaxLength(40)
+        .setRequired(false));
+    addTtsOption(b);
+    addEffectOption(b);
+    return b.toJSON();
+  })(),
 
   new SlashCommandBuilder()
     .setName('link')
@@ -147,6 +179,7 @@ const commands = [
         .setDescription('Emoji(s) qui tomberont en pluie sur l\'écran (ex: 🔥💀🤣, jusqu\'à 5)')
         .setMaxLength(40)
         .setRequired(false));
+    addEffectOption(b);
     for (let i = 2; i <= 5; i++) {
       b.addUserOption(o => o.setName(`target${i}`)
         .setDescription(`Cible supplémentaire ${i}`)
@@ -191,27 +224,37 @@ const commands = [
   })(),
 
   // /dropgroup <name> media [caption] [musique] [pluie] — envoie à un groupe
+  (() => {
+    const b = new SlashCommandBuilder()
+      .setName('dropgroup')
+      .setDescription('Envoie un mème à tous les membres d\'un groupe de cibles')
+      .addStringOption(o => o.setName('name')
+        .setDescription('Nom du groupe (voir /group list)')
+        .setMaxLength(24)
+        .setRequired(true))
+      .addAttachmentOption(o => o.setName('media')
+        .setDescription('Image, GIF ou vidéo à afficher (optionnel si pluie fournie)')
+        .setRequired(false))
+      .addStringOption(o => o.setName('caption')
+        .setDescription('Texte affiché en surimpression (80 caractères max.)')
+        .setMaxLength(80)
+        .setRequired(false))
+      .addAttachmentOption(o => o.setName('musique')
+        .setDescription('MP3 ou MP4 (seul le son est joué) en même temps que la photo')
+        .setRequired(false))
+      .addStringOption(o => o.setName('pluie')
+        .setDescription('Emoji(s) qui tomberont en pluie sur l\'écran (ex: 🔥💀🤣, jusqu\'à 5)')
+        .setMaxLength(40)
+        .setRequired(false));
+    addTtsOption(b);
+    addEffectOption(b);
+    return b.toJSON();
+  })(),
+
+  // /stats — compteurs de drops envoyés / reçus + classements
   new SlashCommandBuilder()
-    .setName('dropgroup')
-    .setDescription('Envoie un mème à tous les membres d\'un groupe de cibles')
-    .addStringOption(o => o.setName('name')
-      .setDescription('Nom du groupe (voir /group list)')
-      .setMaxLength(24)
-      .setRequired(true))
-    .addAttachmentOption(o => o.setName('media')
-      .setDescription('Image, GIF ou vidéo à afficher (optionnel si pluie fournie)')
-      .setRequired(false))
-    .addStringOption(o => o.setName('caption')
-      .setDescription('Texte affiché en surimpression (80 caractères max.)')
-      .setMaxLength(80)
-      .setRequired(false))
-    .addAttachmentOption(o => o.setName('musique')
-      .setDescription('MP3 à jouer en même temps que la photo (optionnel)')
-      .setRequired(false))
-    .addStringOption(o => o.setName('pluie')
-      .setDescription('Emoji(s) qui tomberont en pluie sur l\'écran (ex: 🔥💀🤣, jusqu\'à 5)')
-      .setMaxLength(40)
-      .setRequired(false))
+    .setName('stats')
+    .setDescription('Tes stats de drops + le classement des plus gros droppeurs')
     .toJSON(),
 ];
 

@@ -39,6 +39,12 @@ const store = new Store({
     dropHistory: [],
     // Thème visuel de l'overlay : 'classic' | 'neon' | 'fire' | 'mono'.
     theme: 'classic',
+    // Heures calmes : mute automatique sur un créneau horaire quotidien
+    // (ex. 22:00 → 08:00). Indépendant du mode tranquille manuel.
+    quietHours: { enabled: false, start: '22:00', end: '08:00' },
+    // Zone de l'écran où les drops n'apparaissent jamais :
+    // 'none' | 'center' | 'top' | 'bottom'.
+    avoidZone: 'none',
   },
 });
 
@@ -49,6 +55,7 @@ const MAX_HISTORY = 20;
 // (-1 plutôt qu'Infinity car electron-store sérialise en JSON, qui ne
 // supporte pas Infinity.)
 function isMuted() {
+  if (quietHoursActive()) return true;
   const until = store.get('muteUntil');
   if (!until) return false;
   if (until === -1 || until > Date.now()) return true;
@@ -56,12 +63,40 @@ function isMuted() {
   return false;
 }
 
+// Heures calmes : vrai si l'heure locale est dans le créneau configuré.
+// Gère les créneaux qui traversent minuit (ex. 22:00 → 08:00).
+function quietHoursActive() {
+  const qh = store.get('quietHours');
+  if (!qh || !qh.enabled) return false;
+  const toMin = (s, fallback) => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || fallback));
+    if (!m) return null;
+    return Number(m[1]) * 60 + Number(m[2]);
+  };
+  const start = toMin(qh.start, '22:00');
+  const end   = toMin(qh.end, '08:00');
+  if (start == null || end == null || start === end) return false;
+  const now = new Date();
+  const cur = now.getHours() * 60 + now.getMinutes();
+  return start < end ? (cur >= start && cur < end) : (cur >= start || cur < end);
+}
+
 function recordHistory(payload) {
   const entry = {
     from: payload.from?.username || 'inconnu',
-    kind: payload.media?.kind || (payload.rain ? 'rain' : 'unknown'),
+    avatar: payload.from?.avatar || null,
+    kind: payload.media?.kind || (payload.tts ? 'tts' : (payload.rain ? 'rain' : 'unknown')),
     caption: payload.caption || null,
     ts: payload.ts || Date.now(),
+    // Contenu conservé pour le bouton "revoir" des réglages. Les URLs
+    // Discord expirent après ~24 h : le replay peut donc échouer sur les
+    // vieux drops, c'est assumé.
+    media: payload.media ? {
+      url: payload.media.url, kind: payload.media.kind, mime: payload.media.mime,
+    } : null,
+    music: payload.music ? { url: payload.music.url, mime: payload.music.mime } : null,
+    rain: payload.rain || null,
+    tts: payload.tts || null,
   };
   const history = [entry, ...store.get('dropHistory')].slice(0, MAX_HISTORY);
   store.set('dropHistory', history);
@@ -258,6 +293,27 @@ function createTray() {
 // ─────────────────────────────────────────────────────────────────────────────
 // WebSocket client
 // ─────────────────────────────────────────────────────────────────────────────
+// Réglages joints à chaque drop envoyé au renderer de l'overlay.
+function currentDropSettings() {
+  return {
+    volume: store.get('volume'),
+    musicVolume: store.get('musicVolume'),
+    opacity: store.get('opacity'),
+    duration: store.get('duration'),
+    videoDuration: store.get('videoDuration'),
+    soundOnArrival: store.get('soundOnArrival'),
+    spotlightOnDrop: store.get('spotlightOnDrop'),
+    avoidZone: store.get('avoidZone'),
+  };
+}
+
+// Affiche un payload de drop sur l'overlay (création de la fenêtre au besoin).
+function showDropOnOverlay(payload) {
+  if (!overlayWin || overlayWin.isDestroyed()) createOverlayWindow();
+  startTopGuard(); enforceTop();
+  overlayWin.webContents.send('drop', { ...payload, settings: currentDropSettings() });
+}
+
 let ws = null;
 let reconnectTimer = null;
 let reconnectAttempts = 0;
@@ -357,21 +413,8 @@ function connectWS() {
         setState({ status: 'connecting', code: null, user: null, links: null }); break;
       case 'drop':
         recordHistory(msg);
-        if (isMuted()) break; // mode tranquille : on note le drop mais on ne l'affiche pas
-        if (!overlayWin || overlayWin.isDestroyed()) createOverlayWindow();
-        startTopGuard(); enforceTop();
-        overlayWin.webContents.send('drop', {
-          ...msg,
-          settings: {
-            volume: store.get('volume'),
-            musicVolume: store.get('musicVolume'),
-            opacity: store.get('opacity'),
-            duration: store.get('duration'),
-            videoDuration: store.get('videoDuration'),
-            soundOnArrival: store.get('soundOnArrival'),
-            spotlightOnDrop: store.get('spotlightOnDrop'),
-          },
-        });
+        if (isMuted()) break; // mode tranquille / heures calmes : on note le drop mais on ne l'affiche pas
+        showDropOnOverlay(msg);
         break;
       case 'ping':
         ws.send(JSON.stringify({ type: 'pong' })); break;
@@ -482,6 +525,8 @@ ipcMain.handle('settings:get', () => ({
   paused:         store.get('paused'),
   muteUntil:      store.get('muteUntil'),
   theme:          store.get('theme'),
+  quietHours:     store.get('quietHours'),
+  avoidZone:      store.get('avoidZone'),
 }));
 
 ipcMain.handle('settings:set', (_e, patch) => {
@@ -557,6 +602,32 @@ ipcMain.handle('mute:get', () => (isMuted() ? store.get('muteUntil') : null));
 ipcMain.handle('history:get', () => store.get('dropHistory'));
 ipcMain.handle('history:clear', () => { store.set('dropHistory', []); return true; });
 
+// Rejoue un drop de l'historique sur l'overlay (sans le ré-enregistrer).
+// `ts` identifie l'entrée — plus robuste qu'un index si l'historique bouge
+// entre l'affichage et le clic.
+ipcMain.handle('history:replay', (_e, ts) => {
+  const h = store.get('dropHistory').find(x => x.ts === ts);
+  if (!h || (!h.media && !h.rain && !h.tts)) return false;
+  showDropOnOverlay({
+    media: h.media || null,
+    music: h.music || null,
+    rain: h.rain || null,
+    tts: h.tts || null,
+    caption: h.caption || null,
+    from: { username: h.from, avatar: h.avatar || null },
+    ts: Date.now(),
+  });
+  return true;
+});
+
+// ── Réactions aux drops ───────────────────────────────────────────────
+// Le renderer de l'overlay relaie le clic emoji ; on le transmet au bot.
+ipcMain.on('drop:react', (_e, { dropId, emoji } = {}) => {
+  if (!dropId || !emoji) return;
+  if (!ws || ws.readyState !== ws.OPEN) return;
+  try { ws.send(JSON.stringify({ type: 'react', dropId: String(dropId), emoji: String(emoji) })); } catch {}
+});
+
 // App version + update IPC
 ipcMain.handle('app:get-version', () => app.getVersion());
 ipcMain.handle('update:get-state', () => updateState);
@@ -577,22 +648,12 @@ ipcMain.handle('update:install',   () => {
 });
 
 ipcMain.on('test-drop', () => {
-  if (!overlayWin || overlayWin.isDestroyed()) createOverlayWindow();
-  startTopGuard(); enforceTop();
-  overlayWin.webContents.send('drop', {
+  showDropOnOverlay({
     type: 'drop',
     media: { url: 'about:blank', kind: 'test', mime: 'test/test', name: 'test.png', size: 0 },
     caption: 'TEST DROP',
     from: { id: '0', username: 'You (test)' },
     ts: Date.now(),
-    settings: {
-      volume: store.get('volume'),
-      musicVolume: store.get('musicVolume'),
-      opacity: store.get('opacity'),
-      duration: store.get('duration'),
-      videoDuration: store.get('videoDuration'),
-      soundOnArrival: store.get('soundOnArrival'),
-    },
   });
 });
 

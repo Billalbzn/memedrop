@@ -205,17 +205,27 @@ connectionToggle.addEventListener('change', (e) => {
 });
 
 // ── Historique des drops ──────────────────────────────────────────────────
-const HISTORY_KIND_ICON = { image: '🖼️', gif: '🎞️', video: '🎬', audio: '🎵', rain: '🌧️', test: '🧪', unknown: '❓' };
+// On n'affiche que les 3 derniers par défaut (sinon la fenêtre force à
+// scroller) — le bouton "voir plus" déplie le reste.
+const HISTORY_KIND_ICON = { image: '🖼️', gif: '🎞️', video: '🎬', audio: '🎵', rain: '🌧️', tts: '🗣️', test: '🧪', unknown: '❓' };
+const HISTORY_VISIBLE = 3;
+const historyToggleBtn = $('#history-toggle');
+let historyEntries  = [];
+let historyExpanded = false;
 
 function renderHistory(history) {
+  historyEntries = history || [];
   historyList.innerHTML = '';
-  if (!history || history.length === 0) {
+
+  if (historyEntries.length === 0) {
     historyEmpty.classList.remove('hidden');
+    historyToggleBtn.classList.add('hidden');
     return;
   }
   historyEmpty.classList.add('hidden');
 
-  for (const h of history) {
+  const shown = historyExpanded ? historyEntries : historyEntries.slice(0, HISTORY_VISIBLE);
+  for (const h of shown) {
     const row = document.createElement('div');
     row.className = 'server-row';
 
@@ -233,14 +243,41 @@ function renderHistory(history) {
 
     row.appendChild(pic);
     row.appendChild(name);
+
+    // "revoir" — rejoue le drop sur l'overlay (entrées v1.4+ qui ont le
+    // contenu ; les URLs Discord expirent après ~24 h, le bouton peut donc
+    // ne rien afficher sur un vieux drop).
+    if (h.media || h.rain || h.tts) {
+      const btn = document.createElement('button');
+      btn.className = 'ghost';
+      btn.textContent = 'revoir';
+      btn.addEventListener('click', () => window.memedrop.replayDrop(h.ts));
+      row.appendChild(btn);
+    }
+
     historyList.appendChild(row);
   }
+
+  if (historyEntries.length > HISTORY_VISIBLE) {
+    historyToggleBtn.classList.remove('hidden');
+    historyToggleBtn.textContent = historyExpanded
+      ? 'voir moins'
+      : `voir plus (${historyEntries.length - HISTORY_VISIBLE})`;
+  } else {
+    historyToggleBtn.classList.add('hidden');
+  }
 }
+
+historyToggleBtn.addEventListener('click', () => {
+  historyExpanded = !historyExpanded;
+  renderHistory(historyEntries);
+});
 
 window.memedrop.onHistory(renderHistory);
 window.memedrop.getHistory().then(renderHistory);
 historyClearBtn.addEventListener('click', async () => {
   await window.memedrop.clearHistory();
+  historyExpanded = false;
   renderHistory([]);
 });
 
@@ -416,6 +453,24 @@ bindRange('opacity',        'opacity-out',         v => `${v}%`, 'opacity',     
 bindRange('duration',       'duration-out',        v => `${v}s`, 'duration',      1);
 bindRange('video-duration', 'video-duration-out',  v => `${v}s`, 'videoDuration', 1);
 
+// ── Heures calmes ──────────────────────────────────────────────────────
+const qhToggle = $('#quiet-hours');
+const qhStart  = $('#quiet-start');
+const qhEnd    = $('#quiet-end');
+
+function pushQuietHours() {
+  queueSetting('quietHours', {
+    enabled: qhToggle.checked,
+    start: qhStart.value || '22:00',
+    end:   qhEnd.value   || '08:00',
+  });
+}
+qhToggle.addEventListener('change', pushQuietHours);
+qhStart.addEventListener('change', pushQuietHours);
+qhEnd.addEventListener('change', pushQuietHours);
+
+$('#avoid-zone').addEventListener('change', (e) => queueSetting('avoidZone', e.target.value));
+
 $('#sound').addEventListener('change',      (e) => queueSetting('soundOnArrival', e.target.checked));
 $('#spotlight').addEventListener('change', (e) => queueSetting('spotlightOnDrop', e.target.checked));
 $('#theme').addEventListener('change',     (e) => queueSetting('theme', e.target.value));
@@ -462,6 +517,10 @@ async function init() {
   $('#sound').checked      = !!s.soundOnArrival;
   $('#spotlight').checked  = s.spotlightOnDrop !== false; // true par défaut
   $('#theme').value        = s.theme || 'classic';
+  $('#avoid-zone').value   = s.avoidZone || 'none';
+  qhToggle.checked         = !!s.quietHours?.enabled;
+  qhStart.value            = s.quietHours?.start || '22:00';
+  qhEnd.value              = s.quietHours?.end   || '08:00';
   $('#autostart').checked  = !!s.autostart;
   $('#server').value      = s.serverUrl || 'wss://memedrop-production-3106.up.railway.app';
 

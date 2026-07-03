@@ -9,10 +9,50 @@ const store = require('./store');
 
 const PORT = Number(process.env.PORT || process.env.WS_PORT || 8765);
 
+// ── TTS servi par le bot ─────────────────────────────────────────────────────
+// La synthèse vocale du renderer Electron (speechSynthesis) est muette sur la
+// plupart des PC : Chromium n'embarque aucune voix. Le bot expose donc
+// GET /tts?text=... qui relaie le MP3 généré par Google Translate TTS ;
+// l'overlay le joue dans un simple élément <audio>.
+async function handleTts(u, res) {
+  const text = (u.searchParams.get('text') || '').trim().slice(0, MAX_TTS_CHARS);
+  if (!text) {
+    res.writeHead(400, { 'Content-Type': 'text/plain' });
+    res.end('missing text');
+    return;
+  }
+  const rawLang = u.searchParams.get('lang') || '';
+  const lang = /^[a-z]{2}(-[A-Z]{2})?$/.test(rawLang) ? rawLang : 'fr';
+  try {
+    const g = await fetch(
+      'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob' +
+      `&tl=${lang}&q=${encodeURIComponent(text)}`,
+      { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } },
+    );
+    if (!g.ok) throw new Error(`upstream ${g.status}`);
+    const buf = Buffer.from(await g.arrayBuffer());
+    res.writeHead(200, {
+      'Content-Type': 'audio/mpeg',
+      'Content-Length': buf.length,
+      'Cache-Control': 'public, max-age=86400',
+    });
+    res.end(buf);
+  } catch (e) {
+    console.error('[tts] failed:', e.message);
+    res.writeHead(502, { 'Content-Type': 'text/plain' });
+    res.end('tts failed');
+  }
+}
+
 const httpServer = http.createServer((req, res) => {
-  if (req.url === '/health' || req.url === '/') {
+  const u = new URL(req.url, 'http://localhost');
+  if (u.pathname === '/health' || u.pathname === '/') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('MemeDrop bot online');
+    return;
+  }
+  if (u.pathname === '/tts' && req.method === 'GET') {
+    handleTts(u, res);
     return;
   }
   res.writeHead(404);
@@ -50,6 +90,8 @@ const wsMeta          = new WeakMap();
 const persisted = store.load();
 const favorites = new Map(Object.entries(persisted.favorites).map(([k, v]) => [k, v]));
 const groups    = new Map(Object.entries(persisted.groups).map(([k, v]) => [k, new Map(Object.entries(v))]));
+// stats : discordUserId -> { sent, received } — compteurs pour /stats
+const stats     = persisted.stats || {};
 
 const MAX_FAVORITES     = 10;
 const MAX_GROUPS        = 10;
@@ -59,8 +101,41 @@ function persistStore() {
   store.save({
     favorites: Object.fromEntries(favorites),
     groups: Object.fromEntries([...groups].map(([k, v]) => [k, Object.fromEntries(v)])),
+    stats,
   });
 }
+
+function bumpStats(fromId, toId) {
+  const f = stats[fromId] || (stats[fromId] = { sent: 0, received: 0 });
+  const t = stats[toId]   || (stats[toId]   = { sent: 0, received: 0 });
+  f.sent++;
+  t.received++;
+  persistStore();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Réactions aux drops
+//
+// Chaque drop délivré est mémorisé (dropId -> expéditeur + canal d'origine)
+// pendant 15 min. Le receveur peut cliquer un emoji sur le drop dans son
+// overlay ; l'overlay renvoie { type:'react', dropId, emoji } et le bot
+// poste la réaction dans le canal d'où venait le /drop. Une réaction max
+// par personne et par drop.
+// ─────────────────────────────────────────────────────────────────────────────
+const recentDrops     = new Map();
+const REACTION_EMOJIS = new Set(['😂', '💀', '🔥', '😭', '🖕']);
+
+function registerDropForReactions(payload, senderId, channelId) {
+  if (!payload.dropId || !channelId) return;
+  recentDrops.set(payload.dropId, { senderId, channelId, reacted: new Set(), ts: Date.now() });
+}
+
+setInterval(() => {
+  const cutoff = Date.now() - 15 * 60_000;
+  for (const [id, entry] of recentDrops) {
+    if (entry.ts < cutoff) recentDrops.delete(id);
+  }
+}, 5 * 60_000);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Re-link tokens
@@ -293,6 +368,31 @@ wss.on('connection', (ws) => {
       if (!targetId || !link.blockedUsers) return;
       link.blockedUsers.delete(targetId);
       await pushLinksUpdate(meta.userId);
+      return;
+    }
+
+    // Le receveur a cliqué un emoji sur un drop → on poste la réaction dans
+    // le canal Discord d'où venait le /drop.
+    if (msg.type === 'react') {
+      const meta = wsMeta.get(ws);
+      if (!meta?.userId) return;
+      const entry = recentDrops.get(String(msg.dropId || ''));
+      if (!entry) return;
+      const emoji = String(msg.emoji || '');
+      if (!REACTION_EMOJIS.has(emoji)) return;
+      if (entry.reacted.has(meta.userId)) return;   // une réaction max par drop
+      entry.reacted.add(meta.userId);
+      if (meta.userId === entry.senderId) return;    // pas de réaction à soi-même
+      let reactorName = meta.userId;
+      try { reactorName = (await client.users.fetch(meta.userId)).username; } catch {}
+      try {
+        const ch = await client.channels.fetch(entry.channelId);
+        if (ch?.isTextBased()) {
+          await ch.send(`${emoji} **${reactorName}** a réagi au drop de <@${entry.senderId}> !`);
+        }
+      } catch (e) {
+        console.error('[react] failed to post reaction:', e.message);
+      }
     }
   });
 
@@ -396,9 +496,37 @@ function extractEmojis(str) {
   return unique.length ? unique : null;
 }
 
-function buildDropPayload(att, caption, fromUser, musicAtt = null, rain = null) {
+// Effets d'apparition autorisés (validés aussi par les `choices` Discord,
+// mais on re-filtre côté serveur au cas où).
+const EFFECTS = new Set(['zoom', 'tornade', 'glitch', 'shake']);
+const MAX_TTS_CHARS = 200;
+
+// Base publique du bot, utilisée pour construire les URL /tts envoyées aux
+// overlays. Railway fournit RAILWAY_PUBLIC_DOMAIN automatiquement ; sinon on
+// retombe sur le domaine prod connu (même fallback codé en dur que dans le
+// main.js de l'overlay).
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL ||
+  (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '') ||
+  'https://memedrop-production-3106.up.railway.app'
+).replace(/\/+$/, '');
+
+function ttsUrlFor(text) {
+  if (!text) return null;
+  return `${PUBLIC_BASE_URL}/tts?text=${encodeURIComponent(text)}`;
+}
+
+function buildDropPayload(att, caption, fromUser, musicAtt = null, rain = null, extra = {}) {
+  const ttsText = extra.tts ? String(extra.tts).slice(0, MAX_TTS_CHARS) : null;
   return {
     type: 'drop',
+    // Identifiant du drop — permet au receveur de réagir depuis l'overlay
+    dropId: crypto.randomBytes(8).toString('hex'),
+    // Texte lu à voix haute chez le receveur (optionnel) + URL de l'audio
+    // généré côté serveur (voir handleTts) que l'overlay joue directement
+    tts: ttsText,
+    ttsUrl: ttsUrlFor(ttsText),
+    // Effet d'apparition spécial (zoom / tornade / glitch / shake)
+    effect: EFFECTS.has(extra.effect) ? extra.effect : null,
     media: att ? {
       url: att.url,
       kind: classifyMedia(att.contentType),
@@ -449,9 +577,13 @@ function dispatchToTargets(interaction, targets, payload, musicAtt) {
     if (canDrop(interaction.user.id, t.id, interaction.guildId)) {
       sendJson(userLinks.get(t.id).ws, payload);
       delivered.push(t.username);
+      bumpStats(interaction.user.id, t.id);
     } else {
       notReachable.push(t.username);
     }
+  }
+  if (delivered.length) {
+    registerDropForReactions(payload, interaction.user.id, interaction.channelId);
   }
   if (delivered.length && notReachable.length) {
     return `✅ Drop envoyé sur **${delivered.join('**, **')}**.\n⚠️ Pas atteignables depuis ce serveur : ${notReachable.map(o => `**${o}**`).join(', ')}`;
@@ -461,14 +593,17 @@ function dispatchToTargets(interaction, targets, payload, musicAtt) {
   return `❌ Personne n'est atteignable depuis ce serveur. Ils doivent faire \`/link\` ici aussi.`;
 }
 
-// Valide une pièce jointe audio pour l'option "musique"
+// Valide une pièce jointe pour l'option "musique". Les vidéos (MP4/WEBM/MOV)
+// sont acceptées : l'overlay les joue dans un élément <audio>, qui ne décode
+// que la piste son — la vidéo n'est jamais affichée.
+const MUSIC_MIME = /^(audio\/|video\/(mp4|webm|quicktime))/i;
 function validateMusic(att) {
   if (!att) return null;
   if (att.size > MAX_BYTES) {
     return `Fichier audio trop lourd (${(att.size / 1024 / 1024).toFixed(1)} MB). Limite : 25 MB.`;
   }
-  if (!att.contentType || !att.contentType.startsWith('audio/')) {
-    return `Le fichier \`musique\` doit être un audio (MP3, etc.). Type reçu : \`${att.contentType || 'inconnu'}\`.`;
+  if (!att.contentType || !MUSIC_MIME.test(att.contentType)) {
+    return `Le fichier \`musique\` doit être un audio (MP3) ou une vidéo (MP4/WEBM — seul le son est joué). Type reçu : \`${att.contentType || 'inconnu'}\`.`;
   }
   return null;
 }
@@ -668,10 +803,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const caption  = interaction.options.getString('caption', false);
         const musicAtt = interaction.options.getAttachment('musique', false);
         const rain     = extractEmojis(interaction.options.getString('pluie', false));
+        const tts      = (interaction.options.getString('tts', false) || '').trim() || null;
+        const effect   = interaction.options.getString('effet', false);
+        const delayMin = interaction.options.getInteger('delai', false);
 
-        // Il faut au moins un média ou une pluie
-        if (!att && !rain) {
-          return safeReply(interaction, '❌ Mets au moins un média (`media`) ou un emoji (`pluie`).');
+        // Il faut au moins un média, une pluie ou un texte à lire
+        if (!att && !rain && !tts) {
+          return safeReply(interaction, '❌ Mets au moins un média (`media`), un emoji (`pluie`) ou un texte (`tts`).');
         }
 
         if (att) {
@@ -689,7 +827,30 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return safeReply(interaction, '❌ L\'option `musique` ne fonctionne qu\'avec une image ou un GIF (pas une vidéo).');
         }
 
-        const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain);
+        const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain, { tts, effect });
+
+        // Drop différé : on programme l'envoi et on répond tout de suite.
+        // (Perdu si le bot redémarre entre-temps — assumé pour un troll.)
+        if (delayMin && delayMin > 0) {
+          const senderId  = interaction.user.id;
+          const guildId   = interaction.guildId;
+          const channelId = interaction.channelId;
+          setTimeout(() => {
+            const delivered = [];
+            for (const t of targets) {
+              if (canDrop(senderId, t.id, guildId)) {
+                sendJson(userLinks.get(t.id).ws, payload);
+                delivered.push(t.username);
+                bumpStats(senderId, t.id);
+              }
+            }
+            if (delivered.length) registerDropForReactions(payload, senderId, channelId);
+            console.log(`[drop] delayed drop fired (${delivered.length}/${targets.length} delivered)`);
+          }, Math.min(delayMin, 60) * 60_000);
+          return safeReply(interaction,
+            `⏳ Drop programmé dans **${Math.min(delayMin, 60)} min** pour ${targets.map(t => `**${t.username}**`).join(', ')}. 😈`);
+        }
+
         return safeReply(interaction, dispatchToTargets(interaction, targets, payload, musicAtt));
       }
 
@@ -709,9 +870,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const caption  = interaction.options.getString('caption', false);
         const musicAtt = interaction.options.getAttachment('musique', false);
         const rain     = extractEmojis(interaction.options.getString('pluie', false));
+        const tts      = (interaction.options.getString('tts', false) || '').trim() || null;
+        const effect   = interaction.options.getString('effet', false);
 
-        if (!att && !rain) {
-          return safeReply(interaction, '❌ Mets au moins un média (`media`) ou un emoji (`pluie`).');
+        if (!att && !rain && !tts) {
+          return safeReply(interaction, '❌ Mets au moins un média (`media`), un emoji (`pluie`) ou un texte (`tts`).');
         }
 
         if (att) {
@@ -740,12 +903,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return safeReply(interaction, 'Personne n\'est atteignable sur ce serveur pour l\'instant. 😴');
         }
 
-        const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain);
+        const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain, { tts, effect });
         const names = [];
         for (const r of recipients) {
           sendJson(r.ws, payload);
           names.push(r.username);
+          bumpStats(interaction.user.id, r.userId);
         }
+        registerDropForReactions(payload, interaction.user.id, interaction.channelId);
         return safeReply(interaction,
           `💥 Drop envoyé à **${names.length}** personne${names.length > 1 ? 's' : ''} : ${names.map(n => `**${n}**`).join(', ')}${musicAtt ? ' 🎵' : ''}`);
       }
@@ -892,9 +1057,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return safeReply(interaction, '🤖 Aucune cible valide (bots et doublons filtrés).');
         }
 
-        const rain = extractEmojis(interaction.options.getString('pluie', false));
+        const rain   = extractEmojis(interaction.options.getString('pluie', false));
+        const effect = interaction.options.getString('effet', false);
         const att = { url: fav.url, contentType: fav.mime, name: fav.name, size: fav.size, width: null, height: null };
-        const payload = buildDropPayload(att, fav.caption, interaction.user, null, rain);
+        const payload = buildDropPayload(att, fav.caption, interaction.user, null, rain, { effect });
         return safeReply(interaction, dispatchToTargets(interaction, targets, payload, null));
       }
 
@@ -983,9 +1149,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const caption  = interaction.options.getString('caption', false);
         const musicAtt = interaction.options.getAttachment('musique', false);
         const rain     = extractEmojis(interaction.options.getString('pluie', false));
+        const tts      = (interaction.options.getString('tts', false) || '').trim() || null;
+        const effect   = interaction.options.getString('effet', false);
 
-        if (!att && !rain) {
-          return safeReply(interaction, '❌ Mets au moins un média (`media`) ou un emoji (`pluie`).');
+        if (!att && !rain && !tts) {
+          return safeReply(interaction, '❌ Mets au moins un média (`media`), un emoji (`pluie`) ou un texte (`tts`).');
         }
         if (att) {
           const err = validateAttachment(att);
@@ -1000,8 +1168,35 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return safeReply(interaction, '❌ L\'option `musique` ne fonctionne qu\'avec une image ou un GIF (pas une vidéo).');
         }
 
-        const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain);
+        const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain, { tts, effect });
         return safeReply(interaction, dispatchToTargets(interaction, targets, payload, musicAtt));
+      }
+
+      // ── /stats — compteurs de drops envoyés / reçus ─────────────────────
+      case 'stats': {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        const mine = stats[interaction.user.id] || { sent: 0, received: 0 };
+
+        const top = (key) => Object.entries(stats)
+          .filter(([, v]) => (v[key] || 0) > 0)
+          .sort((a, b) => (b[1][key] || 0) - (a[1][key] || 0))
+          .slice(0, 5);
+
+        const fmt = async (rows, key) => {
+          const lines = [];
+          for (const [id, v] of rows) {
+            let name = id;
+            try { name = (await client.users.fetch(id)).username; } catch {}
+            const medal = ['🥇', '🥈', '🥉'][lines.length] || '▫️';
+            lines.push(`${medal} **${name}** — ${v[key]}`);
+          }
+          return lines.length ? lines.join('\n') : '_personne pour l\'instant_';
+        };
+
+        return safeReply(interaction,
+          `📊 **Tes stats** : ${mine.sent} drop${mine.sent > 1 ? 's' : ''} envoyé${mine.sent > 1 ? 's' : ''} · ${mine.received} reçu${mine.received > 1 ? 's' : ''}\n\n` +
+          `**🏆 Top droppeurs**\n${await fmt(top('sent'), 'sent')}\n\n` +
+          `**🎯 Top victimes**\n${await fmt(top('received'), 'received')}`);
       }
     }
   } catch (err) {

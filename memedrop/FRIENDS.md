@@ -43,13 +43,38 @@ Quelques règles :
 - Taille max : 25 MB
 - Un drop maximum toutes les 2 secondes par personne
 
+## Options de /drop pour trigger encore plus fort
+
+| Option | Effet |
+|--------|-------|
+| `caption:` | Texte façon meme en surimpression |
+| `musique:` | MP3 ou MP4 (seul le son est joué) en même temps qu'une photo/GIF |
+| `pluie:` | Jusqu'à 5 emojis qui pleuvent sur l'écran (🔥💀🤣) |
+| `tts:` | **Texte lu à voix haute** par le PC de la cible 🗣️ |
+| `effet:` | Apparition spéciale : 💥 zoom, 🌪️ tornade, 👾 glitch, 📳 shake (secoue l'écran) |
+| `delai:` | Le drop part dans N minutes — effet surprise garanti ⏳ |
+
+## Réagir à un drop reçu
+
+Passe la souris sur le drop → une barre d'emojis apparaît en dessous (😂 💀 🔥 😭 🖕). Clique : ta réaction est postée **dans le salon Discord d'où venait le drop**. L'envoyeur saura que tu as souffert.
+
 ## Commandes utiles
 
 | Commande | Effet |
 |----------|-------|
 | `/status` | Vérifier si ton overlay est connecté |
 | `/who` | Lister qui peut se faire droper actuellement |
+| `/stats` | Tes compteurs + top droppeurs / top victimes 🏆 |
+| `/fav add` / `/dropfav` | Enregistrer un meme favori et le renvoyer en 2 s |
+| `/group set` / `/dropgroup` | Créer un groupe de cibles et arroser tout le monde |
+| `/block @qui` | Bloquer un relou (il ne peut plus te droper) |
 | `/unlink` | Te débrancher (les gens ne peuvent plus te droper) |
+
+## Dans les réglages de l'app
+
+- **Heures calmes** : mute automatique sur un créneau (ex. 22h–8h)
+- **Zone d'exclusion** : les drops évitent le centre / haut / bas de ton écran
+- **Historique** : bouton **revoir** pour rejouer un drop reçu (< 24 h)
 
 ## ⚠️ À savoir avant de jouer
 
