@@ -262,15 +262,20 @@
       padding: 10px 14px 14px;
       font-family: 'Impact', 'Arial Black', 'Anton', system-ui, sans-serif;
       font-weight: 900;
-      font-size: clamp(18px, 2.6vw, 40px);
+      /* Taille par défaut ; overlay.js la recalcule d'après la largeur réelle
+         du média (fitCaption) — une taille en vw rendait le texte énorme sur
+         les images portrait étroites. */
+      font-size: clamp(14px, 2.2vw, 40px);
       line-height: 1.08;
       letter-spacing: .01em;
       text-transform: uppercase;
       text-align: center;
       color: #fff;
       white-space: normal;
-      word-break: break-word;
-      overflow-wrap: anywhere;
+      /* break-word (et pas anywhere) : un mot n'est coupé que s'il est plus
+         large que l'image à lui seul — fini les "COMMAND / O" en plein mot. */
+      word-break: normal;
+      overflow-wrap: break-word;
       -webkit-text-stroke: 2px #000;
       paint-order: stroke fill;
       text-shadow:

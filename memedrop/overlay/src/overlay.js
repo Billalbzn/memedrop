@@ -361,6 +361,30 @@ function renderRain(emojis) {
   }
 }
 
+// ── Ajustement du texte (caption) à la largeur du média ──────────────
+// La taille CSS par défaut est relative à l'écran (vw) : sur une image
+// portrait étroite le texte devenait énorme et débordait. On recalcule donc
+// la taille d'après la largeur affichée du média une fois celui-ci chargé,
+// avec un contour proportionné.
+function fitCaption(bar, mediaEl) {
+  if (!bar || !mediaEl) return;
+  const apply = () => {
+    const w = mediaEl.getBoundingClientRect().width;
+    if (!w) return false;
+    const size = Math.max(13, Math.min(40, Math.round(w * 0.09)));
+    bar.style.fontSize = `${size}px`;
+    bar.style.webkitTextStroke = `${size >= 26 ? 2 : 1.5}px #000`;
+    return true;
+  };
+  if (apply()) return;
+  // Média pas encore chargé / pas encore dans le DOM : on réessaie quand il
+  // est prêt ('load' pour <img>, 'loadedmetadata' pour <video>). Le rAF
+  // couvre le cas d'une image déjà en cache dont 'load' est déjà passé.
+  mediaEl.addEventListener('load', apply, { once: true });
+  mediaEl.addEventListener('loadedmetadata', apply, { once: true });
+  requestAnimationFrame(() => { if (!apply()) requestAnimationFrame(apply); });
+}
+
 function makeInitialFallback(name) {
   const initial = (name || '?').trim().charAt(0).toUpperCase() || '?';
   const div = document.createElement('div');
@@ -622,16 +646,20 @@ function renderDrop(payload) {
     mediaBox.appendChild(el);
   }
 
+  let captionBar = null;
   if (caption && String(caption).trim()) {
-    const bar = document.createElement('div');
-    bar.className = 'caption-bar';
-    bar.textContent = String(caption).trim().slice(0, 80);
-    mediaBox.appendChild(bar);
+    captionBar = document.createElement('div');
+    captionBar.className = 'caption-bar';
+    captionBar.textContent = String(caption).trim().slice(0, 80);
+    mediaBox.appendChild(captionBar);
   }
 
   wrap.appendChild(mediaBox);
   anchor.appendChild(wrap);
   stage.appendChild(anchor);
+  // Une fois dans le DOM, la largeur du média est mesurable (ou le sera à
+  // son chargement) : on adapte la taille du texte à cette largeur.
+  if (captionBar && el) fitCaption(captionBar, el);
   onVisualDropAdded();   // démarre le sondage curseur si c'est le 1er drop visuel
   if (settings?.spotlightOnDrop) showSpotlight(anchor);
   if (rain) renderRain(rain);

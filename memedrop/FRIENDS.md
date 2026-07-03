@@ -48,7 +48,7 @@ Quelques règles :
 | Option | Effet |
 |--------|-------|
 | `caption:` | Texte façon meme en surimpression |
-| `musique:` | MP3 joué en même temps qu'une photo/GIF |
+| `musique:` | MP3 ou MP4 (seul le son est joué) en même temps qu'une photo/GIF |
 | `pluie:` | Jusqu'à 5 emojis qui pleuvent sur l'écran (🔥💀🤣) |
 | `tts:` | **Texte lu à voix haute** par le PC de la cible 🗣️ |
 | `effet:` | Apparition spéciale : 💥 zoom, 🌪️ tornade, 👾 glitch, 📳 shake (secoue l'écran) |

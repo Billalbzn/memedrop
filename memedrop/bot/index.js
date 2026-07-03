@@ -536,14 +536,17 @@ function dispatchToTargets(interaction, targets, payload, musicAtt) {
   return `❌ Personne n'est atteignable depuis ce serveur. Ils doivent faire \`/link\` ici aussi.`;
 }
 
-// Valide une pièce jointe audio pour l'option "musique"
+// Valide une pièce jointe pour l'option "musique". Les vidéos (MP4/WEBM/MOV)
+// sont acceptées : l'overlay les joue dans un élément <audio>, qui ne décode
+// que la piste son — la vidéo n'est jamais affichée.
+const MUSIC_MIME = /^(audio\/|video\/(mp4|webm|quicktime))/i;
 function validateMusic(att) {
   if (!att) return null;
   if (att.size > MAX_BYTES) {
     return `Fichier audio trop lourd (${(att.size / 1024 / 1024).toFixed(1)} MB). Limite : 25 MB.`;
   }
-  if (!att.contentType || !att.contentType.startsWith('audio/')) {
-    return `Le fichier \`musique\` doit être un audio (MP3, etc.). Type reçu : \`${att.contentType || 'inconnu'}\`.`;
+  if (!att.contentType || !MUSIC_MIME.test(att.contentType)) {
+    return `Le fichier \`musique\` doit être un audio (MP3) ou une vidéo (MP4/WEBM — seul le son est joué). Type reçu : \`${att.contentType || 'inconnu'}\`.`;
   }
   return null;
 }
