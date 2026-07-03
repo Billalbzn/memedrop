@@ -47,6 +47,10 @@
 
     .drop {
       position: absolute;
+      /* #stage est en pointer-events:none (propriété héritée) : sans ce
+         rétablissement, la croix de fermeture ne reçoit jamais le mousedown
+         et c'est le handler global de drag qui capte le clic à sa place. */
+      pointer-events: auto;
       left: 0; top: 0;
       transform-origin: center;
       will-change: transform, opacity;
