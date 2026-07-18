@@ -1,7 +1,8 @@
 // index.js — MemeDrop bot
 require('dotenv').config();
 
-const { Client, GatewayIntentBits, Events, MessageFlags } = require('discord.js');
+const { Client, GatewayIntentBits, Events, MessageFlags,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const { WebSocketServer } = require('ws');
 const http = require('http');
 const crypto = require('crypto');
@@ -491,20 +492,22 @@ function classifyMedia(mime) {
 // Klipy est fondé par d'anciens de Tenor, API très proche, tier gratuit sans
 // limite dans le temps : https://klipy.com/developers)
 //
-// Un choix d'autocomplete Discord ne peut renvoyer qu'une valeur de 100
-// caractères max (trop court pour une URL de GIF), donc l'autocomplete ne
-// renvoie qu'un id généré localement et on garde l'URL/taille en cache le
-// temps que l'utilisateur valide la commande.
+// L'autocomplete Discord ne peut afficher que du texte (pas de vignette), donc
+// l'option `gif` est une simple recherche : le bot répond avec jusqu'à 5
+// résultats en embeds (image visible) + des boutons numérotés pour choisir.
+// Le choix (bouton cliqué) déclenche `finish(att)`, une closure fournie par
+// chaque commande qui sait comment livrer le drop (cibles, effet, etc.).
 // ─────────────────────────────────────────────────────────────────────────────
 const KLIPY_API_KEY = process.env.KLIPY_API_KEY || '';
-const gifCache = new Map(); // `${userId}:${localId}` -> { url, mime, size, width, height, ts }
+const GIF_PICK_TTL_MS = 5 * 60_000;
+const pendingGifPicks = new Map(); // sessionId -> { requesterId, results, finish, expiresAt }
 
 setInterval(() => {
-  const cutoff = Date.now() - 10 * 60_000;
-  for (const [key, entry] of gifCache) {
-    if (entry.ts < cutoff) gifCache.delete(key);
+  const now = Date.now();
+  for (const [id, session] of pendingGifPicks) {
+    if (session.expiresAt < now) pendingGifPicks.delete(id);
   }
-}, 5 * 60_000);
+}, 60_000);
 
 // Un résultat Klipy expose `file.<hd|md|sm|xs>.<gif|webp|jpg|mp4|webm>`
 // (chacun { url, width, height, size }) — on prend la variante gif "md"
@@ -525,7 +528,7 @@ async function searchGifs(query) {
   if (!KLIPY_API_KEY || !query) return [];
   const u = new URL(`https://api.klipy.com/api/v1/${KLIPY_API_KEY}/gifs/search`);
   u.searchParams.set('q', query);
-  u.searchParams.set('per_page', '10');
+  u.searchParams.set('per_page', '5');
   u.searchParams.set('page', '1');
   const res = await fetch(u);
   if (!res.ok) throw new Error(`klipy ${res.status}`);
@@ -536,7 +539,6 @@ async function searchGifs(query) {
       const gif = pickKlipyFile(item.file);
       if (!gif) return null;
       return {
-        id: crypto.randomBytes(4).toString('hex'),
         label: String(item.title || item.slug || 'gif').slice(0, 100),
         url: gif.url,
         mime: 'image/gif',
@@ -548,43 +550,88 @@ async function searchGifs(query) {
     .filter(Boolean);
 }
 
-async function handleGifAutocomplete(interaction) {
-  const query = String(interaction.options.getFocused() || '').trim();
-  if (!query) return interaction.respond([]);
+// Cherche `query` sur Klipy et affiche jusqu'à 5 résultats en embeds (avec
+// vignette) + des boutons numérotés. `finish(att)` est appelée avec
+// l'attachement choisi une fois l'utilisateur a cliqué un bouton — elle doit
+// livrer le drop et renvoyer le texte de confirmation à afficher.
+async function presentGifPicker(interaction, query, finish) {
+  let results;
   try {
-    const results = await searchGifs(query);
-    const now = Date.now();
-    for (const r of results) {
-      gifCache.set(`${interaction.user.id}:${r.id}`, { url: r.url, mime: r.mime, size: r.size, width: r.width, height: r.height, ts: now });
-    }
-    await interaction.respond(results.map(r => ({ name: r.label, value: r.id })));
+    results = await searchGifs(query);
   } catch (e) {
-    console.error('[gif] autocomplete failed:', e.message);
-    try { await interaction.respond([]); } catch {}
+    console.error('[gif] search failed:', e.message);
+    return safeReply(interaction, '❌ Recherche GIF indisponible pour le moment — réessaie plus tard ou utilise `media`.');
   }
+  if (!results.length) {
+    return safeReply(interaction, `❌ Aucun GIF trouvé pour \`${query}\`. Essaie d'autres mots-clés ou utilise \`media\`.`);
+  }
+
+  const sessionId = crypto.randomBytes(6).toString('hex');
+  pendingGifPicks.set(sessionId, {
+    requesterId: interaction.user.id,
+    results,
+    finish,
+    expiresAt: Date.now() + GIF_PICK_TTL_MS,
+  });
+
+  const embeds = results.map((r, i) =>
+    new EmbedBuilder().setTitle(`${i + 1}. ${r.label}`).setImage(r.url).setColor(0x5865f2));
+  const row = new ActionRowBuilder().addComponents(
+    ...results.map((r, i) => new ButtonBuilder()
+      .setCustomId(`gifpick:${sessionId}:${i}`)
+      .setLabel(String(i + 1))
+      .setStyle(ButtonStyle.Secondary)),
+    new ButtonBuilder()
+      .setCustomId(`gifpick:${sessionId}:cancel`)
+      .setLabel('Annuler')
+      .setStyle(ButtonStyle.Danger),
+  );
+
+  return interaction.editReply({
+    content: `🔎 Résultats pour \`${query}\` — clique un numéro pour choisir :`,
+    embeds,
+    components: [row],
+  });
 }
 
-// Résout l'option `gif` (id local choisi via autocomplete) en un objet avec
-// les mêmes champs qu'un attachement Discord, pour rester compatible avec
-// validateAttachment/buildDropPayload sans dupliquer leur logique.
-function resolveGifOption(interaction) {
-  const gifId = interaction.options.getString('gif', false);
-  if (!gifId) return { att: null, error: null };
-  const cached = gifCache.get(`${interaction.user.id}:${gifId}`);
-  if (!cached) {
-    return { att: null, error: '❌ GIF introuvable ou expiré — relance la recherche `gif` et choisis une suggestion dans la liste.' };
+// Gère le clic sur un bouton `gifpick:<sessionId>:<index|cancel>`.
+async function handleGifPickButton(interaction) {
+  const [, sessionId, choice] = interaction.customId.split(':');
+  const session = pendingGifPicks.get(sessionId);
+  if (!session) {
+    return interaction.update({ content: '❌ Cette recherche a expiré. Relance la commande.', embeds: [], components: [] }).catch(() => {});
   }
-  return {
-    att: {
-      url: cached.url,
-      contentType: cached.mime,
-      name: `gif-${gifId}.gif`,
-      size: cached.size,
-      width: cached.width,
-      height: cached.height,
-    },
-    error: null,
+  if (interaction.user.id !== session.requesterId) {
+    return interaction.reply({ content: '❌ Seule la personne qui a lancé la commande peut choisir.', flags: MessageFlags.Ephemeral });
+  }
+  pendingGifPicks.delete(sessionId);
+
+  if (choice === 'cancel') {
+    return interaction.update({ content: '❌ Recherche annulée.', embeds: [], components: [] });
+  }
+  const picked = session.results[Number(choice)];
+  if (!picked) {
+    return interaction.update({ content: '❌ Choix invalide.', embeds: [], components: [] });
+  }
+  const att = {
+    url: picked.url,
+    contentType: picked.mime,
+    name: `gif-${sessionId}-${choice}.gif`,
+    size: picked.size,
+    width: picked.width,
+    height: picked.height,
   };
+  const err = validateAttachment(att);
+  if (err) {
+    return interaction.update({ content: `❌ ${err}`, embeds: [], components: [] });
+  }
+  try {
+    const text = await session.finish(att);
+    return interaction.update({ content: text, embeds: [], components: [] });
+  } catch (e) {
+    console.error('[gif] finish failed:', e);
+    return interaction.update({ content: '⚠️ Erreur interne en envoyant le drop.', embeds: [], components: [] }).catch(() => {});
+  }
 }
 
 // Extrait jusqu'à 5 emojis visuels distincts d'une chaîne (option "pluie") —
@@ -723,9 +770,9 @@ async function safeReply(interaction, content) {
 }
 
 client.on(Events.InteractionCreate, async (interaction) => {
-  if (interaction.isAutocomplete()) {
-    if (interaction.options.getFocused(true).name === 'gif') {
-      await handleGifAutocomplete(interaction);
+  if (interaction.isButton()) {
+    if (interaction.customId.startsWith('gifpick:')) {
+      await handleGifPickButton(interaction);
     }
     return;
   }
@@ -914,59 +961,62 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const tts      = (interaction.options.getString('tts', false) || '').trim() || null;
         const effect   = interaction.options.getString('effet', false);
         const delayMin = interaction.options.getInteger('delai', false);
+        const gifQuery = interaction.options.getString('gif', false);
 
-        if (fileAtt && interaction.options.getString('gif', false)) {
+        if (fileAtt && gifQuery) {
           return safeReply(interaction, '❌ Choisis soit `media` soit `gif`, pas les deux.');
         }
-        const { att: gifAtt, error: gifError } = resolveGifOption(interaction);
-        if (gifError) return safeReply(interaction, gifError);
-        const att = fileAtt || gifAtt;
-
-        // Il faut au moins un média, une pluie ou un texte à lire
-        if (!att && !rain && !tts) {
+        // Il faut au moins un média (fichier ou recherche gif), une pluie ou un texte à lire
+        if (!fileAtt && !gifQuery && !rain && !tts) {
           return safeReply(interaction, '❌ Mets au moins un média (`media`/`gif`), un emoji (`pluie`) ou un texte (`tts`).');
         }
-
-        if (att) {
-          const err = validateAttachment(att);
+        if (fileAtt) {
+          const err = validateAttachment(fileAtt);
           if (err) return safeReply(interaction, `❌ ${err}`);
         }
 
         const musicErr = validateMusic(musicAtt);
         if (musicErr) return safeReply(interaction, `❌ ${musicErr}`);
-
-        if (musicAtt && !att) {
+        if (musicAtt && !fileAtt && !gifQuery) {
           return safeReply(interaction, '❌ L\'option `musique` nécessite un média (image ou GIF).');
         }
-        if (musicAtt && att && !att.contentType.startsWith('image/')) {
+        if (musicAtt && fileAtt && !fileAtt.contentType.startsWith('image/')) {
           return safeReply(interaction, '❌ L\'option `musique` ne fonctionne qu\'avec une image ou un GIF (pas une vidéo).');
         }
 
-        const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain, { tts, effect });
+        // Finalise et livre le drop une fois le média connu (tout de suite si
+        // `media` a été uploadé, ou après le choix d'un GIF sur le picker).
+        const finishDrop = async (att) => {
+          const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain, { tts, effect });
 
-        // Drop différé : on programme l'envoi et on répond tout de suite.
-        // (Perdu si le bot redémarre entre-temps — assumé pour un troll.)
-        if (delayMin && delayMin > 0) {
-          const senderId  = interaction.user.id;
-          const guildId   = interaction.guildId;
-          const channelId = interaction.channelId;
-          setTimeout(() => {
-            const delivered = [];
-            for (const t of targets) {
-              if (canDrop(senderId, t.id, guildId)) {
-                sendJson(userLinks.get(t.id).ws, payload);
-                delivered.push(t.username);
-                bumpStats(senderId, t.id);
+          // Drop différé : on programme l'envoi et on répond tout de suite.
+          // (Perdu si le bot redémarre entre-temps — assumé pour un troll.)
+          if (delayMin && delayMin > 0) {
+            const senderId  = interaction.user.id;
+            const guildId   = interaction.guildId;
+            const channelId = interaction.channelId;
+            setTimeout(() => {
+              const delivered = [];
+              for (const t of targets) {
+                if (canDrop(senderId, t.id, guildId)) {
+                  sendJson(userLinks.get(t.id).ws, payload);
+                  delivered.push(t.username);
+                  bumpStats(senderId, t.id);
+                }
               }
-            }
-            if (delivered.length) registerDropForReactions(payload, senderId, channelId);
-            console.log(`[drop] delayed drop fired (${delivered.length}/${targets.length} delivered)`);
-          }, Math.min(delayMin, 60) * 60_000);
-          return safeReply(interaction,
-            `⏳ Drop programmé dans **${Math.min(delayMin, 60)} min** pour ${targets.map(t => `**${t.username}**`).join(', ')}. 😈`);
-        }
+              if (delivered.length) registerDropForReactions(payload, senderId, channelId);
+              console.log(`[drop] delayed drop fired (${delivered.length}/${targets.length} delivered)`);
+            }, Math.min(delayMin, 60) * 60_000);
+            return `⏳ Drop programmé dans **${Math.min(delayMin, 60)} min** pour ${targets.map(t => `**${t.username}**`).join(', ')}. 😈`;
+          }
 
-        return safeReply(interaction, dispatchToTargets(interaction, targets, payload, musicAtt));
+          return dispatchToTargets(interaction, targets, payload, musicAtt);
+        };
+
+        if (gifQuery) {
+          return presentGifPicker(interaction, gifQuery, finishDrop);
+        }
+        return safeReply(interaction, await finishDrop(fileAtt));
       }
 
       // ── /dropall — only reachable users in this guild ──────────────────
@@ -987,30 +1037,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const rain     = extractEmojis(interaction.options.getString('pluie', false));
         const tts      = (interaction.options.getString('tts', false) || '').trim() || null;
         const effect   = interaction.options.getString('effet', false);
+        const gifQuery = interaction.options.getString('gif', false);
 
-        if (fileAtt && interaction.options.getString('gif', false)) {
+        if (fileAtt && gifQuery) {
           return safeReply(interaction, '❌ Choisis soit `media` soit `gif`, pas les deux.');
         }
-        const { att: gifAtt, error: gifError } = resolveGifOption(interaction);
-        if (gifError) return safeReply(interaction, gifError);
-        const att = fileAtt || gifAtt;
-
-        if (!att && !rain && !tts) {
+        if (!fileAtt && !gifQuery && !rain && !tts) {
           return safeReply(interaction, '❌ Mets au moins un média (`media`/`gif`), un emoji (`pluie`) ou un texte (`tts`).');
         }
-
-        if (att) {
-          const err = validateAttachment(att);
+        if (fileAtt) {
+          const err = validateAttachment(fileAtt);
           if (err) return safeReply(interaction, `❌ ${err}`);
         }
 
         const musicErr = validateMusic(musicAtt);
         if (musicErr) return safeReply(interaction, `❌ ${musicErr}`);
-
-        if (musicAtt && !att) {
+        if (musicAtt && !fileAtt && !gifQuery) {
           return safeReply(interaction, '❌ L\'option `musique` nécessite un média (image ou GIF).');
         }
-        if (musicAtt && att && !att.contentType.startsWith('image/')) {
+        if (musicAtt && fileAtt && !fileAtt.contentType.startsWith('image/')) {
           return safeReply(interaction, '❌ L\'option `musique` ne fonctionne qu\'avec une image ou un GIF (pas une vidéo).');
         }
 
@@ -1025,16 +1070,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return safeReply(interaction, 'Personne n\'est atteignable sur ce serveur pour l\'instant. 😴');
         }
 
-        const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain, { tts, effect });
-        const names = [];
-        for (const r of recipients) {
-          sendJson(r.ws, payload);
-          names.push(r.username);
-          bumpStats(interaction.user.id, r.userId);
+        const finishDropAll = async (att) => {
+          const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain, { tts, effect });
+          const names = [];
+          for (const r of recipients) {
+            sendJson(r.ws, payload);
+            names.push(r.username);
+            bumpStats(interaction.user.id, r.userId);
+          }
+          registerDropForReactions(payload, interaction.user.id, interaction.channelId);
+          return `💥 Drop envoyé à **${names.length}** personne${names.length > 1 ? 's' : ''} : ${names.map(n => `**${n}**`).join(', ')}${musicAtt ? ' 🎵' : ''}`;
+        };
+
+        if (gifQuery) {
+          return presentGifPicker(interaction, gifQuery, finishDropAll);
         }
-        registerDropForReactions(payload, interaction.user.id, interaction.channelId);
-        return safeReply(interaction,
-          `💥 Drop envoyé à **${names.length}** personne${names.length > 1 ? 's' : ''} : ${names.map(n => `**${n}**`).join(', ')}${musicAtt ? ' 🎵' : ''}`);
+        return safeReply(interaction, await finishDropAll(fileAtt));
       }
 
       // ── /block — stop a specific user from being able to /drop you ─────
@@ -1273,32 +1324,36 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const rain     = extractEmojis(interaction.options.getString('pluie', false));
         const tts      = (interaction.options.getString('tts', false) || '').trim() || null;
         const effect   = interaction.options.getString('effet', false);
+        const gifQuery = interaction.options.getString('gif', false);
 
-        if (fileAtt && interaction.options.getString('gif', false)) {
+        if (fileAtt && gifQuery) {
           return safeReply(interaction, '❌ Choisis soit `media` soit `gif`, pas les deux.');
         }
-        const { att: gifAtt, error: gifError } = resolveGifOption(interaction);
-        if (gifError) return safeReply(interaction, gifError);
-        const att = fileAtt || gifAtt;
-
-        if (!att && !rain && !tts) {
+        if (!fileAtt && !gifQuery && !rain && !tts) {
           return safeReply(interaction, '❌ Mets au moins un média (`media`/`gif`), un emoji (`pluie`) ou un texte (`tts`).');
         }
-        if (att) {
-          const err = validateAttachment(att);
+        if (fileAtt) {
+          const err = validateAttachment(fileAtt);
           if (err) return safeReply(interaction, `❌ ${err}`);
         }
         const musicErr = validateMusic(musicAtt);
         if (musicErr) return safeReply(interaction, `❌ ${musicErr}`);
-        if (musicAtt && !att) {
+        if (musicAtt && !fileAtt && !gifQuery) {
           return safeReply(interaction, '❌ L\'option `musique` nécessite un média (image ou GIF).');
         }
-        if (musicAtt && att && !att.contentType.startsWith('image/')) {
+        if (musicAtt && fileAtt && !fileAtt.contentType.startsWith('image/')) {
           return safeReply(interaction, '❌ L\'option `musique` ne fonctionne qu\'avec une image ou un GIF (pas une vidéo).');
         }
 
-        const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain, { tts, effect });
-        return safeReply(interaction, dispatchToTargets(interaction, targets, payload, musicAtt));
+        const finishDropGroup = async (att) => {
+          const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain, { tts, effect });
+          return dispatchToTargets(interaction, targets, payload, musicAtt);
+        };
+
+        if (gifQuery) {
+          return presentGifPicker(interaction, gifQuery, finishDropGroup);
+        }
+        return safeReply(interaction, await finishDropGroup(fileAtt));
       }
 
       // ── /stats — compteurs de drops envoyés / reçus ─────────────────────

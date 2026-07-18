@@ -23,11 +23,11 @@ function addEffectOption(b) {
     .setRequired(false));
 }
 // Recherche de GIF — alternative à `media` pour ne pas avoir à uploader un
-// fichier. Tape des mots-clés, choisis un résultat dans la liste.
+// fichier. Le bot répond avec jusqu'à 5 résultats (vignettes + boutons) pour
+// choisir, pas d'autocomplete Discord (celle-ci ne peut afficher que du texte).
 function addGifOption(b) {
   return b.addStringOption(o => o.setName('gif')
-    .setDescription('Cherche un GIF au lieu d\'uploader un fichier — choisis dans la liste')
-    .setAutocomplete(true)
+    .setDescription('Cherche un GIF (mots-clés) — un choix de vignettes s\'affichera')
     .setRequired(false));
 }
 
