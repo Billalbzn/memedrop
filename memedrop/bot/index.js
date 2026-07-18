@@ -506,14 +506,19 @@ setInterval(() => {
   }
 }, 5 * 60_000);
 
-// Un résultat Klipy propose plusieurs variantes (`files`) — on prend la
-// première qui a une URL et un type GIF, sinon la première disponible.
-function pickKlipyFile(files) {
-  if (!files) return null;
-  const list = Array.isArray(files) ? files : Object.values(files);
-  const candidates = list.filter(f => f && f.url);
-  if (!candidates.length) return null;
-  return candidates.find(f => String(f.mime_type || '').includes('gif')) || candidates[0];
+// Un résultat Klipy expose `file.<hd|md|sm|xs>.<gif|webp|jpg|mp4|webm>`
+// (chacun { url, width, height, size }) — on prend la variante gif "md"
+// (bon compromis qualité/poids), sinon la première variante gif dispo.
+function pickKlipyFile(file) {
+  if (!file) return null;
+  for (const sizeKey of ['md', 'sm', 'hd', 'xs']) {
+    const gif = file[sizeKey]?.gif;
+    if (gif?.url) return gif;
+  }
+  for (const variant of Object.values(file)) {
+    if (variant?.gif?.url) return variant.gif;
+  }
+  return null;
 }
 
 async function searchGifs(query) {
@@ -522,23 +527,22 @@ async function searchGifs(query) {
   u.searchParams.set('q', query);
   u.searchParams.set('per_page', '10');
   u.searchParams.set('page', '1');
-  u.searchParams.set('rating', 'pg-13');
   const res = await fetch(u);
   if (!res.ok) throw new Error(`klipy ${res.status}`);
   const data = await res.json();
   const items = data?.data?.data || [];
   return items
     .map(item => {
-      const file = pickKlipyFile(item.files);
-      if (!file) return null;
+      const gif = pickKlipyFile(item.file);
+      if (!gif) return null;
       return {
         id: crypto.randomBytes(4).toString('hex'),
         label: String(item.title || item.slug || 'gif').slice(0, 100),
-        url: file.url,
-        mime: String(file.mime_type || '').startsWith('image/') ? file.mime_type : 'image/gif',
-        size: file.size || 0,
-        width: file.width || null,
-        height: file.height || null,
+        url: gif.url,
+        mime: 'image/gif',
+        size: gif.size || 0,
+        width: gif.width || null,
+        height: gif.height || null,
       };
     })
     .filter(Boolean);
