@@ -576,21 +576,24 @@ async function presentGifPicker(interaction, query, finish) {
 
   const embeds = results.map((r, i) =>
     new EmbedBuilder().setTitle(`${i + 1}. ${r.label}`).setImage(r.url).setColor(0x5865f2));
-  const row = new ActionRowBuilder().addComponents(
+  // Discord limite un ActionRow à 5 composants max — les numéros (jusqu'à 5,
+  // vu que searchGifs plafonne déjà à per_page=5) vont dans une rangée, le
+  // bouton Annuler dans une seconde.
+  const pickRow = new ActionRowBuilder().addComponents(
     ...results.map((r, i) => new ButtonBuilder()
       .setCustomId(`gifpick:${sessionId}:${i}`)
       .setLabel(String(i + 1))
-      .setStyle(ButtonStyle.Secondary)),
+      .setStyle(ButtonStyle.Secondary)));
+  const cancelRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`gifpick:${sessionId}:cancel`)
       .setLabel('Annuler')
-      .setStyle(ButtonStyle.Danger),
-  );
+      .setStyle(ButtonStyle.Danger));
 
   return interaction.editReply({
     content: `🔎 Résultats pour \`${query}\` — clique un numéro pour choisir :`,
     embeds,
-    components: [row],
+    components: [pickRow, cancelRow],
   });
 }
 
@@ -772,7 +775,11 @@ async function safeReply(interaction, content) {
 client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isButton()) {
     if (interaction.customId.startsWith('gifpick:')) {
-      await handleGifPickButton(interaction);
+      try {
+        await handleGifPickButton(interaction);
+      } catch (err) {
+        console.error('[gif] button handler error:', err);
+      }
     }
     return;
   }
@@ -1390,6 +1397,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
+
+// Filet de sécurité : une promesse rejetée non catchée quelque part (ex. un
+// appel Discord API qui échoue dans un handler oublié) fait par défaut
+// planter tout le process Node depuis Node 15+. Pour un bot qui sert
+// plusieurs personnes en continu, un crash total pour une erreur localisée
+// dans une seule interaction est pire que l'erreur elle-même — on logue et on
+// continue au lieu de couper tout le monde.
+process.on('unhandledRejection', (err) => {
+  console.error('[bot] unhandled rejection:', err);
+});
 
 process.on('SIGINT', () => {
   console.log('\n[bot] shutting down…');
