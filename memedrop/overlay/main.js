@@ -48,6 +48,15 @@ const store = new Store({
   },
 });
 
+// Migration : les installs d'avant le passage à Fly.io ont déjà un `serverUrl`
+// persisté (l'ancienne URL Railway, désormais morte) — `defaults` ci-dessus ne
+// s'applique jamais sur une clé déjà présente dans le store. Sans ça, l'app
+// continue d'essayer de se connecter à Railway pour toujours et n'affiche
+// jamais de code de pairing.
+if (String(store.get('serverUrl') || '').includes('railway.app')) {
+  store.set('serverUrl', DEFAULT_SERVER);
+}
+
 const MAX_HISTORY = 20;
 
 // muteUntil: null = pas de mode tranquille, -1 = jusqu'à réactivation
