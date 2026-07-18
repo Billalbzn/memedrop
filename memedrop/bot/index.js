@@ -486,14 +486,18 @@ function classifyMedia(mime) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Recherche de GIF (Tenor) — alternative à l'upload d'un fichier pour /drop,
-// /dropall et /dropgroup. Un choix d'autocomplete Discord ne peut renvoyer
-// qu'une valeur de 100 caractères max (trop court pour une URL Tenor), donc
-// l'autocomplete ne renvoie que l'id du GIF et on garde l'URL/taille en cache
-// le temps que l'utilisateur valide la commande.
+// Recherche de GIF (Klipy) — alternative à l'upload d'un fichier pour /drop,
+// /dropall et /dropgroup. (Tenor, utilisé au départ, ferme son API en 2026 —
+// Klipy est fondé par d'anciens de Tenor, API très proche, tier gratuit sans
+// limite dans le temps : https://klipy.com/developers)
+//
+// Un choix d'autocomplete Discord ne peut renvoyer qu'une valeur de 100
+// caractères max (trop court pour une URL de GIF), donc l'autocomplete ne
+// renvoie qu'un id généré localement et on garde l'URL/taille en cache le
+// temps que l'utilisateur valide la commande.
 // ─────────────────────────────────────────────────────────────────────────────
-const TENOR_API_KEY = process.env.TENOR_API_KEY || '';
-const gifCache = new Map(); // `${userId}:${tenorId}` -> { url, size, width, height, ts }
+const KLIPY_API_KEY = process.env.KLIPY_API_KEY || '';
+const gifCache = new Map(); // `${userId}:${localId}` -> { url, mime, size, width, height, ts }
 
 setInterval(() => {
   const cutoff = Date.now() - 10 * 60_000;
@@ -502,29 +506,39 @@ setInterval(() => {
   }
 }, 5 * 60_000);
 
-async function searchTenor(query) {
-  if (!TENOR_API_KEY || !query) return [];
-  const u = new URL('https://tenor.googleapis.com/v2/search');
+// Un résultat Klipy propose plusieurs variantes (`files`) — on prend la
+// première qui a une URL et un type GIF, sinon la première disponible.
+function pickKlipyFile(files) {
+  if (!files) return null;
+  const list = Array.isArray(files) ? files : Object.values(files);
+  const candidates = list.filter(f => f && f.url);
+  if (!candidates.length) return null;
+  return candidates.find(f => String(f.mime_type || '').includes('gif')) || candidates[0];
+}
+
+async function searchGifs(query) {
+  if (!KLIPY_API_KEY || !query) return [];
+  const u = new URL(`https://api.klipy.com/api/v1/${KLIPY_API_KEY}/gifs/search`);
   u.searchParams.set('q', query);
-  u.searchParams.set('key', TENOR_API_KEY);
-  u.searchParams.set('client_key', 'memedrop');
-  u.searchParams.set('limit', '10');
-  u.searchParams.set('media_filter', 'gif');
-  u.searchParams.set('contentfilter', 'medium');
+  u.searchParams.set('per_page', '10');
+  u.searchParams.set('page', '1');
+  u.searchParams.set('rating', 'pg-13');
   const res = await fetch(u);
-  if (!res.ok) throw new Error(`tenor ${res.status}`);
+  if (!res.ok) throw new Error(`klipy ${res.status}`);
   const data = await res.json();
-  return (data.results || [])
-    .map(r => {
-      const media = r.media_formats?.gif;
-      if (!media?.url) return null;
+  const items = data?.data?.data || [];
+  return items
+    .map(item => {
+      const file = pickKlipyFile(item.files);
+      if (!file) return null;
       return {
-        id: r.id,
-        label: String(r.content_description || r.title || 'gif').slice(0, 100),
-        url: media.url,
-        size: media.size || 0,
-        width: media.dims?.[0] || null,
-        height: media.dims?.[1] || null,
+        id: crypto.randomBytes(4).toString('hex'),
+        label: String(item.title || item.slug || 'gif').slice(0, 100),
+        url: file.url,
+        mime: String(file.mime_type || '').startsWith('image/') ? file.mime_type : 'image/gif',
+        size: file.size || 0,
+        width: file.width || null,
+        height: file.height || null,
       };
     })
     .filter(Boolean);
@@ -534,10 +548,10 @@ async function handleGifAutocomplete(interaction) {
   const query = String(interaction.options.getFocused() || '').trim();
   if (!query) return interaction.respond([]);
   try {
-    const results = await searchTenor(query);
+    const results = await searchGifs(query);
     const now = Date.now();
     for (const r of results) {
-      gifCache.set(`${interaction.user.id}:${r.id}`, { url: r.url, size: r.size, width: r.width, height: r.height, ts: now });
+      gifCache.set(`${interaction.user.id}:${r.id}`, { url: r.url, mime: r.mime, size: r.size, width: r.width, height: r.height, ts: now });
     }
     await interaction.respond(results.map(r => ({ name: r.label, value: r.id })));
   } catch (e) {
@@ -546,7 +560,7 @@ async function handleGifAutocomplete(interaction) {
   }
 }
 
-// Résout l'option `gif` (id Tenor choisi via autocomplete) en un objet avec
+// Résout l'option `gif` (id local choisi via autocomplete) en un objet avec
 // les mêmes champs qu'un attachement Discord, pour rester compatible avec
 // validateAttachment/buildDropPayload sans dupliquer leur logique.
 function resolveGifOption(interaction) {
@@ -559,8 +573,8 @@ function resolveGifOption(interaction) {
   return {
     att: {
       url: cached.url,
-      contentType: 'image/gif',
-      name: `tenor-${gifId}.gif`,
+      contentType: cached.mime,
+      name: `gif-${gifId}.gif`,
       size: cached.size,
       width: cached.width,
       height: cached.height,

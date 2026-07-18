@@ -22,11 +22,11 @@ function addEffectOption(b) {
     .addChoices(...EFFECT_CHOICES)
     .setRequired(false));
 }
-// Recherche de GIF (Tenor) — alternative à `media` pour ne pas avoir à
-// uploader un fichier. Tape des mots-clés, choisis un résultat dans la liste.
+// Recherche de GIF — alternative à `media` pour ne pas avoir à uploader un
+// fichier. Tape des mots-clés, choisis un résultat dans la liste.
 function addGifOption(b) {
   return b.addStringOption(o => o.setName('gif')
-    .setDescription('Cherche un GIF (Tenor) au lieu d\'uploader un fichier — choisis dans la liste')
+    .setDescription('Cherche un GIF au lieu d\'uploader un fichier — choisis dans la liste')
     .setAutocomplete(true)
     .setRequired(false));
 }
