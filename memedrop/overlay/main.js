@@ -6,7 +6,7 @@ const Store = require('electron-store');
 const { autoUpdater } = require('electron-updater');
 
 const DEFAULT_SERVER =
-  process.env.DEFAULT_SERVER || 'wss://memedrop-production-3106.up.railway.app';
+  process.env.DEFAULT_SERVER || 'wss://memedrop-bot.fly.dev';
 
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-background-timer-throttling');

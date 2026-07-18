@@ -502,12 +502,12 @@ const EFFECTS = new Set(['zoom', 'tornade', 'glitch', 'shake']);
 const MAX_TTS_CHARS = 200;
 
 // Base publique du bot, utilisée pour construire les URL /tts envoyées aux
-// overlays. Railway fournit RAILWAY_PUBLIC_DOMAIN automatiquement ; sinon on
+// overlays. Sur Fly.io, FLY_APP_NAME est fourni automatiquement ; sinon on
 // retombe sur le domaine prod connu (même fallback codé en dur que dans le
 // main.js de l'overlay).
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL ||
-  (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '') ||
-  'https://memedrop-production-3106.up.railway.app'
+  (process.env.FLY_APP_NAME ? `https://${process.env.FLY_APP_NAME}.fly.dev` : '') ||
+  'https://memedrop-bot.fly.dev'
 ).replace(/\/+$/, '');
 
 function ttsUrlFor(text) {
