@@ -485,6 +485,104 @@ function classifyMedia(mime) {
   return 'image';
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Recherche de GIF (Klipy) — alternative à l'upload d'un fichier pour /drop,
+// /dropall et /dropgroup. (Tenor, utilisé au départ, ferme son API en 2026 —
+// Klipy est fondé par d'anciens de Tenor, API très proche, tier gratuit sans
+// limite dans le temps : https://klipy.com/developers)
+//
+// Un choix d'autocomplete Discord ne peut renvoyer qu'une valeur de 100
+// caractères max (trop court pour une URL de GIF), donc l'autocomplete ne
+// renvoie qu'un id généré localement et on garde l'URL/taille en cache le
+// temps que l'utilisateur valide la commande.
+// ─────────────────────────────────────────────────────────────────────────────
+const KLIPY_API_KEY = process.env.KLIPY_API_KEY || '';
+const gifCache = new Map(); // `${userId}:${localId}` -> { url, mime, size, width, height, ts }
+
+setInterval(() => {
+  const cutoff = Date.now() - 10 * 60_000;
+  for (const [key, entry] of gifCache) {
+    if (entry.ts < cutoff) gifCache.delete(key);
+  }
+}, 5 * 60_000);
+
+// Un résultat Klipy propose plusieurs variantes (`files`) — on prend la
+// première qui a une URL et un type GIF, sinon la première disponible.
+function pickKlipyFile(files) {
+  if (!files) return null;
+  const list = Array.isArray(files) ? files : Object.values(files);
+  const candidates = list.filter(f => f && f.url);
+  if (!candidates.length) return null;
+  return candidates.find(f => String(f.mime_type || '').includes('gif')) || candidates[0];
+}
+
+async function searchGifs(query) {
+  if (!KLIPY_API_KEY || !query) return [];
+  const u = new URL(`https://api.klipy.com/api/v1/${KLIPY_API_KEY}/gifs/search`);
+  u.searchParams.set('q', query);
+  u.searchParams.set('per_page', '10');
+  u.searchParams.set('page', '1');
+  u.searchParams.set('rating', 'pg-13');
+  const res = await fetch(u);
+  if (!res.ok) throw new Error(`klipy ${res.status}`);
+  const data = await res.json();
+  const items = data?.data?.data || [];
+  return items
+    .map(item => {
+      const file = pickKlipyFile(item.files);
+      if (!file) return null;
+      return {
+        id: crypto.randomBytes(4).toString('hex'),
+        label: String(item.title || item.slug || 'gif').slice(0, 100),
+        url: file.url,
+        mime: String(file.mime_type || '').startsWith('image/') ? file.mime_type : 'image/gif',
+        size: file.size || 0,
+        width: file.width || null,
+        height: file.height || null,
+      };
+    })
+    .filter(Boolean);
+}
+
+async function handleGifAutocomplete(interaction) {
+  const query = String(interaction.options.getFocused() || '').trim();
+  if (!query) return interaction.respond([]);
+  try {
+    const results = await searchGifs(query);
+    const now = Date.now();
+    for (const r of results) {
+      gifCache.set(`${interaction.user.id}:${r.id}`, { url: r.url, mime: r.mime, size: r.size, width: r.width, height: r.height, ts: now });
+    }
+    await interaction.respond(results.map(r => ({ name: r.label, value: r.id })));
+  } catch (e) {
+    console.error('[gif] autocomplete failed:', e.message);
+    try { await interaction.respond([]); } catch {}
+  }
+}
+
+// Résout l'option `gif` (id local choisi via autocomplete) en un objet avec
+// les mêmes champs qu'un attachement Discord, pour rester compatible avec
+// validateAttachment/buildDropPayload sans dupliquer leur logique.
+function resolveGifOption(interaction) {
+  const gifId = interaction.options.getString('gif', false);
+  if (!gifId) return { att: null, error: null };
+  const cached = gifCache.get(`${interaction.user.id}:${gifId}`);
+  if (!cached) {
+    return { att: null, error: '❌ GIF introuvable ou expiré — relance la recherche `gif` et choisis une suggestion dans la liste.' };
+  }
+  return {
+    att: {
+      url: cached.url,
+      contentType: cached.mime,
+      name: `gif-${gifId}.gif`,
+      size: cached.size,
+      width: cached.width,
+      height: cached.height,
+    },
+    error: null,
+  };
+}
+
 // Extrait jusqu'à 5 emojis visuels distincts d'une chaîne (option "pluie") —
 // permet de faire pleuvoir une combinaison d'emojis plutôt qu'un seul.
 const MAX_RAIN_EMOJIS = 5;
@@ -502,12 +600,12 @@ const EFFECTS = new Set(['zoom', 'tornade', 'glitch', 'shake']);
 const MAX_TTS_CHARS = 200;
 
 // Base publique du bot, utilisée pour construire les URL /tts envoyées aux
-// overlays. Railway fournit RAILWAY_PUBLIC_DOMAIN automatiquement ; sinon on
+// overlays. Sur Fly.io, FLY_APP_NAME est fourni automatiquement ; sinon on
 // retombe sur le domaine prod connu (même fallback codé en dur que dans le
 // main.js de l'overlay).
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL ||
-  (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '') ||
-  'https://memedrop-production-3106.up.railway.app'
+  (process.env.FLY_APP_NAME ? `https://${process.env.FLY_APP_NAME}.fly.dev` : '') ||
+  'https://memedrop-bot.fly.dev'
 ).replace(/\/+$/, '');
 
 function ttsUrlFor(text) {
@@ -621,6 +719,12 @@ async function safeReply(interaction, content) {
 }
 
 client.on(Events.InteractionCreate, async (interaction) => {
+  if (interaction.isAutocomplete()) {
+    if (interaction.options.getFocused(true).name === 'gif') {
+      await handleGifAutocomplete(interaction);
+    }
+    return;
+  }
   if (!interaction.isChatInputCommand()) return;
 
   try {
@@ -799,7 +903,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return safeReply(interaction, '🤖 Aucune cible valide (bots et doublons filtrés).');
         }
 
-        const att      = interaction.options.getAttachment('media', false);
+        const fileAtt  = interaction.options.getAttachment('media', false);
         const caption  = interaction.options.getString('caption', false);
         const musicAtt = interaction.options.getAttachment('musique', false);
         const rain     = extractEmojis(interaction.options.getString('pluie', false));
@@ -807,9 +911,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const effect   = interaction.options.getString('effet', false);
         const delayMin = interaction.options.getInteger('delai', false);
 
+        if (fileAtt && interaction.options.getString('gif', false)) {
+          return safeReply(interaction, '❌ Choisis soit `media` soit `gif`, pas les deux.');
+        }
+        const { att: gifAtt, error: gifError } = resolveGifOption(interaction);
+        if (gifError) return safeReply(interaction, gifError);
+        const att = fileAtt || gifAtt;
+
         // Il faut au moins un média, une pluie ou un texte à lire
         if (!att && !rain && !tts) {
-          return safeReply(interaction, '❌ Mets au moins un média (`media`), un emoji (`pluie`) ou un texte (`tts`).');
+          return safeReply(interaction, '❌ Mets au moins un média (`media`/`gif`), un emoji (`pluie`) ou un texte (`tts`).');
         }
 
         if (att) {
@@ -866,15 +977,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
           markCooldown(lastDropAllAt, interaction.user.id);
         }
 
-        const att      = interaction.options.getAttachment('media', false);
+        const fileAtt  = interaction.options.getAttachment('media', false);
         const caption  = interaction.options.getString('caption', false);
         const musicAtt = interaction.options.getAttachment('musique', false);
         const rain     = extractEmojis(interaction.options.getString('pluie', false));
         const tts      = (interaction.options.getString('tts', false) || '').trim() || null;
         const effect   = interaction.options.getString('effet', false);
 
+        if (fileAtt && interaction.options.getString('gif', false)) {
+          return safeReply(interaction, '❌ Choisis soit `media` soit `gif`, pas les deux.');
+        }
+        const { att: gifAtt, error: gifError } = resolveGifOption(interaction);
+        if (gifError) return safeReply(interaction, gifError);
+        const att = fileAtt || gifAtt;
+
         if (!att && !rain && !tts) {
-          return safeReply(interaction, '❌ Mets au moins un média (`media`), un emoji (`pluie`) ou un texte (`tts`).');
+          return safeReply(interaction, '❌ Mets au moins un média (`media`/`gif`), un emoji (`pluie`) ou un texte (`tts`).');
         }
 
         if (att) {
@@ -1145,15 +1263,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return safeReply(interaction, `❌ Aucun membre du groupe **${groupKey}** n'est joignable (utilisateurs introuvables).`);
         }
 
-        const att      = interaction.options.getAttachment('media', false);
+        const fileAtt  = interaction.options.getAttachment('media', false);
         const caption  = interaction.options.getString('caption', false);
         const musicAtt = interaction.options.getAttachment('musique', false);
         const rain     = extractEmojis(interaction.options.getString('pluie', false));
         const tts      = (interaction.options.getString('tts', false) || '').trim() || null;
         const effect   = interaction.options.getString('effet', false);
 
+        if (fileAtt && interaction.options.getString('gif', false)) {
+          return safeReply(interaction, '❌ Choisis soit `media` soit `gif`, pas les deux.');
+        }
+        const { att: gifAtt, error: gifError } = resolveGifOption(interaction);
+        if (gifError) return safeReply(interaction, gifError);
+        const att = fileAtt || gifAtt;
+
         if (!att && !rain && !tts) {
-          return safeReply(interaction, '❌ Mets au moins un média (`media`), un emoji (`pluie`) ou un texte (`tts`).');
+          return safeReply(interaction, '❌ Mets au moins un média (`media`/`gif`), un emoji (`pluie`) ou un texte (`tts`).');
         }
         if (att) {
           const err = validateAttachment(att);

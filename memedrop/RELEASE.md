@@ -37,7 +37,7 @@ Ouvre `overlay/package.json` et incrémente la version :
 cd C:\Users\tsumu\Downloads\memedrop\memedrop\overlay
 Get-Process -Name "*memedrop*" -ErrorAction SilentlyContinue | Stop-Process -Force
 $env:GH_TOKEN = "ghp_TON_TOKEN_ICI"
-$env:DEFAULT_SERVER = "wss://memedrop-production-3106.up.railway.app"
+$env:DEFAULT_SERVER = "wss://memedrop-bot.fly.dev"
 npm run release:win
 ```
 

@@ -232,7 +232,7 @@ function chooseSpot(avoidZone) {
 }
 
 // ── Synthèse vocale (drops TTS) ───────────────────────────────────────
-// L'audio est généré côté serveur (endpoint /tts du bot Railway) et fourni
+// L'audio est généré côté serveur (endpoint /tts du bot) et fourni
 // via payload.ttsUrl : le speechSynthesis du renderer Electron est muet sur
 // la plupart des PC (Chromium n'embarque aucune voix). La synthèse locale ne
 // sert plus que de secours si l'URL manque ou si la lecture échoue.

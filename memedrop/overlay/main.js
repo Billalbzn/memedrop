@@ -6,7 +6,7 @@ const Store = require('electron-store');
 const { autoUpdater } = require('electron-updater');
 
 const DEFAULT_SERVER =
-  process.env.DEFAULT_SERVER || 'wss://memedrop-production-3106.up.railway.app';
+  process.env.DEFAULT_SERVER || 'wss://memedrop-bot.fly.dev';
 
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-background-timer-throttling');
@@ -47,6 +47,15 @@ const store = new Store({
     avoidZone: 'none',
   },
 });
+
+// Migration : les installs d'avant le passage à Fly.io ont déjà un `serverUrl`
+// persisté (l'ancienne URL Railway, désormais morte) — `defaults` ci-dessus ne
+// s'applique jamais sur une clé déjà présente dans le store. Sans ça, l'app
+// continue d'essayer de se connecter à Railway pour toujours et n'affiche
+// jamais de code de pairing.
+if (String(store.get('serverUrl') || '').includes('railway.app')) {
+  store.set('serverUrl', DEFAULT_SERVER);
+}
 
 const MAX_HISTORY = 20;
 

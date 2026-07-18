@@ -522,7 +522,7 @@ async function init() {
   qhStart.value            = s.quietHours?.start || '22:00';
   qhEnd.value              = s.quietHours?.end   || '08:00';
   $('#autostart').checked  = !!s.autostart;
-  $('#server').value      = s.serverUrl || 'wss://memedrop-production-3106.up.railway.app';
+  $('#server').value      = s.serverUrl || 'wss://memedrop-bot.fly.dev';
 
   const displays = await window.memedrop.listDisplays();
   const sel = $('#display');
