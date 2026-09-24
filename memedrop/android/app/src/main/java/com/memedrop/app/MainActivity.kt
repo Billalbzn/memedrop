@@ -51,6 +51,7 @@ class MainActivity : Activity() {
 
         Hub.addListener(onHubChange)
         startMemeDropService()
+        Updater.check(manual = false)
     }
 
     override fun onResume() {
@@ -96,6 +97,7 @@ class MainActivity : Activity() {
             .put("history", Prefs.history())
             .put("perm", perm)
             .put("version", BuildConfig.VERSION_NAME)
+            .put("update", Updater.toJson())
     }
 
     // Les méthodes @JavascriptInterface tournent sur un thread de la WebView :
@@ -181,6 +183,15 @@ class MainActivity : Activity() {
         fun unblockUser(id: String) = ui {
             Hub.service?.send(JSONObject().put("type", "unblock_user").put("userId", id))
         }
+
+        @JavascriptInterface
+        fun checkUpdate() = ui { Updater.check(manual = true) }
+
+        @JavascriptInterface
+        fun downloadUpdate() = ui { Updater.download(this@MainActivity) }
+
+        @JavascriptInterface
+        fun installUpdate() = ui { Updater.install(this@MainActivity) }
 
         @JavascriptInterface
         fun requestOverlay() = ui { requestOverlayPermission() }

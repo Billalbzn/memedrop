@@ -33,8 +33,39 @@ function render() {
   renderMute();
   renderHistory();
   if (!settingsLoaded) loadSettings();
+  renderUpdate();
   $('#app-version').textContent = `v${S.version}`;
+  $('#settings-version').textContent = `v${S.version}`;
 }
+
+// ── Mise à jour de l'APK ───────────────────────────────────────────────
+function renderUpdate() {
+  const u = S.update || { state: 'idle' };
+  const card = $('#update-card');
+  const show = (id, on) => $(id).classList.toggle('hidden', !on);
+  card.classList.toggle('hidden', u.state === 'idle');
+  show('#update-download', u.state === 'available');
+  show('#update-install', u.state === 'downloaded');
+  show('#update-check', u.state === 'error' || u.state === 'up-to-date');
+  show('#update-progress', u.state === 'downloading');
+  $('#update-progress-fill').style.width = `${u.progress || 0}%`;
+  const latest = u.latest ? `v${u.latest}` : 'nouvelle version';
+  const [eyebrow, title, msg] = {
+    checking:     ['mise à jour', 'Vérification…', 'Recherche d\'une nouvelle version.'],
+    'up-to-date': ['à jour', 'Tout est à jour ✓', `Tu as la dernière version (v${u.current}).`],
+    available:    ['nouveauté', `Mise à jour disponible — ${latest}`, `Tu as la v${u.current}. Télécharge la nouvelle, elle s'installe par-dessus.`],
+    downloading:  ['téléchargement', 'Téléchargement…', `${u.progress || 0}% — reste sur l'appli.`],
+    downloaded:   ['prêt', `${latest} prête à installer`, 'Si Android le demande, autorise MemeDrop à installer des applis, puis reviens toucher « installer ».'],
+    error:        ['erreur', 'Mise à jour impossible', u.error || 'Réessaie plus tard.'],
+  }[u.state] || ['', '', ''];
+  $('#update-eyebrow').textContent = eyebrow;
+  $('#update-title').textContent = title;
+  $('#update-msg').textContent = msg;
+}
+$('#update-download').addEventListener('click', () => MD.downloadUpdate());
+$('#update-install').addEventListener('click', () => MD.installUpdate());
+$('#update-check').addEventListener('click', () => MD.checkUpdate());
+$('#settings-check-update').addEventListener('click', () => { MD.checkUpdate(); showTab('home'); });
 
 function renderPermissions() {
   const p = S.perm || {};
