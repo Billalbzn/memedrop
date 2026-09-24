@@ -156,6 +156,14 @@ function playPop(volume) {
   } catch {}
 }
 
+// Opacité réglable des drops. Elle est posée sur .anchor (pour les drops
+// visuels) et via --op sur les enfants des toasts : les animations d'entrée
+// (fill-mode forwards) écrasaient toute opacité inline mise sur .drop ou
+// .audio-toast, si bien que le curseur "Opacité" n'avait aucun effet.
+function clampOpacity(v) {
+  return Math.max(0.2, Math.min(1, Number(v ?? 1) || 1));
+}
+
 const MAX_CONCURRENT = 6;
 const VIDEO_HARD_CAP_SECONDS = 30;
 const AUDIO_HARD_CAP_SECONDS = 10;
@@ -268,7 +276,7 @@ function speakTTS(text, ttsUrl, settings) {
 function showTtsToast({ tts, from, settings }) {
   const toast = document.createElement('div');
   toast.className = 'audio-toast';
-  toast.style.opacity = String(settings?.opacity ?? 1);
+  toast.style.setProperty('--op', String(clampOpacity(settings?.opacity)));
   toast.appendChild(buildAvatarBubble(from));
   const cap = document.createElement('div');
   cap.className = 'audio-caption';
@@ -448,7 +456,7 @@ function playAudioDrop({ media, caption, from, settings }) {
 
   const toast = document.createElement('div');
   toast.className = 'audio-toast';
-  toast.style.opacity = String(settings?.opacity ?? 1);
+  toast.style.setProperty('--op', String(clampOpacity(settings?.opacity)));
 
   toast.appendChild(buildAvatarBubble(from));
 
@@ -533,10 +541,10 @@ function renderDrop(payload) {
   anchor.className = 'anchor';
   anchor.style.left = `${x}%`;
   anchor.style.top  = `${y}%`;
+  anchor.style.opacity = String(clampOpacity(settings?.opacity));
 
   const wrap = document.createElement('div');
   wrap.className = 'drop';
-  wrap.style.opacity = String(settings?.opacity ?? 1);
 
   // Effet d'apparition spécial. 'shake' secoue tout l'écran en plus de
   // l'animation d'entrée normale ; les autres remplacent l'animation d'entrée.
@@ -602,6 +610,7 @@ function renderDrop(payload) {
   let lifetime = imageMaxSec * 1000;
   let el;
   let isVideo = false;
+  let videoLoadTimer = null;
 
   if (media.kind === 'video') {
     isVideo = true;
@@ -638,6 +647,13 @@ function renderDrop(payload) {
       }
     });
     el.addEventListener('ended', () => removeNow());
+    // Lien expiré / format illisible : sans ça, 'loadedmetadata' ne venait
+    // jamais, aucun retrait n'était planifié et un cadre noir restait à
+    // l'écran pour toujours (en occupant un slot).
+    el.addEventListener('error', () => removeNow({ smooth: true }));
+    videoLoadTimer = setTimeout(() => {
+      if (!(el.duration > 0)) removeNow({ smooth: true });
+    }, 15_000);
     mediaBox.appendChild(el);
   } else if (media.kind === 'test') {
     const holder = document.createElement('div');
@@ -661,6 +677,9 @@ function renderDrop(payload) {
   } else {
     el = document.createElement('img');
     el.src = media.url;
+    // Image introuvable (lien Discord expiré…) : on retire le cadre vide
+    // tout de suite plutôt que d'afficher une icône cassée.
+    el.addEventListener('error', () => removeNow({ smooth: true }));
     el.alt = '';
     el.referrerPolicy = 'no-referrer';
     el.draggable = false;
@@ -674,6 +693,11 @@ function renderDrop(payload) {
     captionBar.textContent = String(caption).trim().slice(0, 80);
     mediaBox.appendChild(captionBar);
   }
+
+  // Barre de vie : se vide pendant la durée d'affichage restante.
+  const lifeBar = document.createElement('div');
+  lifeBar.className = 'life-bar';
+  mediaBox.appendChild(lifeBar);
 
   wrap.appendChild(mediaBox);
   anchor.appendChild(wrap);
@@ -716,9 +740,21 @@ function renderDrop(payload) {
   let removalTimer = null;
   let removed = false;
 
+  // Anime la barre de vie de `fraction` (0..1) jusqu'à 0 en `ms`.
+  function runLifeBar(ms, fraction = 1) {
+    lifeBar.style.transition = 'none';
+    lifeBar.style.transform = `scaleX(${Math.max(0, Math.min(1, fraction))})`;
+    void lifeBar.offsetWidth;   // force le reflow avant de relancer la transition
+    lifeBar.style.transition = `transform ${Math.max(0, ms)}ms linear`;
+    lifeBar.style.transform = 'scaleX(0)';
+  }
+
   function scheduleRemoval() {
     if (removalTimer) clearTimeout(removalTimer);
+    if (videoLoadTimer) { clearTimeout(videoLoadTimer); videoLoadTimer = null; }
+    dropMeta.startedAt = Date.now();
     removalTimer = setTimeout(removeNow, lifetime);
+    runLifeBar(lifetime);
   }
 
   // `smooth: true` (fermeture manuelle via la croix) → fondu doux, plus
@@ -727,7 +763,13 @@ function renderDrop(payload) {
   function removeNow({ smooth = false } = {}) {
     if (removed || !anchor.isConnected) return;
     removed = true;
-    if (isVideo) livePlayables.delete(el);
+    if (removalTimer) clearTimeout(removalTimer);
+    if (videoLoadTimer) clearTimeout(videoLoadTimer);
+    if (isVideo) { try { el.pause(); } catch {} livePlayables.delete(el); }
+    // Drop retiré pendant qu'on le fait glisser : on relâche la capture,
+    // sinon l'overlay plein écran continuait à intercepter la souris.
+    if (dragState?.anchor === anchor) dragState = null;
+    if (hoveredDrop?.anchor === anchor) exitCapture();
     // Stoppe la musique liée à cette image si elle joue encore
     if (musicAudio) {
       try { musicAudio.pause(); } catch {}
@@ -768,6 +810,7 @@ function renderDrop(payload) {
     } else {
       if (removalTimer) clearTimeout(removalTimer);
       removalTimer = setTimeout(removeNow, newCapMs - elapsedMs);
+      runLifeBar(newCapMs - elapsedMs, (newCapMs - elapsedMs) / newCapMs);
     }
   }
 
@@ -807,8 +850,9 @@ if (window.memedrop.onSettingsUpdate) {
       }
     }
     if (typeof settings?.opacity === 'number') {
-      const op = String(Math.max(0.2, Math.min(1, settings.opacity)));
-      document.querySelectorAll('.drop, .audio-toast').forEach(d => { d.style.opacity = op; });
+      const op = String(clampOpacity(settings.opacity));
+      document.querySelectorAll('.anchor').forEach(a => { a.style.opacity = op; });
+      document.querySelectorAll('.audio-toast').forEach(t => t.style.setProperty('--op', op));
     }
     // Spotlight toggle : si désactivé en direct, on éteint immédiatement
     if (typeof settings?.spotlightOnDrop === 'boolean' && !settings.spotlightOnDrop) {

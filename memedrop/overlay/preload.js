@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('memedrop', {
   // Mode tranquille (mute)
   setMute:        (minutes) => ipcRenderer.invoke('mute:set', minutes),
   getMute:        () => ipcRenderer.invoke('mute:get'),
+  isQuietHoursActive: () => ipcRenderer.invoke('quiet-hours:active'),
 
   // Historique des drops reçus
   getHistory:     () => ipcRenderer.invoke('history:get'),

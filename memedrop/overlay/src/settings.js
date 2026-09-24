@@ -39,6 +39,34 @@ const updateInstallBtn   = $('#update-install-btn');
 
 let lastConnState = null;
 
+// localStorage peut être indisponible/effacé : chaque accès est protégé.
+function lsGet(key, fallback = null) {
+  try { const v = localStorage.getItem(key); return v == null ? fallback : v; } catch { return fallback; }
+}
+function lsSet(key, value) {
+  try { localStorage.setItem(key, String(value)); } catch {}
+}
+
+// ── Onglets ────────────────────────────────────────────────────────────
+const tabs   = [...document.querySelectorAll('.tab')];
+const panels = [...document.querySelectorAll('.tab-panel')];
+let currentTab = 'home';
+
+function showTab(name) {
+  if (!panels.some(p => p.dataset.panel === name)) name = 'home';
+  currentTab = name;
+  for (const t of tabs) {
+    const on = t.dataset.tab === name;
+    t.classList.toggle('active', on);
+    t.setAttribute('aria-selected', String(on));
+  }
+  for (const p of panels) p.classList.toggle('active', p.dataset.panel === name);
+  lsSet('memedrop.tab', name);
+  if (name === 'history') markHistorySeen();
+  window.scrollTo({ top: 0 });
+}
+for (const t of tabs) t.addEventListener('click', () => showTab(t.dataset.tab));
+
 // ── Panel serveurs liés ────────────────────────────────────────────────
 function renderServersPanel(links) {
   serverList.innerHTML = '';
@@ -170,17 +198,21 @@ function renderBlockedPanel(blocked) {
 }
 
 // ── Mode tranquille ──────────────────────────────────────────────────────
+let quietActive = false;
+const quietNow = $('#quiet-now');
+
 function applyMuteState(muteUntil) {
   const muted = muteUntil && (muteUntil === -1 || muteUntil > Date.now());
-  pill.classList.remove('pill--muted');
+  pill.classList.toggle('pill--muted', !!muted || quietActive);
   [mute30Btn, mute120Btn, muteForeverBtn].forEach(b => b.classList.toggle('hidden', !!muted));
   muteOffBtn.classList.toggle('hidden', !muted);
+  muteStatus.classList.toggle('is-muted', !!muted);
+  quietNow.classList.toggle('hidden', !quietActive);
 
   if (!muted) {
     muteStatus.textContent = 'Les drops s\'affichent normalement sur ton écran.';
     return;
   }
-  pill.classList.add('pill--muted');
   if (muteUntil === -1) {
     muteStatus.textContent = '🔇 Mode tranquille activé — jusqu\'à ce que tu le désactives.';
   } else {
@@ -194,10 +226,12 @@ mute120Btn.addEventListener('click', async () => applyMuteState(await window.mem
 muteForeverBtn.addEventListener('click', async () => applyMuteState(await window.memedrop.setMute(-1)));
 muteOffBtn.addEventListener('click', async () => applyMuteState(await window.memedrop.setMute(null)));
 
-// Rafraîchit le compte à rebours pendant qu'un mute temporisé est actif
-setInterval(() => {
-  if (lastConnState?.muteUntil && lastConnState.muteUntil !== -1) applyMuteState(lastConnState.muteUntil);
-}, 30_000);
+// Rafraîchit le compte à rebours du mute temporisé et l'état des heures calmes
+async function refreshQuietHours() {
+  try { quietActive = !!(await window.memedrop.isQuietHoursActive()); } catch { quietActive = false; }
+  applyMuteState(lastConnState?.muteUntil ?? null);
+}
+setInterval(refreshQuietHours, 30_000);
 
 // ── Pause de connexion ───────────────────────────────────────────────────
 connectionToggle.addEventListener('change', (e) => {
@@ -205,48 +239,110 @@ connectionToggle.addEventListener('change', (e) => {
 });
 
 // ── Historique des drops ──────────────────────────────────────────────────
-// On n'affiche que les 3 derniers par défaut (sinon la fenêtre force à
-// scroller) — le bouton "voir plus" déplie le reste.
+// Liste complète (onglet dédié), groupée par jour, avec l'avatar de
+// l'expéditeur. Un badge sur l'onglet compte les drops pas encore vus.
 const HISTORY_KIND_ICON = { image: '🖼️', gif: '🎞️', video: '🎬', audio: '🎵', rain: '🌧️', tts: '🗣️', test: '🧪', unknown: '❓' };
-const HISTORY_VISIBLE = 3;
-const historyToggleBtn = $('#history-toggle');
-let historyEntries  = [];
-let historyExpanded = false;
+const historyBadge = $('#history-badge');
+const lastDropBox  = $('#last-drop');
+const lastDropText = $('#last-drop-text');
+let historyEntries = [];
+
+function relativeTime(ts) {
+  const diff = Math.max(0, Date.now() - ts);
+  const min = Math.round(diff / 60_000);
+  if (min < 1)  return 'à l\'instant';
+  if (min < 60) return `il y a ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24)   return `il y a ${h} h`;
+  return new Date(ts).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+}
+
+function dayLabel(ts) {
+  const d = new Date(ts); d.setHours(0, 0, 0, 0);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const days = Math.round((today - d) / 86_400_000);
+  if (days === 0) return 'aujourd\'hui';
+  if (days === 1) return 'hier';
+  return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+function describeDrop(h) {
+  if (h.caption) return `« ${h.caption} »`;
+  if (h.tts) return `🗣️ ${h.tts}`;
+  if (h.rain) return `pluie ${[].concat(h.rain).join('')}`;
+  return { image: 'une image', gif: 'un GIF', video: 'une vidéo', audio: 'un son', test: 'drop de test' }[h.kind] || 'un drop';
+}
+
+function markHistorySeen() {
+  if (historyEntries[0]) lsSet('memedrop.historySeen', historyEntries[0].ts);
+  updateHistoryBadge();
+}
+
+function updateHistoryBadge() {
+  const seen = Number(lsGet('memedrop.historySeen', 0)) || 0;
+  const unseen = historyEntries.filter(h => h.ts > seen).length;
+  historyBadge.textContent = unseen > 9 ? '9+' : String(unseen);
+  historyBadge.classList.toggle('hidden', unseen === 0 || currentTab === 'history');
+}
 
 function renderHistory(history) {
   historyEntries = history || [];
   historyList.innerHTML = '';
 
-  if (historyEntries.length === 0) {
-    historyEmpty.classList.remove('hidden');
-    historyToggleBtn.classList.add('hidden');
-    return;
-  }
-  historyEmpty.classList.add('hidden');
+  // Résumé "dernier drop" sur la carte de l'accueil
+  const last = historyEntries[0];
+  lastDropBox.classList.toggle('hidden', !last);
+  if (last) lastDropText.textContent = `${last.from} · ${describeDrop(last)} · ${relativeTime(last.ts)}`;
 
-  const shown = historyExpanded ? historyEntries : historyEntries.slice(0, HISTORY_VISIBLE);
-  for (const h of shown) {
+  if (currentTab === 'history') markHistorySeen(); else updateHistoryBadge();
+
+  historyEmpty.classList.toggle('hidden', historyEntries.length > 0);
+  historyClearBtn.classList.toggle('hidden', historyEntries.length === 0);
+
+  let lastDay = null;
+  for (const h of historyEntries) {
+    const day = dayLabel(h.ts);
+    if (day !== lastDay) {
+      lastDay = day;
+      const g = document.createElement('div');
+      g.className = 'history-group';
+      g.textContent = day;
+      historyList.appendChild(g);
+    }
+
     const row = document.createElement('div');
     row.className = 'server-row';
 
     const pic = document.createElement('div');
-    pic.className = 'server-row-pic initial';
-    pic.textContent = HISTORY_KIND_ICON[h.kind] || '❓';
+    pic.className = 'server-row-pic history-pic';
+    if (h.avatar && /^https:\/\/cdn\.discordapp\.com\//.test(h.avatar)) {
+      const img = document.createElement('img');
+      img.src = h.avatar;
+      img.alt = '';
+      img.referrerPolicy = 'no-referrer';
+      img.addEventListener('error', () => { img.remove(); pic.prepend((h.from || '?').charAt(0).toUpperCase()); });
+      pic.appendChild(img);
+    } else {
+      pic.textContent = (h.from || '?').trim().charAt(0).toUpperCase() || '?';
+    }
+    const kind = document.createElement('span');
+    kind.className = 'history-kind';
+    kind.textContent = HISTORY_KIND_ICON[h.kind] || '❓';
+    pic.appendChild(kind);
 
     const name = document.createElement('div');
     name.className = 'server-row-name';
-    const when = new Date(h.ts);
-    const time = when.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const time = new Date(h.ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
     name.innerHTML = `<strong></strong><div class="server-row-sub"></div>`;
     name.querySelector('strong').textContent = h.from;
-    name.querySelector('.server-row-sub').textContent = h.caption ? `"${h.caption}" — ${time}` : time;
+    name.querySelector('.server-row-sub').textContent = `${time} · ${describeDrop(h)}`;
+    name.title = describeDrop(h);
 
     row.appendChild(pic);
     row.appendChild(name);
 
-    // "revoir" — rejoue le drop sur l'overlay (entrées v1.4+ qui ont le
-    // contenu ; les URLs Discord expirent après ~24 h, le bouton peut donc
-    // ne rien afficher sur un vieux drop).
+    // "revoir" — rejoue le drop sur l'overlay (les URLs Discord expirent
+    // après ~24 h, le bouton peut donc ne rien afficher sur un vieux drop).
     if (h.media || h.rain || h.tts) {
       const btn = document.createElement('button');
       btn.className = 'ghost';
@@ -257,42 +353,52 @@ function renderHistory(history) {
 
     historyList.appendChild(row);
   }
-
-  if (historyEntries.length > HISTORY_VISIBLE) {
-    historyToggleBtn.classList.remove('hidden');
-    historyToggleBtn.textContent = historyExpanded
-      ? 'voir moins'
-      : `voir plus (${historyEntries.length - HISTORY_VISIBLE})`;
-  } else {
-    historyToggleBtn.classList.add('hidden');
-  }
 }
-
-historyToggleBtn.addEventListener('click', () => {
-  historyExpanded = !historyExpanded;
-  renderHistory(historyEntries);
-});
 
 window.memedrop.onHistory(renderHistory);
 window.memedrop.getHistory().then(renderHistory);
 historyClearBtn.addEventListener('click', async () => {
+  if (!confirm('Vider tout l\'historique des drops reçus ?')) return;
   await window.memedrop.clearHistory();
-  historyExpanded = false;
   renderHistory([]);
 });
+// Les "il y a X min" vieillissent : on rafraîchit l'affichage chaque minute
+setInterval(() => renderHistory(historyEntries), 60_000);
 
 // ── État de connexion ──────────────────────────────────────────────────
+const statusCard  = $('#status-card');
+const statusIcon  = $('#status-icon');
+const statusTitle = $('#status-title');
+const statusMsg   = $('#status-msg');
+const statusResumeBtn = $('#status-resume-btn');
+const statusRetryBtn  = $('#status-retry-btn');
+
+function showStatusCard(kind, icon, title, msg) {
+  statusCard.classList.remove('hidden', 'is-down', 'is-paused', 'is-connecting');
+  statusCard.classList.add(`is-${kind}`);
+  statusIcon.textContent  = icon;
+  statusTitle.textContent = title;
+  statusMsg.textContent   = msg;
+  statusResumeBtn.classList.toggle('hidden', kind !== 'paused');
+  statusRetryBtn.classList.toggle('hidden', kind !== 'down');
+}
+
+statusResumeBtn.addEventListener('click', () => window.memedrop.setSettings({ paused: false }));
+statusRetryBtn.addEventListener('click',  () => window.memedrop.reconnect());
+
 function applyConnState(state) {
   lastConnState = state;
   pill.className = 'pill';
   pairingCard.classList.add('hidden');
   linkedCard.classList.add('hidden');
   serversCard.classList.add('hidden');
+  statusCard.classList.add('hidden');
 
   switch (state.status) {
     case 'connecting':
       pill.classList.add('pill--connecting');
       pillLabel.textContent = 'connexion…';
+      showStatusCard('connecting', '📡', 'Connexion au bot…', 'Ça ne devrait prendre que quelques secondes.');
       break;
     case 'awaiting_link':
       pill.classList.add('pill--awaiting');
@@ -315,11 +421,15 @@ function applyConnState(state) {
     case 'paused':
       pill.classList.add('pill--paused');
       pillLabel.textContent = 'en pause';
+      showStatusCard('paused', '⏸️', 'Connexion en pause',
+        'Personne ne peut t\'envoyer de drop tant que la connexion est coupée.');
       break;
     case 'disconnected':
     default:
       pill.classList.add('pill--down');
       pillLabel.textContent = 'hors ligne';
+      showStatusCard('down', '🔌', 'Bot injoignable',
+        'Nouvelle tentative automatique en cours. Vérifie ta connexion internet ou l\'URL du serveur dans les réglages.');
       break;
   }
 
@@ -406,13 +516,15 @@ updateDownloadBtn.addEventListener('click', () => window.memedrop.downloadUpdate
 updateInstallBtn.addEventListener('click',  () => window.memedrop.installUpdate());
 
 // ── Copier le code d'appairage ─────────────────────────────────────────
-$('#copy-code').addEventListener('click', async () => {
+const copyBtn = $('#copy-code');
+const copyBtnHtml = copyBtn.innerHTML;   // capturé une fois : un double-clic ne l'écrase plus
+let copyTimer = null;
+copyBtn.addEventListener('click', async () => {
   try {
-    await navigator.clipboard.writeText(pairingCode.textContent);
-    const btn = $('#copy-code');
-    const original = btn.innerHTML;
-    btn.textContent = 'copié ✓';
-    setTimeout(() => { btn.innerHTML = original; }, 1200);
+    await navigator.clipboard.writeText(`/link ${pairingCode.textContent}`);
+    copyBtn.textContent = 'copié ✓ — colle-le sur Discord';
+    if (copyTimer) clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => { copyBtn.innerHTML = copyBtnHtml; }, 1600);
   } catch {}
 });
 
@@ -465,9 +577,14 @@ function pushQuietHours() {
     end:   qhEnd.value   || '08:00',
   });
 }
-qhToggle.addEventListener('change', pushQuietHours);
-qhStart.addEventListener('change', pushQuietHours);
-qhEnd.addEventListener('change', pushQuietHours);
+// Après enregistrement (debounce 150 ms), on relit l'état "heures calmes en cours"
+function onQuietHoursChange() {
+  pushQuietHours();
+  setTimeout(refreshQuietHours, 400);
+}
+qhToggle.addEventListener('change', onQuietHoursChange);
+qhStart.addEventListener('change', onQuietHoursChange);
+qhEnd.addEventListener('change', onQuietHoursChange);
 
 $('#avoid-zone').addEventListener('change', (e) => queueSetting('avoidZone', e.target.value));
 
@@ -475,10 +592,19 @@ $('#sound').addEventListener('change',      (e) => queueSetting('soundOnArrival'
 $('#spotlight').addEventListener('change', (e) => queueSetting('spotlightOnDrop', e.target.checked));
 $('#theme').addEventListener('change',     (e) => queueSetting('theme', e.target.value));
 $('#autostart').addEventListener('change', (e) => queueSetting('autostart', e.target.checked));
-$('#server').addEventListener('change',    (e) => {
-  const v = e.target.value.trim();
+const serverInput = $('#server');
+const serverError = $('#server-error');
+serverInput.addEventListener('input', () => {
+  serverInput.classList.remove('invalid');
+  serverError.classList.add('hidden');
+});
+serverInput.addEventListener('change', () => {
+  const v = serverInput.value.trim();
   if (!v) return;
-  queueSetting('serverUrl', v);
+  const ok = /^wss?:\/\/\S+$/i.test(v);
+  serverInput.classList.toggle('invalid', !ok);
+  serverError.classList.toggle('hidden', ok);
+  if (ok) queueSetting('serverUrl', v);
 });
 $('#display').addEventListener('change',   (e) => {
   const id = e.target.value === 'primary' ? null : Number(e.target.value);
@@ -521,8 +647,9 @@ async function init() {
   qhToggle.checked         = !!s.quietHours?.enabled;
   qhStart.value            = s.quietHours?.start || '22:00';
   qhEnd.value              = s.quietHours?.end   || '08:00';
+  refreshQuietHours();
   $('#autostart').checked  = !!s.autostart;
-  $('#server').value      = s.serverUrl || 'wss://memedrop-production-3106.up.railway.app';
+  serverInput.value        = s.serverUrl || '';
 
   const displays = await window.memedrop.listDisplays();
   const sel = $('#display');
@@ -550,3 +677,6 @@ $('#open-discord').addEventListener('click', (e) => {
   e.preventDefault();
   window.memedrop.openExternal('https://github.com/Billalbzn/memedrop');
 });
+
+// Onglet mémorisé — appelé en dernier, une fois tout le module initialisé
+showTab(lsGet('memedrop.tab', 'home'));

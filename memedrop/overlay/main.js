@@ -55,7 +55,12 @@ const MAX_HISTORY = 20;
 // (-1 plutôt qu'Infinity car electron-store sérialise en JSON, qui ne
 // supporte pas Infinity.)
 function isMuted() {
-  if (quietHoursActive()) return true;
+  return quietHoursActive() || isManuallyMuted();
+}
+
+// Mode tranquille manuel uniquement (sans les heures calmes) — c'est ce que
+// le menu du tray peut activer/désactiver.
+function isManuallyMuted() {
   const until = store.get('muteUntil');
   if (!until) return false;
   if (until === -1 || until > Date.now()) return true;
@@ -97,6 +102,8 @@ function recordHistory(payload) {
     music: payload.music ? { url: payload.music.url, mime: payload.music.mime } : null,
     rain: payload.rain || null,
     tts: payload.tts || null,
+    ttsUrl: payload.ttsUrl || null,
+    effect: payload.effect || null,
   };
   const history = [entry, ...store.get('dropHistory')].slice(0, MAX_HISTORY);
   store.set('dropHistory', history);
@@ -109,6 +116,7 @@ let overlayWin = null;
 let settingsWin = null;
 let tray = null;
 let topGuardTimer = null;
+let displayListenersBound = false;
 
 function iconPath() {
   return path.join(__dirname, 'assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
@@ -188,9 +196,15 @@ function createOverlayWindow() {
   overlayWin.loadFile(path.join(__dirname, 'src', 'overlay.html'));
   overlayWin.once('ready-to-show', () => { overlayWin.show(); enforceTop(); });
 
-  screen.on('display-metrics-changed', () => { repositionOverlay(); enforceTop(); });
-  screen.on('display-added',   () => { repositionOverlay(); enforceTop(); });
-  screen.on('display-removed', () => { repositionOverlay(); enforceTop(); });
+  // Écouteurs globaux : enregistrés une seule fois, même si la fenêtre est
+  // recréée (sinon ils s'accumulaient à chaque recréation).
+  if (!displayListenersBound) {
+    displayListenersBound = true;
+    const onDisplayChange = () => { repositionOverlay(); enforceTop(); };
+    screen.on('display-metrics-changed', onDisplayChange);
+    screen.on('display-added',   onDisplayChange);
+    screen.on('display-removed', onDisplayChange);
+  }
 
   return overlayWin;
 }
@@ -243,10 +257,13 @@ function setMute(minutes) {
   rebuildTrayMenu();
 }
 
+let lastTrayMuteKey = null;
 function rebuildTrayMenu() {
   if (!tray) return;
-  const muted = isMuted();
-  const muteSubmenu = muted
+  const manual = isManuallyMuted();
+  const quiet  = quietHoursActive();
+  lastTrayMuteKey = `${manual}|${quiet}`;
+  const muteSubmenu = manual
     ? [{ label: '🔊 Réactiver les drops', click: () => setMute(null) }]
     : [
         { label: '🔇 Mode tranquille — 30 min', click: () => setMute(30) },
@@ -265,6 +282,7 @@ function rebuildTrayMenu() {
       } },
     { label: 'Forcer au premier plan', click: enforceTop },
     { type: 'separator' },
+    ...(quiet ? [{ label: '🌙 Heures calmes en cours', enabled: false }] : []),
     ...muteSubmenu,
     { type: 'separator' },
     { label: 'Vérifier les mises à jour…', click: () => checkForUpdates(true) },
@@ -280,7 +298,18 @@ function rebuildTrayMenu() {
   ]);
 
   tray.setContextMenu(menu);
-  tray.setToolTip(muted ? 'MemeDrop — mode tranquille 🔇' : 'MemeDrop');
+  tray.setToolTip(manual ? 'MemeDrop — mode tranquille 🔇'
+    : quiet ? 'MemeDrop — heures calmes 🌙' : 'MemeDrop');
+}
+
+// Le mode tranquille temporisé et les heures calmes expirent tout seuls :
+// on resynchronise le tray (et les réglages) quand l'état change.
+function refreshMuteState() {
+  const manual = isManuallyMuted();
+  const key = `${manual}|${quietHoursActive()}`;
+  if (key === lastTrayMuteKey) return;
+  if (!manual && connState.muteUntil) setState({ muteUntil: null });
+  rebuildTrayMenu();
 }
 
 function createTray() {
@@ -317,6 +346,38 @@ function showDropOnOverlay(payload) {
 let ws = null;
 let reconnectTimer = null;
 let reconnectAttempts = 0;
+let heartbeatTimer = null;
+
+// Le bot envoie un ping toutes les 30 s. Sans nouvelles pendant 75 s, la
+// connexion est considérée morte (veille, changement de Wi-Fi…) : on la
+// coupe pour déclencher la reconnexion au lieu d'attendre indéfiniment.
+const HEARTBEAT_TIMEOUT_MS = 75_000;
+function armHeartbeat(sock) {
+  if (heartbeatTimer) clearTimeout(heartbeatTimer);
+  heartbeatTimer = setTimeout(() => {
+    console.warn('[ws] no ping from bot — dropping dead connection');
+    try { sock.terminate(); } catch {}
+  }, HEARTBEAT_TIMEOUT_MS);
+}
+
+// Ferme la socket courante SANS déclencher la reconnexion automatique de son
+// handler 'close'. Avant, fermer puis rappeler connectWS() (changement d'URL,
+// bouton "reconnecter", fin de pause) laissait l'ancien 'close' planifier une
+// 2e connexion : deux sockets ouvertes vers le bot pour un seul overlay.
+function dropSocket() {
+  if (heartbeatTimer) { clearTimeout(heartbeatTimer); heartbeatTimer = null; }
+  const old = ws;
+  ws = null;
+  if (!old) return;
+  old.removeAllListeners();
+  old.on('error', () => {});
+  try { old.terminate(); } catch {}
+}
+
+function wsSend(payload) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  try { ws.send(JSON.stringify(payload)); return true; } catch { return false; }
+}
 let connState = { status: 'disconnected', code: null, user: null, links: null, muteUntil: store.get('muteUntil') };
 
 function broadcastState() {
@@ -332,6 +393,7 @@ function setState(patch) {
 
 function connectWS() {
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  dropSocket();
   if (store.get('paused')) {
     setState({ status: 'paused', code: null, user: null, links: null });
     return;
@@ -339,24 +401,27 @@ function connectWS() {
   const url = store.get('serverUrl');
   setState({ status: 'connecting', code: null, user: null, links: null });
 
-  try { ws = new WebSocket(url); }
+  let sock;
+  try { sock = new WebSocket(url); }
   catch (err) { console.error('[ws] construct error:', err.message); scheduleReconnect(); return; }
+  ws = sock;
 
-  ws.on('open', () => {
+  sock.on('open', () => {
     reconnectAttempts = 0;
+    armHeartbeat(sock);
     console.log('[ws] connected to', url);
     // Ré-enregistrement automatique : on rejoue notre identité stockée (avec
     // son token de sécurité) pour que le bot rebuild le lien sans /link.
     // Marche même après un redeploy (tant que le token reste valide).
     const identity = store.get('linkIdentity');
-    if (identity && identity.userId) {
-      try { ws.send(JSON.stringify({ type: 'register', identity })); } catch {}
-    }
+    if (identity && identity.userId) wsSend({ type: 'register', identity });
   });
 
-  ws.on('message', (raw) => {
+  sock.on('message', (raw) => {
+    armHeartbeat(sock);
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
+    if (!msg || typeof msg !== 'object') return;
 
     switch (msg.type) {
       case 'pairing_code':
@@ -417,19 +482,23 @@ function connectWS() {
         showDropOnOverlay(msg);
         break;
       case 'ping':
-        ws.send(JSON.stringify({ type: 'pong' })); break;
+        wsSend({ type: 'pong' }); break;
     }
   });
 
-  ws.on('close', () => {
+  sock.on('close', () => {
+    if (sock !== ws) return;   // socket déjà remplacée par une plus récente
+    if (heartbeatTimer) { clearTimeout(heartbeatTimer); heartbeatTimer = null; }
+    ws = null;
     if (store.get('paused')) { setState({ status: 'paused', code: null, user: null, links: null }); return; }
-    setState({ status: 'disconnected', code: null, links: null });
+    setState({ status: 'disconnected', code: null, user: null, links: null });
     scheduleReconnect();
   });
-  ws.on('error', (err) => console.error('[ws] error:', err.message));
+  sock.on('error', (err) => console.error('[ws] error:', err.message));
 }
 
 function scheduleReconnect() {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
   reconnectAttempts++;
   const delay = Math.min(30_000, 1000 * Math.pow(1.6, Math.min(reconnectAttempts, 8)));
   reconnectTimer = setTimeout(connectWS, delay);
@@ -446,6 +515,10 @@ function scheduleReconnect() {
 //   - Periodic re-check every 30 min while the app is open.
 // ─────────────────────────────────────────────────────────────────────────────
 let updateState = { status: 'idle', version: null, error: null, progress: null };
+// Les vérifications automatiques (toutes les 30 min) restent silencieuses :
+// seule une vérification manuelle affiche "Vérification…" / "À jour" /
+// les erreurs réseau. Une mise à jour trouvée est toujours signalée.
+let manualUpdateCheck = false;
 
 function broadcastUpdate() {
   for (const w of BrowserWindow.getAllWindows()) {
@@ -463,7 +536,7 @@ autoUpdater.autoInstallOnAppQuit = true;
 autoUpdater.logger = console;
 
 autoUpdater.on('checking-for-update', () => {
-  setUpdateState({ status: 'checking', error: null });
+  if (manualUpdateCheck) setUpdateState({ status: 'checking', error: null });
 });
 
 autoUpdater.on('update-available', (info) => {
@@ -472,12 +545,18 @@ autoUpdater.on('update-available', (info) => {
 });
 
 autoUpdater.on('update-not-available', () => {
-  setUpdateState({ status: 'up-to-date', error: null });
+  if (manualUpdateCheck) setUpdateState({ status: 'up-to-date', error: null });
+  manualUpdateCheck = false;
 });
 
 autoUpdater.on('error', (err) => {
   console.error('[updater] error:', err);
-  setUpdateState({ status: 'error', error: err?.message || String(err) });
+  // Une erreur pendant un téléchargement lancé par l'utilisateur est toujours
+  // montrée ; celle d'une vérification de fond (hors-ligne…) est ignorée.
+  if (manualUpdateCheck || updateState.status === 'downloading') {
+    setUpdateState({ status: 'error', error: err?.message || String(err) });
+  }
+  manualUpdateCheck = false;
 });
 
 autoUpdater.on('download-progress', (p) => {
@@ -499,12 +578,16 @@ function checkForUpdates(manual = false) {
     }
     return;
   }
+  // Pas de nouvelle vérification pendant un téléchargement ou si une MAJ
+  // attend déjà d'être installée.
+  if (['downloading', 'downloaded'].includes(updateState.status)) return;
+  if (manual) manualUpdateCheck = true;
   try {
     autoUpdater.checkForUpdates().catch(err => {
-      setUpdateState({ status: 'error', error: err?.message || String(err) });
+      if (manual) setUpdateState({ status: 'error', error: err?.message || String(err) });
     });
   } catch (err) {
-    setUpdateState({ status: 'error', error: err?.message || String(err) });
+    if (manual) setUpdateState({ status: 'error', error: err?.message || String(err) });
   }
 }
 
@@ -530,25 +613,23 @@ ipcMain.handle('settings:get', () => ({
 }));
 
 ipcMain.handle('settings:set', (_e, patch) => {
+  if (!patch || typeof patch !== 'object') return false;
+  if ('serverUrl' in patch && !/^wss?:\/\/\S+$/i.test(String(patch.serverUrl))) {
+    delete patch.serverUrl;   // URL invalide : ignorée (validée aussi côté UI)
+  }
   for (const [k, v] of Object.entries(patch)) store.set(k, v);
   if ('autostart' in patch) {
     // openAsHidden = macOS; args ['--hidden'] = Windows (start to tray, no
     // settings window) so the app boots silently and connects on its own.
     app.setLoginItemSettings({ openAtLogin: !!patch.autostart, openAsHidden: true, args: ['--hidden'] });
   }
-  if ('serverUrl' in patch) {
-    try { ws && ws.close(); } catch {}
+  if ('paused' in patch) {
+    // connectWS() coupe proprement l'ancienne socket et, en pause, s'arrête là.
+    connectWS();
+  } else if ('serverUrl' in patch) {
     connectWS();
   }
-  if ('paused' in patch) {
-    if (patch.paused) {
-      try { ws && ws.close(); } catch {}
-      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-      setState({ status: 'paused', code: null, user: null, links: null });
-    } else {
-      connectWS();
-    }
-  }
+  if ('quietHours' in patch) refreshMuteState();
   if ('overlayDisplayId' in patch) { repositionOverlay(); enforceTop(); }
   if (overlayWin && !overlayWin.isDestroyed() &&
       ('volume' in patch || 'musicVolume' in patch || 'opacity' in patch ||
@@ -576,19 +657,13 @@ ipcMain.handle('displays:list', () => screen.getAllDisplays().map(d => ({
 
 ipcMain.handle('connection:get', () => connState);
 ipcMain.handle('connection:reconnect', () => {
-  try { ws && ws.close(); } catch {}
+  reconnectAttempts = 0;
   connectWS(); return true;
 });
-ipcMain.handle('connection:unlink-guild', (_e, guildId) => {
-  if (!ws || ws.readyState !== ws.OPEN) return false;
-  try { ws.send(JSON.stringify({ type: 'unlink_guild', guildId })); return true; }
-  catch { return false; }
-});
-ipcMain.handle('connection:unblock-user', (_e, userId) => {
-  if (!ws || ws.readyState !== ws.OPEN) return false;
-  try { ws.send(JSON.stringify({ type: 'unblock_user', userId })); return true; }
-  catch { return false; }
-});
+ipcMain.handle('connection:unlink-guild', (_e, guildId) =>
+  wsSend({ type: 'unlink_guild', guildId: String(guildId || '') }));
+ipcMain.handle('connection:unblock-user', (_e, userId) =>
+  wsSend({ type: 'unblock_user', userId: String(userId || '') }));
 
 // ── Mode tranquille ────────────────────────────────────────────────────
 // `minutes` null/0 → désactive. -1 → tranquille jusqu'à réactivation.
@@ -596,11 +671,18 @@ ipcMain.handle('mute:set', (_e, minutes) => {
   setMute(minutes);
   return store.get('muteUntil');
 });
-ipcMain.handle('mute:get', () => (isMuted() ? store.get('muteUntil') : null));
+ipcMain.handle('mute:get', () => (isManuallyMuted() ? store.get('muteUntil') : null));
+ipcMain.handle('quiet-hours:active', () => quietHoursActive());
 
 // ── Historique des drops ──────────────────────────────────────────────
 ipcMain.handle('history:get', () => store.get('dropHistory'));
-ipcMain.handle('history:clear', () => { store.set('dropHistory', []); return true; });
+ipcMain.handle('history:clear', () => {
+  store.set('dropHistory', []);
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send('history-update', []);
+  }
+  return true;
+});
 
 // Rejoue un drop de l'historique sur l'overlay (sans le ré-enregistrer).
 // `ts` identifie l'entrée — plus robuste qu'un index si l'historique bouge
@@ -613,6 +695,8 @@ ipcMain.handle('history:replay', (_e, ts) => {
     music: h.music || null,
     rain: h.rain || null,
     tts: h.tts || null,
+    ttsUrl: h.ttsUrl || null,
+    effect: h.effect || null,
     caption: h.caption || null,
     from: { username: h.from, avatar: h.avatar || null },
     ts: Date.now(),
@@ -624,8 +708,7 @@ ipcMain.handle('history:replay', (_e, ts) => {
 // Le renderer de l'overlay relaie le clic emoji ; on le transmet au bot.
 ipcMain.on('drop:react', (_e, { dropId, emoji } = {}) => {
   if (!dropId || !emoji) return;
-  if (!ws || ws.readyState !== ws.OPEN) return;
-  try { ws.send(JSON.stringify({ type: 'react', dropId: String(dropId), emoji: String(emoji) })); } catch {}
+  wsSend({ type: 'react', dropId: String(dropId), emoji: String(emoji) });
 });
 
 // App version + update IPC
@@ -756,6 +839,9 @@ if (!gotLock) {
         overlayWin.webContents.openDevTools({ mode: 'detach' });
       }
     });
+
+    // Expiration du mode tranquille / début-fin des heures calmes
+    setInterval(refreshMuteState, 30_000);
 
     // Auto-update: check shortly after launch + every 30 min
     setTimeout(() => checkForUpdates(false), 4000);

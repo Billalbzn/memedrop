@@ -258,6 +258,10 @@ const commands = [
     .toJSON(),
 ];
 
+// Toutes les commandes sont réservées aux serveurs (contexte 0 = GUILD) :
+// les liens sont par serveur, elles n'ont aucun sens en message privé.
+for (const c of commands) c.contexts = [0];
+
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
