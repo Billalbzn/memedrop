@@ -30,6 +30,7 @@ Sur **Windows** et sur **Android**. Gratuit, auto-hébergé.
 | 🎵 **Photo + musique** | Une image avec un MP3/MP4 en fond sonore. |
 | ⏳ **Drop différé** | `delai:10` : le mème tombe dans 10 minutes, par surprise. |
 | ⭐ **Favoris** | Enregistre tes meilleurs mèmes et renvoie-les en une commande. |
+| ✋ **Déplacer / fermer** | Fais glisser un mème pour le pousser ailleurs, ou ferme-le avec sa ✕ (souris sur PC, doigt sur téléphone). |
 | 😂 **Réactions** (Windows) | La victime peut réagir d'un emoji — la réaction est postée sur Discord. |
 | 📊 **Classement** | `/stats` : qui droppe le plus, qui en prend le plus. |
 
@@ -66,8 +67,8 @@ MemeDrop se lance ensuite tout seul au démarrage (icône dans la barre des tâc
    - **Pas d'économie de batterie** — recommandé, sinon Android coupe la connexion en veille.
 4. L'app affiche un **code à 6 chiffres**.
 
-> Sur téléphone, les drops ne bloquent jamais le toucher : ils sont légèrement transparents et disparaissent tout seuls.
-> Pour mettre à jour, installe simplement le nouvel APK par-dessus.
+> Fais glisser un mème pour le déplacer, touche sa ✕ pour le fermer. Le reste de l'écran reste jouable normalement.
+> Mises à jour : l'app te propose elle-même les nouvelles versions (bouton **télécharger & installer**).
 
 ### 🔗 Relier l'app à ton compte Discord (une seule fois)
 

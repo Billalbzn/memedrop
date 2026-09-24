@@ -164,6 +164,23 @@ function clampOpacity(v) {
   return Math.max(0.2, Math.min(1, Number(v ?? 1) || 1));
 }
 
+// Contrôle externe des drops (utilisé par l'app Android, où le toucher est
+// géré nativement) : chaque .anchor porte un data-key unique.
+let dropKeySeq = 0;
+const dropControls = new Map();   // key -> { close() }
+window.__mdDropCtl = {
+  // Place le centre du drop en (cx, cy), en px CSS
+  move(key, cx, cy) {
+    const anchor = stage.querySelector(`.anchor[data-key="${key}"]`);
+    if (!anchor) return;
+    const x = Math.max(0, Math.min(window.innerWidth, cx));
+    const y = Math.max(0, Math.min(window.innerHeight, cy));
+    anchor.style.left = `${x / window.innerWidth * 100}%`;
+    anchor.style.top  = `${y / window.innerHeight * 100}%`;
+  },
+  close(key) { dropControls.get(String(key))?.close(); },
+};
+
 const MAX_CONCURRENT = 6;
 const VIDEO_HARD_CAP_SECONDS = 30;
 const AUDIO_HARD_CAP_SECONDS = 10;
@@ -539,6 +556,8 @@ function renderDrop(payload) {
 
   const anchor = document.createElement('div');
   anchor.className = 'anchor';
+  const dropKey = String(++dropKeySeq);
+  anchor.dataset.key = dropKey;
   anchor.style.left = `${x}%`;
   anchor.style.top  = `${y}%`;
   anchor.style.opacity = String(clampOpacity(settings?.opacity));
@@ -776,6 +795,7 @@ function renderDrop(payload) {
       liveAudios.delete(musicAudio);
     }
     liveDrops.delete(dropMeta);
+    dropControls.delete(dropKey);
     wrap.classList.add(smooth ? 'closing' : 'leaving');
     setTimeout(() => {
       anchor.remove();
@@ -815,6 +835,12 @@ function renderDrop(payload) {
   }
 
   dropMeta.removeNow = removeNow;
+  dropControls.set(dropKey, {
+    close() {
+      if (isVideo && el) { try { el.pause(); } catch {} }
+      removeNow({ smooth: true });
+    },
+  });
   dropMeta.rescheduleFor = rescheduleFor;
   liveDrops.add(dropMeta);
 
