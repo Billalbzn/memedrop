@@ -9,7 +9,7 @@ import java.util.Calendar
 // Réglages et état persistés — équivalent du electron-store de l'overlay
 // Windows (mêmes clés, mêmes valeurs par défaut).
 object Prefs {
-    const val DEFAULT_SERVER = "wss://memedrop-production-3106.up.railway.app"
+    const val DEFAULT_SERVER = "wss://memedrop-bot.fly.dev"
     private const val MAX_HISTORY = 20
 
     private lateinit var sp: SharedPreferences
@@ -20,8 +20,11 @@ object Prefs {
         }
     }
 
+    // Toute ancienne URL Railway (serveur coupé) bascule sur le serveur actuel.
     var serverUrl: String
-        get() = sp.getString("serverUrl", null) ?: DEFAULT_SERVER
+        get() = sp.getString("serverUrl", null)
+            ?.takeUnless { it.contains(".up.railway.app", ignoreCase = true) }
+            ?: DEFAULT_SERVER
         set(v) { sp.edit().putString("serverUrl", v).apply() }
 
     // Pause manuelle : l'app ne se connecte pas au bot.

@@ -109,10 +109,10 @@ Formats acceptés : PNG, JPG, GIF, WEBP, MP4, WEBM, MP3 — 25 Mo max.
 
 ## 🛠️ Héberger ton propre MemeDrop
 
-MemeDrop tourne avec **un bot Discord** (hébergé une fois, par ex. sur Railway) et **une app par personne** (Windows ou Android) qui s'y connecte.
+MemeDrop tourne avec **un bot Discord** (hébergé une fois, par ex. sur Fly.io) et **une app par personne** (Windows ou Android) qui s'y connecte.
 
 ```
-  Discord ──/drop──▶  Bot MemeDrop (Railway)  ──WebSocket──▶  PC Windows / téléphone Android
+  Discord ──/drop──▶  Bot MemeDrop (Fly.io)  ──WebSocket──▶  PC Windows / téléphone Android
 ```
 
 Tout est expliqué dans le **[guide technique](memedrop/README.md)** : création du bot Discord, déploiement, compilation du `.exe` et de l'APK, publication des mises à jour.
