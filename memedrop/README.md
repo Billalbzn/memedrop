@@ -151,10 +151,24 @@ gradle assembleRelease
 # → app/build/outputs/apk/release/app-release.apk
 ```
 
-The APK is signed with `android/app/memedrop-shared.keystore` (password
-`memedrop`), committed on purpose so every build has the same signature and
-installs over the previous one. It is **not** a secret: it's fine for sharing
-with friends, but create your own private key if you ever publish on the Play Store.
+### Signing key
+
+Official APKs are signed with a **private key that is never committed**. The CI
+reads it from two repository secrets (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | the `.p12` keystore, base64-encoded (`base64 -w0 memedrop-release.p12`) |
+| `ANDROID_KEYSTORE_PASSWORD` | its password (key alias: `memedrop`) |
+
+Every official build uses this same key, so updates install over the previous
+version. **Keep a backup of the `.p12` and its password**: if you lose them, no
+future APK can update existing installs (everyone would have to uninstall).
+Local builds without these variables are signed with the Android debug key.
+
+> The old public key (`memedrop-shared.keystore`, up to v1.5.3) was removed:
+> apps installed before v1.6.0 must be **uninstalled once** before installing
+> the new APK (different signature).
 
 ### Android limitations
 

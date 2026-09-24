@@ -34,29 +34,35 @@ android {
         // Chaque build CI a un numéro plus grand → l'APK s'installe par-dessus
         // la version précédente sans désinstaller.
         versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
-        versionName = "1.5.3"
+        versionName = "1.6.0"
     }
 
-    // Clé de signature partagée (commitée) : toutes les builds sont signées
-    // pareil, donc les mises à jour s'installent par-dessus. Ce n'est PAS une
-    // clé de publication Play Store.
+    // Clé de signature privée, jamais commitée : la CI la reçoit via les
+    // secrets GitHub (voir .github/workflows/android.yml). Toutes les builds
+    // officielles sont signées avec elle, donc les mises à jour s'installent
+    // par-dessus. Sans ces variables (build local), l'APK release est signé
+    // avec la clé de debug d'Android Studio.
+    val releaseKeystore = System.getenv("MEMEDROP_KEYSTORE")
     signingConfigs {
-        create("shared") {
-            storeFile = file("memedrop-shared.keystore")
-            storePassword = "memedrop"
-            keyAlias = "memedrop"
-            keyPassword = "memedrop"
-            storeType = "pkcs12"
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = System.getenv("MEMEDROP_KEYSTORE_PASSWORD")
+                keyAlias = "memedrop"
+                keyPassword = System.getenv("MEMEDROP_KEYSTORE_PASSWORD")
+                storeType = "pkcs12"
+            }
         }
     }
 
     buildTypes {
-        getByName("debug") {
-            signingConfig = signingConfigs.getByName("shared")
-        }
         getByName("release") {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("shared")
+            signingConfig = if (releaseKeystore != null) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
