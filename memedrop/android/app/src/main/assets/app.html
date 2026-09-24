@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>MemeDrop</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=JetBrains+Mono:wght@500;700&family=Instrument+Serif:ital@1&display=swap" rel="stylesheet">
+  <!-- styles.css est copié depuis overlay/src au build (même look que Windows) -->
+  <link rel="stylesheet" href="./styles.css">
+  <style>
+    /* Ajustements tactiles pour téléphone */
+    body { -webkit-tap-highlight-color: transparent; }
+    .card { margin: 10px 12px; padding: 18px 16px 16px; }
+    .hero { padding: 16px 16px 10px; }
+    .tabs { padding: 0 10px 10px; }
+    .tab { padding: 10px 4px; font-size: 10px; }
+    button { padding: 11px 15px; }
+    .row.wrap button { flex: 1 1 40%; }
+    .code { font-size: 38px; }
+    .switch { width: 46px; height: 26px; }
+    .switch::after { width: 20px; height: 20px; }
+    .switch:checked::after { transform: translateX(20px); }
+    input[type="range"]::-webkit-slider-thumb { width: 22px; height: 22px; margin-top: -8.5px; }
+    .perm-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
+    .perm-row + .perm-row { border-top: 1px solid var(--line); }
+    .perm-text { flex: 1; min-width: 0; }
+    .perm-text strong { display: block; font-size: 13.5px; }
+    .perm-text span { font-size: 11.5px; color: var(--text-mute); }
+    .perm-row button { flex: none; }
+    .perm-ok { color: var(--accent-c); font-weight: 700; font-size: 13px; }
+    .perm-card::before {
+      content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1px;
+      background: var(--grad);
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; opacity: .7;
+    }
+  </style>
+</head>
+<body>
+  <div class="grain"></div>
+
+  <div class="topbar">
+    <header class="hero">
+      <div class="hero-mark">
+        <svg viewBox="0 0 40 40" width="30" height="30" aria-hidden="true">
+          <defs>
+            <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#ff5e8a"/><stop offset="100%" stop-color="#ffb45e"/>
+            </linearGradient>
+          </defs>
+          <path d="M8 6 L20 22 L32 6 L32 30 L24 30 L24 18 L20 24 L16 18 L16 30 L8 30 Z" fill="url(#lg)"/>
+        </svg>
+        <div>
+          <h1>MemeDrop</h1>
+          <p class="tagline">balance un mème — <em>regarde-les souffrir</em></p>
+        </div>
+      </div>
+      <div id="conn-pill" class="pill pill--idle"><span class="dot"></span><span class="label">…</span></div>
+    </header>
+    <nav class="tabs">
+      <button class="tab" data-tab="home">accueil</button>
+      <button class="tab" data-tab="calm">calme</button>
+      <button class="tab" data-tab="history">historique <span class="tab-badge hidden" id="history-badge">0</span></button>
+      <button class="tab" data-tab="settings">réglages</button>
+    </nav>
+  </div>
+
+  <main>
+  <!-- ════════ ACCUEIL ════════ -->
+  <div class="tab-panel" data-panel="home">
+
+    <section id="perm-card" class="card perm-card hidden">
+      <div class="card-eyebrow">configuration</div>
+      <h2>Quelques autorisations</h2>
+      <p class="muted">Pour que les mèmes s'affichent par-dessus tes jeux et applis.</p>
+      <div class="perm-row" id="perm-overlay">
+        <div class="perm-text"><strong>Affichage par-dessus les applis</strong><span>indispensable pour voir les drops</span></div>
+        <button class="primary" data-perm="overlay">autoriser</button>
+      </div>
+      <div class="perm-row" id="perm-notif">
+        <div class="perm-text"><strong>Notifications</strong><span>état de la connexion + mode tranquille rapide</span></div>
+        <button class="ghost" data-perm="notif">autoriser</button>
+      </div>
+      <div class="perm-row" id="perm-battery">
+        <div class="perm-text"><strong>Pas d'économie de batterie</strong><span>recommandé, sinon Android coupe la connexion en veille</span></div>
+        <button class="ghost" data-perm="battery">autoriser</button>
+      </div>
+    </section>
+
+    <section id="status-card" class="card status hidden">
+      <div class="status-row">
+        <div class="status-icon" id="status-icon">📡</div>
+        <div class="status-text">
+          <h2 id="status-title">Connexion au bot…</h2>
+          <p class="muted" id="status-msg"></p>
+        </div>
+      </div>
+      <div class="row">
+        <button class="primary hidden" id="status-resume">▶ reprendre la connexion</button>
+        <button class="primary hidden" id="status-start">▶ démarrer MemeDrop</button>
+        <button class="ghost hidden" id="status-retry">réessayer maintenant</button>
+      </div>
+    </section>
+
+    <section id="pairing-card" class="card pairing hidden">
+      <div class="card-eyebrow">étape 01</div>
+      <h2>Associer ton téléphone</h2>
+      <p class="muted">Sur ton serveur Discord, tape la commande <code>/link</code> avec ce code :</p>
+      <div class="code" id="pairing-code">------</div>
+      <button class="ghost btn-icon-center" id="copy-code">copier « /link code »</button>
+    </section>
+
+    <section id="linked-card" class="card linked hidden">
+      <div class="card-eyebrow">en direct</div>
+      <h2>Connecté à <span id="linked-user" class="username-badge">…</span></h2>
+      <p class="muted">Les membres de tes serveurs liés peuvent t'envoyer des drops via <code>/drop</code>.</p>
+      <div class="last-drop hidden" id="last-drop">
+        <span class="last-drop-label">dernier drop</span><span id="last-drop-text">—</span>
+      </div>
+      <div class="row">
+        <button class="ghost danger" id="reconnect-btn">reconnecter</button>
+        <button class="primary" id="test-btn">▶ test drop</button>
+      </div>
+    </section>
+
+    <section id="servers-card" class="card hidden">
+      <div class="card-eyebrow">serveurs liés</div>
+      <h2>Sources autorisées</h2>
+      <div id="server-list" class="server-list"></div>
+      <p class="muted small" id="servers-tip"></p>
+    </section>
+
+    <section class="card card--feature">
+      <div class="card-eyebrow">aide-mémoire</div>
+      <h2>Les commandes à connaître</h2>
+      <ul class="cmd-list">
+        <li><code>/drop @pote media:…</code><span>un mème sur son écran</span></li>
+        <li><code>/dropall media:…</code><span>tout le serveur d'un coup</span></li>
+        <li><code>pluie:🔥💀</code><span>pluie d'emojis</span></li>
+        <li><code>tts:salut</code><span>lu à voix haute</span></li>
+        <li><code>effet:</code><span>zoom, tornade, glitch, shake</span></li>
+        <li><code>/block @qui</code><span>ne plus recevoir ses drops</span></li>
+      </ul>
+      <p class="muted small" style="margin-bottom:0">Sur téléphone, les drops ne bloquent jamais le toucher : ils disparaissent tout seuls.</p>
+    </section>
+  </div>
+
+  <!-- ════════ CALME ════════ -->
+  <div class="tab-panel" data-panel="calm">
+    <section class="card">
+      <div class="card-eyebrow">tranquillité</div>
+      <h2>Besoin de calme ?</h2>
+      <div class="field toggle">
+        <label for="connection-toggle">Connecté au bot</label>
+        <input type="checkbox" id="connection-toggle" class="switch">
+      </div>
+      <p class="muted small">Désactive pour couper la connexion entièrement — personne ne peut t'envoyer de drop.</p>
+      <div class="field-divider"></div>
+      <p class="mute-status" id="mute-status">Les drops s'affichent normalement.</p>
+      <div class="row wrap">
+        <button class="ghost" data-mute="30">🔇 30 min</button>
+        <button class="ghost" data-mute="120">🔇 2 h</button>
+        <button class="ghost danger" data-mute="-1">🔇 longue durée</button>
+        <button class="primary hidden" id="mute-off">🔊 réactiver les drops</button>
+      </div>
+      <p class="muted small">En mode tranquille, les drops sont reçus mais pas affichés — retrouve-les dans l'onglet historique.</p>
+      <div class="field-divider"></div>
+      <div class="field toggle">
+        <label for="quiet-hours">🌙 Heures calmes</label>
+        <input type="checkbox" id="quiet-hours" class="switch">
+      </div>
+      <p class="quiet-now hidden" id="quiet-now">🌙 Heures calmes en cours — les drops sont mis de côté.</p>
+      <div class="row quiet-hours-times">
+        <label class="quiet-time-label">de <input type="time" id="quiet-start" value="22:00"></label>
+        <label class="quiet-time-label">à <input type="time" id="quiet-end" value="08:00"></label>
+      </div>
+    </section>
+
+    <section id="blocked-card" class="card hidden">
+      <div class="card-eyebrow">bloqués</div>
+      <h2>Utilisateurs bloqués</h2>
+      <p class="muted">Utilise <code>/block @qui</code> sur Discord pour en ajouter.</p>
+      <div id="blocked-list" class="server-list"></div>
+    </section>
+  </div>
+
+  <!-- ════════ HISTORIQUE ════════ -->
+  <div class="tab-panel" data-panel="history">
+    <section class="card">
+      <div class="card-eyebrow">historique</div>
+      <h2>Derniers drops reçus</h2>
+      <p class="muted small" style="margin-top:0">Touche <strong>revoir</strong> pour rejouer un drop (les liens Discord expirent après ~24 h).</p>
+      <div id="history-list" class="server-list"></div>
+      <p class="muted small hidden" id="history-empty">Rien pour l'instant — lance un <code>test drop</code> depuis l'accueil !</p>
+      <div class="row"><button class="ghost danger" id="history-clear">vider l'historique</button></div>
+    </section>
+  </div>
+
+  <!-- ════════ RÉGLAGES ════════ -->
+  <div class="tab-panel" data-panel="settings">
+    <section class="card">
+      <div class="card-eyebrow">audio &amp; affichage</div>
+      <div class="field"><label for="volume">Volume vidéo <output id="volume-out"></output></label>
+        <input type="range" id="volume" min="0" max="100" step="1"></div>
+      <div class="field"><label for="musicVolume">Volume musique <output id="musicVolume-out"></output></label>
+        <input type="range" id="musicVolume" min="0" max="100" step="1" class="range-music"></div>
+      <div class="field"><label for="opacity">Opacité des drops <output id="opacity-out"></output></label>
+        <input type="range" id="opacity" min="20" max="100" step="1" class="range-cool"></div>
+      <div class="field-divider"></div>
+      <div class="field"><label for="duration">Durée des images <output id="duration-out"></output></label>
+        <input type="range" id="duration" min="1" max="30" step="1"></div>
+      <div class="field"><label for="videoDuration">Durée max. vidéos <output id="videoDuration-out"></output></label>
+        <input type="range" id="videoDuration" min="1" max="30" step="1"></div>
+      <div class="field-divider"></div>
+      <div class="field toggle"><label for="soundOnArrival">Son d'arrivée (pop)</label>
+        <input type="checkbox" id="soundOnArrival" class="switch"></div>
+      <div class="field toggle"><label for="spotlightOnDrop">Effet spotlight</label>
+        <input type="checkbox" id="spotlightOnDrop" class="switch"></div>
+      <div class="field-divider"></div>
+      <div class="field"><label for="theme">Thème</label>
+        <select id="theme">
+          <option value="classic">🌅 Classique</option>
+          <option value="neon">🪩 Néon</option>
+          <option value="fire">🔥 Feu</option>
+          <option value="mono">⚙️ Mono</option>
+        </select></div>
+      <div class="field"><label for="avoidZone">Zone d'exclusion</label>
+        <select id="avoidZone">
+          <option value="none">Aucune — les drops tombent partout</option>
+          <option value="center">🎯 Éviter le centre</option>
+          <option value="top">⬆️ Éviter le haut</option>
+          <option value="bottom">⬇️ Éviter le bas (boutons de jeu)</option>
+        </select></div>
+    </section>
+
+    <section class="card">
+      <div class="card-eyebrow">système</div>
+      <div class="field"><label for="server">URL du serveur bot</label>
+        <input type="text" id="server" placeholder="wss://…" spellcheck="false" autocapitalize="off" autocorrect="off">
+        <p class="field-error hidden" id="server-error">L'adresse doit commencer par <code>ws://</code> ou <code>wss://</code>.</p>
+      </div>
+      <div class="field toggle"><label for="autostart">Lancer au démarrage du téléphone</label>
+        <input type="checkbox" id="autostart" class="switch"></div>
+    </section>
+  </div>
+  </main>
+
+  <footer class="foot">
+    <span id="app-version">v…</span><span class="dotdiv">·</span><a href="#" id="open-github">comment ça marche</a>
+  </footer>
+
+  <script src="./app.js"></script>
+</body>
+</html>

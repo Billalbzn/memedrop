@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icône de notification (monochrome) : le "M" du logo. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="40"
+    android:viewportHeight="40">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M8,6 L20,22 L32,6 L32,30 L24,30 L24,18 L20,24 L16,18 L16,30 L8,30 Z" />
+</vector>
