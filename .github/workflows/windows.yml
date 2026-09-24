@@ -35,7 +35,7 @@ jobs:
       - name: Build and upload (draft release)
         env:
           GH_TOKEN: ${{ github.token }}
-          DEFAULT_SERVER: wss://memedrop-production-3106.up.railway.app
+          DEFAULT_SERVER: wss://memedrop-bot.fly.dev
         run: npx electron-builder --win --publish always
 
       # electron-builder crée un brouillon : on le publie pour déclencher

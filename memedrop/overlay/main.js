@@ -6,7 +6,14 @@ const Store = require('electron-store');
 const { autoUpdater } = require('electron-updater');
 
 const DEFAULT_SERVER =
-  process.env.DEFAULT_SERVER || 'wss://memedrop-production-3106.up.railway.app';
+  process.env.DEFAULT_SERVER || 'wss://memedrop-bot.fly.dev';
+
+// Le bot a quitté Railway (coupé) pour Fly.io. electron-store ne réapplique
+// jamais une valeur par défaut sur une clé déjà enregistrée : on migre donc
+// explicitement toute ancienne URL Railway vers le serveur actuel.
+function isLegacyServerUrl(url) {
+  return /\.up\.railway\.app/i.test(String(url || ''));
+}
 
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-background-timer-throttling');
@@ -47,6 +54,8 @@ const store = new Store({
     avoidZone: 'none',
   },
 });
+
+if (isLegacyServerUrl(store.get('serverUrl'))) store.set('serverUrl', DEFAULT_SERVER);
 
 const MAX_HISTORY = 20;
 

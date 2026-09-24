@@ -34,7 +34,7 @@ android {
         // Chaque build CI a un numéro plus grand → l'APK s'installe par-dessus
         // la version précédente sans désinstaller.
         versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
-        versionName = "1.5.0"
+        versionName = "1.5.1"
     }
 
     // Clé de signature partagée (commitée) : toutes les builds sont signées
