@@ -69,6 +69,8 @@ MemeDrop se lance ensuite tout seul au démarrage (icône dans la barre des tâc
 
 > Fais glisser un mème pour le déplacer, touche sa ✕ pour le fermer. Le reste de l'écran reste jouable normalement.
 > Mises à jour : l'app te propose elle-même les nouvelles versions (bouton **télécharger & installer**).
+>
+> ⚠️ **Tu avais une version d'avant la 1.6.0 ?** Désinstalle-la une fois avant d'installer le nouvel APK (la signature de l'app a changé).
 
 ### 🔗 Relier l'app à ton compte Discord (une seule fois)
 
