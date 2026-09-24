@@ -67,6 +67,8 @@
       const w = d.offsetWidth;
       const h = d.offsetHeight;
       if (!w || !h) return;
+      // Le média vient peut-être de charger : on le recale s'il déborde
+      if (window.__mdDropCtl) window.__mdDropCtl.fit(a.dataset.key);
       rects.push({
         key: a.dataset.key,
         x: Math.round((a.offsetLeft - w / 2 - MARGIN) * dpr),
