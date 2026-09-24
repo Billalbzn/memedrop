@@ -8,13 +8,49 @@ const crypto = require('crypto');
 const store = require('./store');
 
 const PORT = Number(process.env.PORT || process.env.WS_PORT || 8765);
+const MAX_TTS_CHARS = 200;
 
 // ── TTS servi par le bot ─────────────────────────────────────────────────────
 // La synthèse vocale du renderer Electron (speechSynthesis) est muette sur la
 // plupart des PC : Chromium n'embarque aucune voix. Le bot expose donc
 // GET /tts?text=... qui relaie le MP3 généré par Google Translate TTS ;
 // l'overlay le joue dans un simple élément <audio>.
-async function handleTts(u, res) {
+//
+// L'endpoint est public : on limite le débit par IP (sinon n'importe qui peut
+// s'en servir comme relais TTS gratuit) et on garde un petit cache mémoire —
+// un /dropall lu par 6 overlays ne génère qu'une seule requête Google.
+const TTS_RATE_WINDOW_MS = 60_000;
+const TTS_RATE_MAX       = 30;
+const TTS_CACHE_MAX      = 50;
+const ttsHits  = new Map();   // ip -> { count, since }
+const ttsCache = new Map();   // `${lang}|${text}` -> Buffer (ordre = LRU)
+
+function ttsRateLimited(ip) {
+  const now = Date.now();
+  const e = ttsHits.get(ip);
+  if (!e || now - e.since > TTS_RATE_WINDOW_MS) {
+    ttsHits.set(ip, { count: 1, since: now });
+    return false;
+  }
+  e.count++;
+  return e.count > TTS_RATE_MAX;
+}
+
+setInterval(() => {
+  const cutoff = Date.now() - TTS_RATE_WINDOW_MS;
+  for (const [ip, e] of ttsHits) if (e.since < cutoff) ttsHits.delete(ip);
+}, 5 * 60_000).unref();
+
+function sendTtsAudio(res, buf) {
+  res.writeHead(200, {
+    'Content-Type': 'audio/mpeg',
+    'Content-Length': buf.length,
+    'Cache-Control': 'public, max-age=86400',
+  });
+  res.end(buf);
+}
+
+async function handleTts(req, u, res) {
   const text = (u.searchParams.get('text') || '').trim().slice(0, MAX_TTS_CHARS);
   if (!text) {
     res.writeHead(400, { 'Content-Type': 'text/plain' });
@@ -23,6 +59,21 @@ async function handleTts(u, res) {
   }
   const rawLang = u.searchParams.get('lang') || '';
   const lang = /^[a-z]{2}(-[A-Z]{2})?$/.test(rawLang) ? rawLang : 'fr';
+  const cacheKey = `${lang}|${text}`;
+  const cached = ttsCache.get(cacheKey);
+  if (cached) {
+    ttsCache.delete(cacheKey);
+    ttsCache.set(cacheKey, cached);
+    sendTtsAudio(res, cached);
+    return;
+  }
+  const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '')
+    .split(',')[0].trim();
+  if (ttsRateLimited(ip)) {
+    res.writeHead(429, { 'Content-Type': 'text/plain' });
+    res.end('too many requests');
+    return;
+  }
   try {
     const g = await fetch(
       'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob' +
@@ -31,12 +82,9 @@ async function handleTts(u, res) {
     );
     if (!g.ok) throw new Error(`upstream ${g.status}`);
     const buf = Buffer.from(await g.arrayBuffer());
-    res.writeHead(200, {
-      'Content-Type': 'audio/mpeg',
-      'Content-Length': buf.length,
-      'Cache-Control': 'public, max-age=86400',
-    });
-    res.end(buf);
+    ttsCache.set(cacheKey, buf);
+    if (ttsCache.size > TTS_CACHE_MAX) ttsCache.delete(ttsCache.keys().next().value);
+    sendTtsAudio(res, buf);
   } catch (e) {
     console.error('[tts] failed:', e.message);
     res.writeHead(502, { 'Content-Type': 'text/plain' });
@@ -52,14 +100,16 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
   if (u.pathname === '/tts' && req.method === 'GET') {
-    handleTts(u, res);
+    handleTts(req, u, res);
     return;
   }
   res.writeHead(404);
   res.end();
 });
 
-const wss = new WebSocketServer({ server: httpServer });
+// Les overlays n'envoient que de petits messages JSON : on refuse tout ce qui
+// dépasse 64 Ko (par défaut `ws` accepte jusqu'à 100 Mo par message).
+const wss = new WebSocketServer({ server: httpServer, maxPayload: 64 * 1024 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Linkage model
@@ -290,9 +340,15 @@ wss.on('connection', (ws) => {
   sendJson(ws, { type: 'pairing_code', code });
   console.log(`[ws] overlay connected, pairing code = ${code}`);
 
+  // Heartbeat : voir l'intervalle plus bas. Tout message reçu prouve que
+  // l'overlay est vivant.
+  ws.isAlive = true;
+
   ws.on('message', async (raw) => {
+    ws.isAlive = true;
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
+    if (!msg || typeof msg !== 'object') return;
     if (msg.type === 'pong') return;
 
     // Zero-touch re-link: the overlay replays its stored identity so the bot
@@ -320,10 +376,14 @@ wss.on('connection', (ws) => {
       // Drop the pending pairing code this ws was handed on connect
       const meta = wsMeta.get(ws);
       if (meta?.code) pendingOverlays.delete(meta.code);
-      // Kick any other live overlay currently bound to this user
+      // Kick any other live overlay currently bound to this user. On lui
+      // redonne un code d'appairage (ce qui réinitialise aussi son wsMeta) :
+      // sinon il restait bloqué sur "connexion…" et pouvait encore envoyer
+      // unlink_guild / unblock_user au nom de l'utilisateur.
       const existing = userLinks.get(userId);
       if (existing && existing.ws !== ws) {
         sendJson(existing.ws, { type: 'unlinked', reason: 'replaced' });
+        reissuePairingCode(existing.ws);
       }
       userLinks.set(userId, { ws, scope, guildIds, blockedUsers });
       wsMeta.set(ws, { code: null, userId });
@@ -414,9 +474,19 @@ wss.on('connection', (ws) => {
   ws.on('error', (err) => console.error('[ws] error:', err.message));
 });
 
+// Heartbeat applicatif : un overlay qui n'a rien renvoyé (pas même un pong)
+// depuis le dernier ping est considéré mort (PC en veille, Wi-Fi coupé…).
+// Sans ça, la connexion TCP à moitié ouverte restait "OPEN" pendant des
+// minutes : /who l'affichait et les drops partaient dans le vide.
 setInterval(() => {
   wss.clients.forEach((ws) => {
-    if (ws.readyState === ws.OPEN) sendJson(ws, { type: 'ping' });
+    if (ws.isAlive === false) {
+      console.log('[ws] terminating unresponsive overlay');
+      ws.terminate();
+      return;
+    }
+    ws.isAlive = false;
+    sendJson(ws, { type: 'ping' });
   });
 }, 30_000);
 
@@ -499,7 +569,6 @@ function extractEmojis(str) {
 // Effets d'apparition autorisés (validés aussi par les `choices` Discord,
 // mais on re-filtre côté serveur au cas où).
 const EFFECTS = new Set(['zoom', 'tornade', 'glitch', 'shake']);
-const MAX_TTS_CHARS = 200;
 
 // Base publique du bot, utilisée pour construire les URL /tts envoyées aux
 // overlays. Railway fournit RAILWAY_PUBLIC_DOMAIN automatiquement ; sinon on
@@ -608,6 +677,35 @@ function validateMusic(att) {
   return null;
 }
 
+// Lit et valide les options communes à /drop, /dropall et /dropgroup.
+// Renvoie { error } ou { att, caption, musicAtt, rain, tts, effect }.
+function readDropOptions(interaction) {
+  const att      = interaction.options.getAttachment('media', false);
+  const caption  = interaction.options.getString('caption', false);
+  const musicAtt = interaction.options.getAttachment('musique', false);
+  const rain     = extractEmojis(interaction.options.getString('pluie', false));
+  const tts      = (interaction.options.getString('tts', false) || '').trim() || null;
+  const effect   = interaction.options.getString('effet', false);
+
+  // Il faut au moins un média, une pluie ou un texte à lire
+  if (!att && !rain && !tts) {
+    return { error: '❌ Mets au moins un média (`media`), un emoji (`pluie`) ou un texte (`tts`).' };
+  }
+  if (att) {
+    const err = validateAttachment(att);
+    if (err) return { error: `❌ ${err}` };
+  }
+  const musicErr = validateMusic(musicAtt);
+  if (musicErr) return { error: `❌ ${musicErr}` };
+  if (musicAtt && !att) {
+    return { error: '❌ L\'option `musique` nécessite un média (image ou GIF).' };
+  }
+  if (musicAtt && !att.contentType.startsWith('image/')) {
+    return { error: '❌ L\'option `musique` ne fonctionne qu\'avec une image ou un GIF (pas une vidéo).' };
+  }
+  return { att, caption, musicAtt, rain, tts, effect };
+}
+
 async function safeReply(interaction, content) {
   try {
     if (interaction.deferred || interaction.replied) {
@@ -622,6 +720,12 @@ async function safeReply(interaction, content) {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
+
+  // Tout le modèle de liens est par serveur : en MP, /link créait un lien
+  // sans serveur (inutilisable) et /drop ne pouvait joindre personne.
+  if (!interaction.inGuild()) {
+    return safeReply(interaction, '❌ Les commandes MemeDrop s\'utilisent sur un serveur, pas en message privé.');
+  }
 
   try {
     switch (interaction.commandName) {
@@ -786,12 +890,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       case 'drop': {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-        {
-          const remain = cooldownRemaining(lastDropAt, interaction.user.id, DROP_COOLDOWN_MS);
-          if (remain > 0) {
-            return safeReply(interaction, `⏱️ Doucement — encore ${formatCooldown(remain)}s avant le prochain \`/drop\`.`);
-          }
-          markCooldown(lastDropAt, interaction.user.id);
+        const remain = cooldownRemaining(lastDropAt, interaction.user.id, DROP_COOLDOWN_MS);
+        if (remain > 0) {
+          return safeReply(interaction, `⏱️ Doucement — encore ${formatCooldown(remain)}s avant le prochain \`/drop\`.`);
         }
 
         const targets = resolveTargets(interaction);
@@ -799,43 +900,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return safeReply(interaction, '🤖 Aucune cible valide (bots et doublons filtrés).');
         }
 
-        const att      = interaction.options.getAttachment('media', false);
-        const caption  = interaction.options.getString('caption', false);
-        const musicAtt = interaction.options.getAttachment('musique', false);
-        const rain     = extractEmojis(interaction.options.getString('pluie', false));
-        const tts      = (interaction.options.getString('tts', false) || '').trim() || null;
-        const effect   = interaction.options.getString('effet', false);
+        // Le cooldown n'est consommé qu'une fois les options validées : une
+        // faute de frappe ne doit pas coûter l'attente.
+        const opts = readDropOptions(interaction);
+        if (opts.error) return safeReply(interaction, opts.error);
+        markCooldown(lastDropAt, interaction.user.id);
+
+        const { att, caption, musicAtt, rain, tts, effect } = opts;
         const delayMin = interaction.options.getInteger('delai', false);
-
-        // Il faut au moins un média, une pluie ou un texte à lire
-        if (!att && !rain && !tts) {
-          return safeReply(interaction, '❌ Mets au moins un média (`media`), un emoji (`pluie`) ou un texte (`tts`).');
-        }
-
-        if (att) {
-          const err = validateAttachment(att);
-          if (err) return safeReply(interaction, `❌ ${err}`);
-        }
-
-        const musicErr = validateMusic(musicAtt);
-        if (musicErr) return safeReply(interaction, `❌ ${musicErr}`);
-
-        if (musicAtt && !att) {
-          return safeReply(interaction, '❌ L\'option `musique` nécessite un média (image ou GIF).');
-        }
-        if (musicAtt && att && !att.contentType.startsWith('image/')) {
-          return safeReply(interaction, '❌ L\'option `musique` ne fonctionne qu\'avec une image ou un GIF (pas une vidéo).');
-        }
-
         const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain, { tts, effect });
 
         // Drop différé : on programme l'envoi et on répond tout de suite.
         // (Perdu si le bot redémarre entre-temps — assumé pour un troll.)
         if (delayMin && delayMin > 0) {
+          const minutes   = Math.min(delayMin, 60);
           const senderId  = interaction.user.id;
           const guildId   = interaction.guildId;
           const channelId = interaction.channelId;
           setTimeout(() => {
+            payload.ts = Date.now();
             const delivered = [];
             for (const t of targets) {
               if (canDrop(senderId, t.id, guildId)) {
@@ -846,9 +929,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
             }
             if (delivered.length) registerDropForReactions(payload, senderId, channelId);
             console.log(`[drop] delayed drop fired (${delivered.length}/${targets.length} delivered)`);
-          }, Math.min(delayMin, 60) * 60_000);
+          }, minutes * 60_000);
           return safeReply(interaction,
-            `⏳ Drop programmé dans **${Math.min(delayMin, 60)} min** pour ${targets.map(t => `**${t.username}**`).join(', ')}. 😈`);
+            `⏳ Drop programmé dans **${minutes} min** pour ${targets.map(t => `**${t.username}**`).join(', ')}. 😈`);
         }
 
         return safeReply(interaction, dispatchToTargets(interaction, targets, payload, musicAtt));
@@ -858,39 +941,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
       case 'dropall': {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-        {
-          const remain = cooldownRemaining(lastDropAllAt, interaction.user.id, DROPALL_COOLDOWN_MS);
-          if (remain > 0) {
-            return safeReply(interaction, `⏱️ Doucement — encore ${formatCooldown(remain)}s avant le prochain \`/dropall\`.`);
-          }
-          markCooldown(lastDropAllAt, interaction.user.id);
+        const remain = cooldownRemaining(lastDropAllAt, interaction.user.id, DROPALL_COOLDOWN_MS);
+        if (remain > 0) {
+          return safeReply(interaction, `⏱️ Doucement — encore ${formatCooldown(remain)}s avant le prochain \`/dropall\`.`);
         }
 
-        const att      = interaction.options.getAttachment('media', false);
-        const caption  = interaction.options.getString('caption', false);
-        const musicAtt = interaction.options.getAttachment('musique', false);
-        const rain     = extractEmojis(interaction.options.getString('pluie', false));
-        const tts      = (interaction.options.getString('tts', false) || '').trim() || null;
-        const effect   = interaction.options.getString('effet', false);
-
-        if (!att && !rain && !tts) {
-          return safeReply(interaction, '❌ Mets au moins un média (`media`), un emoji (`pluie`) ou un texte (`tts`).');
-        }
-
-        if (att) {
-          const err = validateAttachment(att);
-          if (err) return safeReply(interaction, `❌ ${err}`);
-        }
-
-        const musicErr = validateMusic(musicAtt);
-        if (musicErr) return safeReply(interaction, `❌ ${musicErr}`);
-
-        if (musicAtt && !att) {
-          return safeReply(interaction, '❌ L\'option `musique` nécessite un média (image ou GIF).');
-        }
-        if (musicAtt && att && !att.contentType.startsWith('image/')) {
-          return safeReply(interaction, '❌ L\'option `musique` ne fonctionne qu\'avec une image ou un GIF (pas une vidéo).');
-        }
+        const opts = readDropOptions(interaction);
+        if (opts.error) return safeReply(interaction, opts.error);
+        const { att, caption, musicAtt, rain, tts, effect } = opts;
 
         const recipients = [];
         for (const [userId, link] of userLinks) {
@@ -902,6 +960,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (recipients.length === 0) {
           return safeReply(interaction, 'Personne n\'est atteignable sur ce serveur pour l\'instant. 😴');
         }
+        markCooldown(lastDropAllAt, interaction.user.id);
 
         const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain, { tts, effect });
         const names = [];
@@ -1043,7 +1102,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (remain > 0) {
           return safeReply(interaction, `⏱️ Doucement — encore ${formatCooldown(remain)}s avant le prochain \`/drop\`.`);
         }
-        markCooldown(lastDropAt, interaction.user.id);
 
         const name = interaction.options.getString('name', true).trim();
         const list = favorites.get(interaction.user.id) || [];
@@ -1056,6 +1114,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (targets.length === 0) {
           return safeReply(interaction, '🤖 Aucune cible valide (bots et doublons filtrés).');
         }
+        markCooldown(lastDropAt, interaction.user.id);
 
         const rain   = extractEmojis(interaction.options.getString('pluie', false));
         const effect = interaction.options.getString('effet', false);
@@ -1126,7 +1185,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (remain > 0) {
           return safeReply(interaction, `⏱️ Doucement — encore ${formatCooldown(remain)}s avant le prochain \`/drop\`.`);
         }
-        markCooldown(lastDropAt, interaction.user.id);
 
         const name = interaction.options.getString('name', true).trim();
         const userGroups = groups.get(interaction.user.id) || new Map();
@@ -1134,6 +1192,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (!groupKey) {
           return safeReply(interaction, `❌ Aucun groupe nommé **${name}**. Vois \`/group list\`.`);
         }
+
+        const opts = readDropOptions(interaction);
+        if (opts.error) return safeReply(interaction, opts.error);
+        const { att, caption, musicAtt, rain, tts, effect } = opts;
 
         const memberIds = userGroups.get(groupKey);
         const targets = [];
@@ -1144,29 +1206,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (targets.length === 0) {
           return safeReply(interaction, `❌ Aucun membre du groupe **${groupKey}** n'est joignable (utilisateurs introuvables).`);
         }
-
-        const att      = interaction.options.getAttachment('media', false);
-        const caption  = interaction.options.getString('caption', false);
-        const musicAtt = interaction.options.getAttachment('musique', false);
-        const rain     = extractEmojis(interaction.options.getString('pluie', false));
-        const tts      = (interaction.options.getString('tts', false) || '').trim() || null;
-        const effect   = interaction.options.getString('effet', false);
-
-        if (!att && !rain && !tts) {
-          return safeReply(interaction, '❌ Mets au moins un média (`media`), un emoji (`pluie`) ou un texte (`tts`).');
-        }
-        if (att) {
-          const err = validateAttachment(att);
-          if (err) return safeReply(interaction, `❌ ${err}`);
-        }
-        const musicErr = validateMusic(musicAtt);
-        if (musicErr) return safeReply(interaction, `❌ ${musicErr}`);
-        if (musicAtt && !att) {
-          return safeReply(interaction, '❌ L\'option `musique` nécessite un média (image ou GIF).');
-        }
-        if (musicAtt && att && !att.contentType.startsWith('image/')) {
-          return safeReply(interaction, '❌ L\'option `musique` ne fonctionne qu\'avec une image ou un GIF (pas une vidéo).');
-        }
+        markCooldown(lastDropAt, interaction.user.id);
 
         const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain, { tts, effect });
         return safeReply(interaction, dispatchToTargets(interaction, targets, payload, musicAtt));
@@ -1209,6 +1249,7 @@ client.login(process.env.DISCORD_TOKEN);
 
 process.on('SIGINT', () => {
   console.log('\n[bot] shutting down…');
+  store.flush();
   wss.clients.forEach(ws => ws.close());
   wss.close();
   httpServer.close();

@@ -1,0 +1,60 @@
+# Compile l'APK Android de MemeDrop à chaque push touchant l'appli Android ou
+# le renderer partagé, puis le publie dans la release "android-latest"
+# (lien de téléchargement direct, sans compte GitHub).
+name: Android APK
+
+on:
+  push:
+    paths:
+      - 'memedrop/android/**'
+      - 'memedrop/overlay/src/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Le SDK Android est préinstallé sur les runners ubuntu (ANDROID_HOME) ;
+      # AGP télécharge lui-même la plateforme et les build-tools manquants.
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build APK
+        run: gradle -p memedrop/android assembleRelease --no-daemon --stacktrace
+
+      - name: Rename APK
+        run: cp memedrop/android/app/build/outputs/apk/release/app-release.apk MemeDrop.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MemeDrop-apk
+          path: MemeDrop.apk
+
+      # Pré-release (pas "latest") : n'interfère pas avec l'auto-update
+      # Windows, qui ne lit que la dernière release stable.
+      - name: Publish to the android-latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete android-latest --yes --cleanup-tag || true
+          gh release create android-latest MemeDrop.apk \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "MemeDrop Android (dernière build)" \
+            --notes "APK compilé automatiquement depuis \`${GITHUB_REF_NAME}\` (${GITHUB_SHA::7}). Installe-le sur ton téléphone Android 8+ — voir le README."
