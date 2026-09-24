@@ -29,8 +29,8 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
-
+      # Le SDK Android est préinstallé sur les runners ubuntu (ANDROID_HOME) ;
+      # AGP télécharge lui-même la plateforme et les build-tools manquants.
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
