@@ -38,8 +38,14 @@ jobs:
       - name: Build APK
         run: gradle -p memedrop/android assembleRelease --no-daemon --stacktrace
 
-      - name: Rename APK
-        run: cp memedrop/android/app/build/outputs/apk/release/app-release.apk MemeDrop.apk
+      - name: Rename APK + version.json
+        run: |
+          cp memedrop/android/app/build/outputs/apk/release/app-release.apk MemeDrop.apk
+          # Lu par le bouton "mise à jour" de l'app (Updater.kt) : même
+          # versionCode que celui compilé dans l'APK (GITHUB_RUN_NUMBER).
+          NAME=$(grep -oP 'versionName = "\K[^"]+' memedrop/android/app/build.gradle.kts)
+          echo "{\"versionCode\": $GITHUB_RUN_NUMBER, \"versionName\": \"$NAME\"}" > version.json
+          cat version.json
 
       - uses: actions/upload-artifact@v4
         with:
@@ -53,7 +59,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete android-latest --yes --cleanup-tag || true
-          gh release create android-latest MemeDrop.apk \
+          gh release create android-latest MemeDrop.apk version.json \
             --prerelease \
             --target "$GITHUB_SHA" \
             --title "MemeDrop Android (dernière build)" \

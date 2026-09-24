@@ -71,6 +71,18 @@
   <!-- ════════ ACCUEIL ════════ -->
   <div class="tab-panel" data-panel="home">
 
+    <section id="update-card" class="card update hidden">
+      <div class="card-eyebrow" id="update-eyebrow">mise à jour</div>
+      <h2 id="update-title">Mise à jour disponible</h2>
+      <p class="muted" id="update-msg"></p>
+      <div class="progress hidden" id="update-progress"><div class="progress-fill" id="update-progress-fill"></div></div>
+      <div class="row">
+        <button class="primary hidden" id="update-download">⬇ télécharger &amp; installer</button>
+        <button class="primary hidden" id="update-install">installer</button>
+        <button class="ghost hidden" id="update-check">vérifier à nouveau</button>
+      </div>
+    </section>
+
     <section id="perm-card" class="card perm-card hidden">
       <div class="card-eyebrow">configuration</div>
       <h2>Quelques autorisations</h2>
@@ -243,6 +255,9 @@
       </div>
       <div class="field toggle"><label for="autostart">Lancer au démarrage du téléphone</label>
         <input type="checkbox" id="autostart" class="switch"></div>
+      <div class="field-divider"></div>
+      <div class="field toggle"><label>Version <span id="settings-version">…</span></label>
+        <button class="ghost" id="settings-check-update">vérifier les mises à jour</button></div>
     </section>
   </div>
   </main>
