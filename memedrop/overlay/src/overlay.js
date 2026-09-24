@@ -164,6 +164,43 @@ function clampOpacity(v) {
   return Math.max(0.2, Math.min(1, Number(v ?? 1) || 1));
 }
 
+// Contrôle externe des drops (utilisé par l'app Android, où le toucher est
+// géré nativement) : chaque .anchor porte un data-key unique.
+let dropKeySeq = 0;
+const dropControls = new Map();   // key -> { close() }
+// Garde le drop entièrement à l'écran (croix et avatar compris) : sur un
+// écran étroit, un mème placé près du bord débordait et sa croix devenait
+// inaccessible.
+const FIT_PAD_X = 20;
+const FIT_PAD_TOP = 48;      // avatar + croix au-dessus du média
+const FIT_PAD_BOTTOM = 20;
+function clampCenter(drop, cx, cy) {
+  const hw = (drop?.offsetWidth  || 0) / 2;
+  const hh = (drop?.offsetHeight || 0) / 2;
+  const clamp = (v, lo, hi) => (lo > hi ? (lo + hi) / 2 : Math.max(lo, Math.min(hi, v)));
+  return {
+    x: clamp(cx, hw + FIT_PAD_X, window.innerWidth - hw - FIT_PAD_X),
+    y: clamp(cy, hh + FIT_PAD_TOP, window.innerHeight - hh - FIT_PAD_BOTTOM),
+  };
+}
+
+window.__mdDropCtl = {
+  // Place le centre du drop en (cx, cy), en px CSS, sans sortir de l'écran
+  move(key, cx, cy) {
+    const anchor = stage.querySelector(`.anchor[data-key="${key}"]`);
+    if (!anchor) return;
+    const { x, y } = clampCenter(anchor.querySelector('.drop'), cx, cy);
+    anchor.style.left = `${x / window.innerWidth * 100}%`;
+    anchor.style.top  = `${y / window.innerHeight * 100}%`;
+  },
+  // Recale le drop s'il déborde (appelé une fois sa taille connue)
+  fit(key) {
+    const anchor = stage.querySelector(`.anchor[data-key="${key}"]`);
+    if (anchor) this.move(key, anchor.offsetLeft, anchor.offsetTop);
+  },
+  close(key) { dropControls.get(String(key))?.close(); },
+};
+
 const MAX_CONCURRENT = 6;
 const VIDEO_HARD_CAP_SECONDS = 30;
 const AUDIO_HARD_CAP_SECONDS = 10;
@@ -539,6 +576,8 @@ function renderDrop(payload) {
 
   const anchor = document.createElement('div');
   anchor.className = 'anchor';
+  const dropKey = String(++dropKeySeq);
+  anchor.dataset.key = dropKey;
   anchor.style.left = `${x}%`;
   anchor.style.top  = `${y}%`;
   anchor.style.opacity = String(clampOpacity(settings?.opacity));
@@ -776,6 +815,7 @@ function renderDrop(payload) {
       liveAudios.delete(musicAudio);
     }
     liveDrops.delete(dropMeta);
+    dropControls.delete(dropKey);
     wrap.classList.add(smooth ? 'closing' : 'leaving');
     setTimeout(() => {
       anchor.remove();
@@ -815,6 +855,12 @@ function renderDrop(payload) {
   }
 
   dropMeta.removeNow = removeNow;
+  dropControls.set(dropKey, {
+    close() {
+      if (isVideo && el) { try { el.pause(); } catch {} }
+      removeNow({ smooth: true });
+    },
+  });
   dropMeta.rescheduleFor = rescheduleFor;
   liveDrops.add(dropMeta);
 

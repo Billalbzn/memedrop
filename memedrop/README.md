@@ -158,9 +158,13 @@ with friends, but create your own private key if you ever publish on the Play St
 
 ### Android limitations
 
-- Drops are slightly transparent (78 % opacity) and never catch touches: Android 12+
-  blocks touches that pass through a more opaque overlay from another app.
-  No drag, close button or reactions on mobile — drops simply vanish on their own.
+- The full-screen drop window never catches touches and is slightly transparent
+  (78 % opacity): Android 12+ blocks touches that pass through a more opaque
+  overlay from another app. To move / close a meme, `OverlayController` places a
+  small invisible touchable window exactly over each drop (positions reported by
+  `android-shim.js`): drag to move, tap the ✕ to close. No reactions on mobile yet.
+- The app updates itself: it reads `version.json` from the `android-latest` release
+  and offers to download + install the new APK.
 - Some manufacturers (Xiaomi, Huawei, Samsung…) kill background apps
   aggressively: allow "no battery optimization" in the app and, if needed,
   enable autostart in the phone settings.
