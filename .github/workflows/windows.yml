@@ -1,0 +1,50 @@
+# Compile l'app Windows (.exe) sur un runner Windows et publie la release
+# GitHub correspondant à la version de overlay/package.json. Les PC de tes
+# potes la détectent ensuite via l'auto-update.
+# Lancement : onglet Actions → "Windows release" → Run workflow (sur main),
+# ou en poussant un tag v1.2.3.
+name: Windows release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: memedrop/overlay
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # npm install (pas npm ci) : le package-lock n'est pas toujours à jour
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build and upload (draft release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_SERVER: wss://memedrop-production-3106.up.railway.app
+        run: npx electron-builder --win --publish always
+
+      # electron-builder crée un brouillon : on le publie pour déclencher
+      # l'auto-update chez tout le monde.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          gh release edit "v$VERSION" --draft=false --latest \
+            --title "MemeDrop v$VERSION" \
+            --notes "Version Windows v$VERSION — installe \`MemeDrop-Setup-$VERSION.exe\` (ou la version Portable). Les PC déjà équipés se mettent à jour tout seuls. Version Android : voir la release android-latest."
