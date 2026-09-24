@@ -1,11 +1,13 @@
-# MemeDrop
+# MemeDrop — technical guide
 
 > Drop a meme onto your friend's screen while they're playing. Free, self-hosted.
+> Looking for the user-facing overview? See the [main README](../README.md).
 
-Two pieces:
+Three pieces:
 
 - **`bot/`** → Discord bot + WebSocket hub. Hosted once on Railway, runs 24/7.
 - **`overlay/`** → Electron app. Each friend installs the `.exe` on their PC.
+- **`android/`** → Kotlin app for Android 8+. Same bot protocol, same drop renderer.
 
 The bot exposes `/drop @target`, `/dropall`, `/link`, `/unlink`, `/status`, `/who`, `/block`, `/unblock`, `/blocklist`. The overlay is a transparent click-through window that sits on top of the user's game, launches automatically at login, and re-connects to your bot on its own.
 
@@ -118,11 +120,58 @@ Upload one of those `.exe` files to a Google Drive / Discord channel / wherever.
 
 ---
 
+## Part 2b — The Android APK
+
+The Android app lives in `android/`. It is a small native Kotlin app:
+
+- a **foreground service** (`MemeDropService.kt`) keeps the WebSocket to the bot,
+  with the same protocol as the Windows overlay (pairing code, `/link`,
+  zero-touch re-link, heartbeat);
+- drops are drawn in a transparent, non-touchable window above other apps
+  (`OverlayController.kt`) that loads **the very same `overlay/src/overlay.html`
+  + `overlay.js`** as Windows. The Gradle task `syncWebAssets` copies them into the
+  APK at build time and injects `assets/android-shim.js`, which replaces the
+  Electron `window.memedrop` API. So any change to the drop rendering applies to both;
+- the settings screen is a WebView (`assets/app.html` / `app.js`) talking to the
+  service through a JavaScript bridge, styled with the shared `overlay/src/styles.css`.
+
+### Getting the APK
+
+You don't need Android Studio: the **Android APK** GitHub Actions workflow
+(`.github/workflows/android.yml`) builds it on every push touching `android/` or
+`overlay/src/`, and publishes it as `MemeDrop.apk` in the **`android-latest`**
+pre-release. Being a pre-release, it does not interfere with the Windows
+auto-updater, which only reads the latest stable release.
+
+To build locally instead (JDK 17 + Android SDK + Gradle 8.9):
+
+```bash
+cd android
+gradle assembleRelease
+# → app/build/outputs/apk/release/app-release.apk
+```
+
+The APK is signed with `android/app/memedrop-shared.keystore` (password
+`memedrop`), committed on purpose so every build has the same signature and
+installs over the previous one. It is **not** a secret: it's fine for sharing
+with friends, but create your own private key if you ever publish on the Play Store.
+
+### Android limitations
+
+- Drops are slightly transparent (78 % opacity) and never catch touches: Android 12+
+  blocks touches that pass through a more opaque overlay from another app.
+  No drag, close button or reactions on mobile — drops simply vanish on their own.
+- Some manufacturers (Xiaomi, Huawei, Samsung…) kill background apps
+  aggressively: allow "no battery optimization" in the app and, if needed,
+  enable autostart in the phone settings.
+
+---
+
 ## Part 3 — How your friends use it
 
 For each friend, once:
 
-1. Run `MemeDrop-Setup.exe` (or `MemeDrop-Portable.exe`).
+1. Run `MemeDrop-Setup.exe` (or `MemeDrop-Portable.exe`) — or install `MemeDrop.apk` on Android.
 2. App opens. The header pill says **AWAITING LINK** and shows a 6-digit code.
 3. On Discord, in the server where the bot lives, type `/link <code>`.
 4. App pill turns green **LINKED**. They're done.
@@ -160,6 +209,11 @@ to make them rain down the screen too.
 | `/group set <name> @who...` | Create/replace a named target group (max 5 members, 10 groups) |
 | `/group list` / `/group delete <name>` | List or delete your groups          |
 | `/dropgroup <name> <file>` | Send a meme to everyone in a group (2s cooldown)   |
+| `/stats`            | Your sent/received counters + leaderboard              |
+
+`/drop`, `/dropall` and `/dropgroup` also accept `tts` (text read aloud),
+`effet` (zoom / tornade / glitch / shake) and — for `/drop` only — `delai`
+(delayed drop, 1–60 min). Commands only work inside a server, not in DMs.
 
 > ⏱️ If you're on cooldown, `/drop`, `/dropall`, `/dropfav` and `/dropgroup` now reply with the exact time left.
 
@@ -174,6 +228,9 @@ to make them rain down the screen too.
   early.
 - **Theme** (settings window, audio & display section): pick a color skin for
   the avatar bubble — Classique, Néon, Feu, or Mono.
+- **Quiet hours**: automatic daily mute window (e.g. 22:00 → 08:00).
+- **Avoid zone**: keep drops away from the center, top or bottom of the screen.
+- The settings window is split into tabs: **Accueil**, **Calme**, **Historique**, **Réglages**.
 
 ---
 
@@ -213,9 +270,11 @@ The overlay tries `wss://memedrop-bot.up.railway.app` by default — change the 
 ## Project layout
 
 ```
+.github/workflows/android.yml # builds + publishes the APK
 memedrop/
 ├── bot/
-│   ├── index.js              # bot + HTTP/ws server
+│   ├── index.js              # bot + HTTP/ws server (+ /tts)
+│   ├── store.js              # favorites / groups / stats persistence
 │   ├── deploy-commands.js    # slash command registration
 │   ├── nixpacks.toml         # tells Railway to use Node 20 LTS
 │   ├── railway.json          # Railway service config
@@ -234,5 +293,19 @@ memedrop/
         ├── overlay.js
         ├── settings.html
         ├── settings.js
-        └── styles.css
+        └── styles.css            # shared with the Android settings screen
+└── android/
+    ├── settings.gradle.kts / build.gradle.kts
+    └── app/
+        ├── build.gradle.kts      # syncWebAssets: copies overlay/src into the APK
+        ├── memedrop-shared.keystore
+        └── src/main/
+            ├── AndroidManifest.xml
+            ├── assets/           # app.html, app.js, android-shim.js
+            └── java/com/memedrop/app/
+                ├── MainActivity.kt       # settings screen + JS bridge
+                ├── MemeDropService.kt    # WebSocket + notification
+                ├── OverlayController.kt  # window drawn over other apps
+                ├── Prefs.kt / Hub.kt     # settings + shared state
+                └── BootReceiver.kt       # start at boot
 ```
