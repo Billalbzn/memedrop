@@ -38,7 +38,10 @@ const HOVER_MARGIN_BOTTOM = 40;   // barre de réactions en dessous
 // Renvoie le drop dont le bounding-rect (élargi des marges) contient
 // (x, y), ou null.
 function findDropAt(x, y) {
-  for (const anchor of stage.querySelectorAll('.anchor')) {
+  // Du plus récent (peint au-dessus) au plus ancien : avec deux drops qui se
+  // chevauchent, c'est celui qu'on voit qui est survolé et déplacé.
+  for (let i = stage.children.length - 1; i >= 0; i--) {
+    const anchor = stage.children[i];
     const drop = anchor.querySelector('.drop');
     if (!drop || drop.classList.contains('leaving') || drop.classList.contains('closing')) continue;
     const r = drop.getBoundingClientRect();
@@ -90,6 +93,7 @@ document.addEventListener('mousemove', (e) => {
     const ny = Math.max(0, Math.min(window.innerHeight, e.clientY - dragState.oy));
     dragState.anchor.style.left = `${nx / window.innerWidth  * 100}%`;
     dragState.anchor.style.top  = `${ny / window.innerHeight * 100}%`;
+    if (spotlightStack.length) updateSpotlight();
     return;
   }
 
@@ -97,7 +101,7 @@ document.addEventListener('mousemove', (e) => {
   const hit = findDropAt(e.clientX, e.clientY);
   if (!hit) {
     exitCapture();
-  } else if (hit !== hoveredDrop) {
+  } else if (hit.drop !== hoveredDrop?.drop) {   // findDropAt renvoie un nouvel objet à chaque appel
     if (hoveredDrop) hoveredDrop.drop.classList.remove('hover');
     hoveredDrop = hit;
     hit.drop.style.cursor = 'grab';
@@ -133,12 +137,15 @@ document.addEventListener('mouseup', () => {
 // Un seul AudioContext partagé : en créer un par pop finit par épuiser les
 // contextes audio de Chromium quand les drops s'enchaînent.
 let popCtx = null;
+let popIdleTimer = null;
 function playPop(volume) {
   try {
     if (!popCtx || popCtx.state === 'closed') {
       popCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
     const ctx  = popCtx;
+    clearTimeout(popIdleTimer);
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     const osc  = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
@@ -153,6 +160,9 @@ function playPop(volume) {
     osc.start(t);
     osc.stop(t + 0.16);
     osc.addEventListener('ended', () => { osc.disconnect(); gain.disconnect(); });
+    // Un AudioContext 'running' fait tourner le thread audio en continu, même
+    // muet (la page vit 24 h/24) : on le met en pause une fois le pop joué.
+    popIdleTimer = setTimeout(() => { popCtx?.suspend().catch(() => {}); }, 1000);
   } catch {}
 }
 
@@ -192,6 +202,7 @@ window.__mdDropCtl = {
     const { x, y } = clampCenter(anchor.querySelector('.drop'), cx, cy);
     anchor.style.left = `${x / window.innerWidth * 100}%`;
     anchor.style.top  = `${y / window.innerHeight * 100}%`;
+    if (spotlightStack.length) updateSpotlight();
   },
   // Recale le drop s'il déborde (appelé une fois sa taille connue)
   fit(key) {
@@ -236,6 +247,14 @@ const liveAudios = new Set();
 //   { kind: 'image'|'video', startedAt: number, video: HTMLVideoElement|null,
 //     anchor: HTMLElement, removeNow: () => void, scheduleRemoval: (ms) => void }
 const liveDrops = new Set();
+
+// Libère tout de suite décodeur, tampon et connexion : un élément seulement
+// mis en pause les garde jusqu'au passage du GC (une vidéo fermée continuait
+// à se télécharger). removeAttribute + load(), pas src = '' (qui lève 'error').
+function releaseMedia(m) {
+  if (!m) return;
+  try { m.pause(); m.removeAttribute('src'); m.load(); } catch {}
+}
 
 // Apply volume to a video/audio element using `muted` when 0.
 // HTML5 media elements behave inconsistently with `volume = 0` across
@@ -302,6 +321,7 @@ function speakTTS(text, ttsUrl, settings) {
     applyVolume(a, vol);
     a.preload = 'auto';
     a.addEventListener('error', speakLocal);
+    a.addEventListener('ended', () => releaseMedia(a), { once: true });
     a.play().catch(speakLocal);
   } catch {
     speakLocal();
@@ -350,57 +370,70 @@ function onVisualDropRemoved() {
 // ── Spotlight ─────────────────────────────────────────────────────────
 // Voile sombre sur tout l'écran avec un trou centré sur le drop actif.
 // Chaque drop actif pousse son anchor dans spotlightStack.
-// Un rAF met à jour la position en continu (fonctionne aussi pendant le drag).
+// Mis à jour sur événement (chargement du média via ResizeObserver, drag,
+// déplacement Android, resize) et non plus à chaque image : la boucle rAF
+// forçait une mise en page et redessinait le dégradé plein écran en continu
+// à cause du flottement. Le trou suit donc la position de repos du drop.
 const spotlightEl   = document.getElementById('spotlight');
 const spotlightStack = []; // anchors actifs, du plus récent au plus ancien
-let   spotlightRAF   = null;
+let   spotlightKey   = '';
+const spotlightRO = typeof ResizeObserver === 'function'
+  ? new ResizeObserver(() => updateSpotlight()) : null;
 
-function tickSpotlight() {
+function updateSpotlight() {
   const anchor = spotlightStack.find(a => a.isConnected);
-  if (!anchor) {
-    spotlightEl.style.opacity = '0';
-    spotlightRAF = null;
-    return;
-  }
+  if (!anchor) { spotlightEl.style.opacity = '0'; spotlightKey = ''; return; }
   const drop = anchor.querySelector('.drop');
-  if (drop) {
-    const r  = drop.getBoundingClientRect();
-    const cx = r.left + r.width  / 2;
-    const cy = r.top  + r.height / 2;
-    const rx = r.width  / 2 + 70;
-    const ry = r.height / 2 + 70;
-    spotlightEl.style.setProperty('--cx', `${cx}px`);
-    spotlightEl.style.setProperty('--cy', `${cy}px`);
-    spotlightEl.style.setProperty('--rx', `${rx}px`);
-    spotlightEl.style.setProperty('--ry', `${ry}px`);
-  }
-  spotlightRAF = requestAnimationFrame(tickSpotlight);
+  if (!drop) return;
+  // Géométrie de mise en page (hors transform d'entrée / de flottement)
+  const cx = anchor.offsetLeft, cy = anchor.offsetTop;
+  const rx = drop.offsetWidth / 2 + 70, ry = drop.offsetHeight / 2 + 70;
+  const key = `${cx}|${cy}|${rx}|${ry}`;
+  if (key === spotlightKey) return;
+  spotlightKey = key;
+  spotlightEl.style.setProperty('--cx', `${cx}px`);
+  spotlightEl.style.setProperty('--cy', `${cy}px`);
+  spotlightEl.style.setProperty('--rx', `${rx}px`);
+  spotlightEl.style.setProperty('--ry', `${ry}px`);
 }
 
 function showSpotlight(anchor) {
   spotlightStack.unshift(anchor);
+  const drop = anchor.querySelector('.drop');
+  if (drop) spotlightRO?.observe(drop);
+  updateSpotlight();
   spotlightEl.style.opacity = '1';
-  if (!spotlightRAF) spotlightRAF = requestAnimationFrame(tickSpotlight);
 }
 
 function hideSpotlight(anchor) {
   const idx = spotlightStack.indexOf(anchor);
-  if (idx >= 0) spotlightStack.splice(idx, 1);
-  if (spotlightStack.filter(a => a.isConnected).length === 0) {
-    spotlightEl.style.opacity = '0';
-    if (spotlightRAF) { cancelAnimationFrame(spotlightRAF); spotlightRAF = null; }
-  }
+  if (idx < 0) return;
+  spotlightStack.splice(idx, 1);
+  const drop = anchor.querySelector('.drop');
+  if (drop) spotlightRO?.unobserve(drop);
+  updateSpotlight();   // passe au drop suivant, ou éteint le voile
 }
+
+window.addEventListener('resize', () => { if (spotlightStack.length) updateSpotlight(); });
 
 // ── Pluie d'émojis ────────────────────────────────────────────────────
 // Crée N particules tombant depuis le haut avec vitesse, taille et dérive
 // aléatoires. Les éléments se retirent automatiquement après la chute.
 // `emojis` peut être une chaîne unique (rétro-compat) ou un tableau —
 // chaque particule choisit un emoji au hasard parmi ceux fournis.
+// Pluies simultanées max (anti-spam : 38 calques animés chacune, et les pluies
+// échappent à MAX_CONCURRENT / MAX_QUEUE). Au-delà, la pluie est sautée mais le
+// drop lui-même s'affiche.
+const MAX_RAINS = 4;
+let liveRains = 0;
 function renderRain(emojis) {
   if (!emojis) return;
   const pool = Array.isArray(emojis) ? emojis : [emojis];
   if (pool.length === 0) return;
+  if (liveRains >= MAX_RAINS) return;
+  liveRains++;
+  const batch = [];
+  let end = 0;
   const COUNT = 38;
   for (let i = 0; i < COUNT; i++) {
     const el = document.createElement('div');
@@ -423,8 +456,10 @@ function renderRain(emojis) {
       --rot: ${rot};
     `;
     document.body.appendChild(el);
-    setTimeout(() => el.remove(), delay + dur + 100);
+    batch.push(el);
+    end = Math.max(end, delay + dur);
   }
+  setTimeout(() => { for (const e of batch) e.remove(); liveRains--; }, end + 100);
 }
 
 // ── Ajustement du texte (caption) à la largeur du média ──────────────
@@ -435,7 +470,13 @@ function renderRain(emojis) {
 function fitCaption(bar, mediaEl) {
   if (!bar || !mediaEl) return;
   const apply = () => {
-    const w = mediaEl.getBoundingClientRect().width;
+    // Vidéo sans métadonnées : sa largeur est celle du cadre par défaut
+    // (300 px), pas celle de la vidéo -> on attend 'loadedmetadata'.
+    if (mediaEl.tagName === 'VIDEO' && mediaEl.readyState < 1) return false;
+    // Largeur de mise en page : getBoundingClientRect incluait le transform de
+    // l'animation d'entrée (scale .6, zoom x3.2, tornade x.05) si le média
+    // était déjà chargé (cache, replay).
+    const w = mediaEl.offsetWidth;
     if (!w) return false;
     const size = Math.max(13, Math.min(40, Math.round(w * 0.09)));
     bar.style.fontSize = `${size}px`;
@@ -517,10 +558,12 @@ function playAudioDrop({ media, caption, from, settings }) {
   liveAudios.add(a);
 
   let removed = false;
+  let deadline = null;
   function cleanup() {
     if (removed) return;
     removed = true;
-    try { a.pause(); } catch {}
+    clearTimeout(deadline);
+    releaseMedia(a);
     liveAudios.delete(a);
     if (toast.isConnected) {
       toast.classList.add('leaving');
@@ -539,9 +582,14 @@ function playAudioDrop({ media, caption, from, settings }) {
   a.addEventListener('ended', cleanup);
   a.addEventListener('error', cleanup);
   a.play().catch(() => cleanup());
+  // Filet de sécurité : lien qui ne répond jamais / réseau coupé -> ni 'ended'
+  // ni 'error' : le toast et le slot restaient bloqués (les vidéos ont 15 s).
+  deadline = setTimeout(cleanup, (AUDIO_HARD_CAP_SECONDS + 15) * 1000);
 
   if (settings?.soundOnArrival) playPop(settings.volume);
 }
+
+let shakeTimer = null;
 
 function renderDrop(payload) {
   const { media, caption, from, settings, music, rain, tts, ttsUrl, effect, dropId } = payload;
@@ -588,8 +636,13 @@ function renderDrop(payload) {
   // Effet d'apparition spécial. 'shake' secoue tout l'écran en plus de
   // l'animation d'entrée normale ; les autres remplacent l'animation d'entrée.
   if (effect === 'shake') {
+    // Relance la secousse si une autre est en cours (sinon la 2e était
+    // coupée par le minuteur de la 1re, ou perdue)
+    document.body.classList.remove('fx-shake');
+    void document.body.offsetWidth;
     document.body.classList.add('fx-shake');
-    setTimeout(() => document.body.classList.remove('fx-shake'), 700);
+    clearTimeout(shakeTimer);
+    shakeTimer = setTimeout(() => document.body.classList.remove('fx-shake'), 700);
   } else if (effect === 'zoom' || effect === 'tornade' || effect === 'glitch') {
     wrap.classList.add(`fx-${effect}`);
   }
@@ -644,8 +697,9 @@ function renderDrop(payload) {
   // Both are bounded by VIDEO_HARD_CAP_SECONDS for safety.
   const imageMaxSec = Math.max(1, Math.min(VIDEO_HARD_CAP_SECONDS,
                                             Number(settings?.duration) || 4));
-  const videoMaxSec = Math.max(1, Math.min(VIDEO_HARD_CAP_SECONDS,
-                                            Number(settings?.videoDuration) || 30));
+  // `let` : rescheduleFor le met à jour si la durée max change en direct
+  let videoMaxSec = Math.max(1, Math.min(VIDEO_HARD_CAP_SECONDS,
+                                          Number(settings?.videoDuration) || 30));
   let lifetime = imageMaxSec * 1000;
   let el;
   let isVideo = false;
@@ -660,8 +714,12 @@ function renderDrop(payload) {
     // element may refuse to honor the volume property until certain events
     // have fired. We apply it both before the source loads and again on
     // every "ready to play" event to be bulletproof.
-    const initialVideoVol = settings?.volume ?? 0.75;
-    applyVolume(el, initialVideoVol);
+    // _mdVol = volume courant, suivi par les réglages en direct : réappliquer
+    // le volume initial défaisait un changement fait pendant la lecture
+    // ('canplay' revient après chaque mise en mémoire tampon).
+    el._mdVol = settings?.volume ?? 0.75;
+    const reapplyVol = () => applyVolume(el, el._mdVol);
+    reapplyVol();
     el.playsInline = true;
     el.loop = false;
     el.dataset.kind = 'video';   // marker for live-update routing
@@ -669,7 +727,7 @@ function renderDrop(payload) {
 
     el.addEventListener('loadedmetadata', () => {
       // Re-apply volume — some Chromium builds reset it after metadata loads
-      applyVolume(el, initialVideoVol);
+      reapplyVol();
       const natural = el.duration || 0;
       const effective = Math.min(natural, videoMaxSec);
       if (effective > 0) {
@@ -677,8 +735,8 @@ function renderDrop(payload) {
         scheduleRemoval();
       }
     });
-    el.addEventListener('canplay', () => applyVolume(el, initialVideoVol));
-    el.addEventListener('play',    () => applyVolume(el, initialVideoVol));
+    el.addEventListener('canplay', reapplyVol);
+    el.addEventListener('play',    reapplyVol);
     el.addEventListener('timeupdate', () => {
       if (el.currentTime >= videoMaxSec) {
         try { el.pause(); } catch {}
@@ -694,6 +752,9 @@ function renderDrop(payload) {
       if (!(el.duration > 0)) removeNow({ smooth: true });
     }, 15_000);
     mediaBox.appendChild(el);
+    // Taille connue -> drop (croix comprise) entièrement à l'écran, comme sur
+    // Android : un grand mème près d'un bord débordait, croix inaccessible.
+    el.addEventListener('loadedmetadata', () => window.__mdDropCtl.fit(dropKey), { once: true });
   } else if (media.kind === 'test') {
     const holder = document.createElement('div');
     holder.innerHTML = `
@@ -723,6 +784,7 @@ function renderDrop(payload) {
     el.referrerPolicy = 'no-referrer';
     el.draggable = false;
     mediaBox.appendChild(el);
+    el.addEventListener('load', () => window.__mdDropCtl.fit(dropKey), { once: true });
   }
 
   let captionBar = null;
@@ -808,10 +870,12 @@ function renderDrop(payload) {
     // Drop retiré pendant qu'on le fait glisser : on relâche la capture,
     // sinon l'overlay plein écran continuait à intercepter la souris.
     if (dragState?.anchor === anchor) dragState = null;
+    // Le drag avait mis les animations en pause : la sortie resterait figée
+    wrap.style.animationPlayState = '';
     if (hoveredDrop?.anchor === anchor) exitCapture();
     // Stoppe la musique liée à cette image si elle joue encore
     if (musicAudio) {
-      try { musicAudio.pause(); } catch {}
+      releaseMedia(musicAudio);
       liveAudios.delete(musicAudio);
     }
     liveDrops.delete(dropMeta);
@@ -819,6 +883,8 @@ function renderDrop(payload) {
     wrap.classList.add(smooth ? 'closing' : 'leaving');
     setTimeout(() => {
       anchor.remove();
+      // Après l'animation de sortie, pour garder la dernière image visible
+      if (isVideo) releaseMedia(el);
       hideSpotlight(anchor);
       onVisualDropRemoved();   // arrête le sondage + exitCapture si plus aucun drop
       releaseSlot();
@@ -831,6 +897,8 @@ function renderDrop(payload) {
   // Then compares to elapsed time and either stops now or reschedules.
   function rescheduleFor(newCapSec) {
     if (removed) return;
+    // Le contrôle 'timeupdate' utilise aussi ce plafond
+    if (dropMeta.kind === 'video') videoMaxSec = newCapSec;
     const elapsedMs = Date.now() - dropMeta.startedAt;
     let newCapMs;
     if (dropMeta.kind === 'video' && dropMeta.video) {
@@ -869,15 +937,21 @@ function renderDrop(payload) {
 
 window.memedrop.onDrop((payload) => {
   if (!payload) return;
+  // Pluie vide : rien à montrer (sinon le pop sonnait sur un écran vide)
+  if (Array.isArray(payload.rain) && payload.rain.length === 0) payload.rain = null;
   if (!payload.media && !payload.rain && !payload.tts) return; // rien à afficher
   renderDrop(payload);
 });
 
 if (window.memedrop.onSettingsUpdate) {
   window.memedrop.onSettingsUpdate((settings) => {
+    if (!settings || typeof settings !== 'object') return;
+    // Les drops en file jouent avec les réglages à jour (Windows n'envoie que
+    // les clés modifiées, Android le jeu complet : la fusion marche pour les deux)
+    for (const q of dropQueue) q.settings = { ...q.settings, ...settings };
     // Video volume slider → only affects currently-playing videos
     if (typeof settings?.volume === 'number') {
-      for (const p of livePlayables) applyVolume(p, settings.volume);
+      for (const p of livePlayables) { p._mdVol = settings.volume; applyVolume(p, settings.volume); }
     }
     // Music volume slider → only affects currently-playing audio drops
     if (typeof settings?.musicVolume === 'number') {
@@ -901,9 +975,11 @@ if (window.memedrop.onSettingsUpdate) {
       document.querySelectorAll('.audio-toast').forEach(t => t.style.setProperty('--op', op));
     }
     // Spotlight toggle : si désactivé en direct, on éteint immédiatement
+    // (on vide aussi la pile : sinon un drop plus ancien pouvait rallumer le voile)
     if (typeof settings?.spotlightOnDrop === 'boolean' && !settings.spotlightOnDrop) {
-      spotlightEl.style.opacity = '0';
-      if (spotlightRAF) { cancelAnimationFrame(spotlightRAF); spotlightRAF = null; }
+      spotlightStack.length = 0;
+      spotlightRO?.disconnect();
+      updateSpotlight();
     }
     // Thème — change les couleurs d'accent (bulle avatar) à la volée
     if (typeof settings?.theme === 'string') {

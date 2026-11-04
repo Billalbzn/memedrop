@@ -6,6 +6,7 @@
   const dropListeners = [];
   const settingsListeners = [];
   let settings = {};
+  let rectTimer = null;
   const noop = () => {};
 
   window.memedrop = {
@@ -15,8 +16,15 @@
     // Sur mobile, le toucher est géré côté natif (OverlayController) : des
     // zones tactiles sont posées pile sur chaque drop (voir reportRects).
     onCursor() { return noop; },
-    watchCursor: noop,
-    unwatchCursor: noop,
+    // overlay.js appelle watch/unwatch au 1er drop visuel / après le dernier :
+    // on ne mesure les drops que pendant qu'il y en a à l'écran (avant : 8
+    // réveils/s tant que la WebView existait, même sans rien afficher).
+    watchCursor() { if (!rectTimer) rectTimer = setInterval(reportRects, 120); },
+    unwatchCursor() {
+      reportRects();   // liste vide -> le natif retire les zones tactiles
+      clearInterval(rectTimer);
+      rectTimer = null;
+    },
     setIgnoreMouse: noop,
     stageEmpty: noop,
     reactDrop: noop,
@@ -85,5 +93,4 @@
       window.MDOverlay.rects(json);
     }
   }
-  setInterval(reportRects, 120);
 })();

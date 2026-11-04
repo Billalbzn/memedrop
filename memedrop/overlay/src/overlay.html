@@ -54,9 +54,10 @@
       left: 0; top: 0;
       transform-origin: center;
       will-change: transform, opacity;
-      filter:
-        drop-shadow(0 30px 60px rgba(0,0,0,.55))
-        drop-shadow(0 6px 12px rgba(0,0,0,.4));
+      /* Pas de filtre ici : l'ombre est portée par le média (voir plus bas).
+         Sur .drop, dont le contenu change à chaque image (barre de vie,
+         flottement), les deux flous étaient recalculés en continu par le
+         rendu logiciel (~1 cœur CPU dès qu'un drop était affiché). */
       opacity: 0;
       animation:
         drop-in   420ms cubic-bezier(.18,1.2,.4,1) forwards,
@@ -128,6 +129,21 @@
       position: relative;
       display: inline-block;
       line-height: 0;
+    }
+    /* Ombre portée sur le média seul : peinte une fois avec l'image, elle ne
+       se recalcule plus quand la barre de vie bouge. drop-shadow (et non
+       box-shadow) pour suivre la forme des PNG/GIF transparents. */
+    .media-box > img,
+    .media-box > div > svg {
+      filter:
+        drop-shadow(0 30px 60px rgba(0,0,0,.55))
+        drop-shadow(0 6px 12px rgba(0,0,0,.4));
+    }
+    /* Vidéo : rectangle opaque, donc box-shadow donne le même rendu sans
+       refaire le flou à chaque image de la vidéo (rayons ~x2 : un box-shadow
+       floute deux fois moins qu'un drop-shadow de même valeur). */
+    .media-box > video {
+      box-shadow: 0 30px 120px rgba(0,0,0,.55), 0 6px 24px rgba(0,0,0,.4);
     }
 
     .drop img,
@@ -210,7 +226,7 @@
       z-index: 4;
       box-shadow: 0 2px 8px rgba(0,0,0,.4);
     }
-    /* L'overlay est click-through (forward:true) : :hover n'est pas fiable,
+    /* L'overlay est click-through (setIgnoreMouseEvents) : :hover n'est pas fiable,
        donc overlay.js bascule manuellement la classe .hover via le sondage
        du curseur fait dans le main process. */
     .drop.hover .drop-close {
@@ -378,10 +394,15 @@
       0%, 100% { transform: translate(-50%, -50%)             rotate(0deg); }
       50%      { transform: translate(-50%, calc(-50% - 6px)) rotate(.6deg); }
     }
+    /* Les sorties partent explicitement de l'état visible : .leaving/.closing
+       remplacent drop-in (fill forwards), et sans `from` l'image 0 % reprenait
+       le style de base de .drop (opacity: 0) — le drop disparaissait d'un coup. */
     @keyframes drop-out {
+      from { opacity: 1; transform: translate(-50%, -50%); }
       to { opacity: 0; transform: translate(-50%, calc(-50% + 40px)) rotate(6deg) scale(.92); }
     }
     @keyframes drop-close-out {
+      from { opacity: 1; transform: translate(-50%, -50%); }
       to { opacity: 0; transform: translate(-50%, -50%) scale(.85); }
     }
     @keyframes caption-rise {
@@ -393,18 +414,19 @@
       100% { opacity: 1; transform: translate(-50%, 0);     }
     }
     @keyframes audio-out {
+      from { opacity: 1; transform: translate(-50%, 0); }
       to { opacity: 0; transform: translate(-50%, -16px); }
     }
 
     /* ── Spotlight ─────────────────────────────────────────────────────
        Voile sombre sur tout l'écran avec un trou transparent centré sur
        le drop actif. Position mise à jour via custom properties --cx/--cy
-       et --rx/--ry par requestAnimationFrame dans overlay.js.
+       et --rx/--ry par overlay.js (au chargement, au déplacement, au resize).
        ────────────────────────────────────────────────────────────────── */
     #spotlight {
       position: fixed; inset: 0;
       pointer-events: none;
-      z-index: 1;
+      z-index: 0;   /* sous #stage (ordre du DOM) : le voile entoure le mème sans l'assombrir */
       background: radial-gradient(
         ellipse var(--rx, 240px) var(--ry, 240px) at var(--cx, 50%) var(--cy, 50%),
         transparent 0%,
