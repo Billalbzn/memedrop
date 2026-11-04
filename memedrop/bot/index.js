@@ -569,11 +569,20 @@ async function onWsMessage(ws, raw) {
     // elle recevait les drops des deux identités).
     if (meta?.userId && meta.userId !== userId) detachSocket(ws);
     // Un autre appareil de l'utilisateur est connecté (PC + téléphone) : on
-    // rejoint son lien tel quel, sans 'unlinked' pour personne (les clients
-    // effacent leur identité dessus). Les listes rejouées ici sont ignorées.
+    // rejoint son lien, sans 'unlinked' pour personne (les clients effacent
+    // leur identité dessus). Serveurs : ceux du lien courant. Blocages : on y
+    // ajoute ceux rejoués ici, sinon un /block fait pendant que l'autre
+    // appareil était hors ligne serait perdu (le premier appareil revenu
+    // recrée le lien avec ses listes, et les autres les recopient sur 'linked').
     const existing = userLinks.get(userId);
-    if (hasOpen(existing)) existing.sockets.add(ws);
-    else userLinks.set(userId, { sockets: new Set([ws]), scope, guildIds, blockedUsers });
+    let blocksAdded = false;
+    if (hasOpen(existing)) {
+      existing.sockets.add(ws);
+      for (const b of blockedUsers) {
+        if (existing.blockedUsers.size >= MAX_BLOCKED) break;
+        if (!existing.blockedUsers.has(b)) { existing.blockedUsers.add(b); blocksAdded = true; }
+      }
+    } else userLinks.set(userId, { sockets: new Set([ws]), scope, guildIds, blockedUsers });
     wsMeta.set(ws, { code: null, userId });
     const links = await buildLinksSnapshot(userId);
     // L'état a pu changer pendant l'await (/unlink, fermeture, autre
@@ -586,6 +595,8 @@ async function onWsMessage(ws, raw) {
       token: tokenFor(userId),
       links,
     });
+    // Les appareils déjà liés reçoivent les blocages ajoutés
+    if (blocksAdded) await pushLinksUpdate(userId);
     issueExtensionCode(userId);
     console.log(`[ws] auto-registered user ${userId} (${cur.scope}, ${cur.guildIds.size} guild(s), ${cur.sockets.size} device(s))`);
     return;
@@ -766,7 +777,10 @@ function markCooldown(map, userId) {
 function reserveCooldown(map, userId) {
   const prev = map.get(userId);
   markCooldown(map, userId);
+  const mine = map.get(userId);
   return () => {
+    // Un autre envoi a marqué le cooldown pendant les await : on le garde
+    if (map.get(userId) !== mine) return;
     if (prev === undefined) map.delete(userId);
     else map.set(userId, prev);
   };
@@ -909,9 +923,11 @@ function deliverDrop(senderId, guildId, channelId, targets, payload) {
 }
 
 // Envoie `payload` aux cibles atteignables et renvoie un message récapitulatif.
-function dispatchToTargets(interaction, targets, payload, musicAtt) {
+// `onNothingSent` : appelé si personne n'a reçu le drop (cooldown à rendre).
+function dispatchToTargets(interaction, targets, payload, musicAtt, onNothingSent) {
   const { delivered, notReachable } =
     deliverDrop(interaction.user.id, interaction.guildId, interaction.channelId, targets, payload);
+  if (!delivered.length) onNothingSent?.();
   if (delivered.length && notReachable.length) {
     return `✅ Drop envoyé sur **${delivered.join('**, **')}**.\n⚠️ Pas atteignables depuis ce serveur : ${notReachable.map(o => `**${o}**`).join(', ')}`;
   } else if (delivered.length) {
@@ -1511,7 +1527,7 @@ async function onInteraction(interaction) {
         }
 
         const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain, { tts, effect });
-        return safeReply(interaction, dispatchToTargets(interaction, targets, payload, musicAtt));
+        return safeReply(interaction, dispatchToTargets(interaction, targets, payload, musicAtt, undoCooldown));
       }
 
       // ── /stats — compteurs de drops envoyés / reçus ─────────────────────
@@ -1578,6 +1594,8 @@ process.on('SIGINT', () => {
   wss.clients.forEach(ws => ws.terminate());
   wss.close();
   httpServer.close();
-  client.destroy().finally(() => process.exit(0));
+  // 2e flush : une interaction ou un drop différé traité pendant destroy() a pu
+  // armer une nouvelle sauvegarde (500 ms) que process.exit couperait.
+  client.destroy().finally(() => { try { store.flush(); } catch {} process.exit(0); });
 });
 process.on('SIGTERM', () => process.emit('SIGINT'));

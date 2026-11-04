@@ -17,8 +17,22 @@ const DATA_DIR  = process.env.DATA_DIR || path.join(__dirname, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'store.json');
 
 function load() {
+  const empty = { favorites: {}, groups: {}, stats: {} };
+  let raw;
   try {
-    const raw = fs.readFileSync(DATA_FILE, 'utf8');
+    raw = fs.readFileSync(DATA_FILE, 'utf8');
+  } catch (e) {
+    if (e.code === 'ENOENT') {
+      console.log(`[store] aucun store.json dans ${DATA_DIR} — démarrage à vide`);
+      return empty;
+    }
+    // EACCES, EIO, EISDIR… (volume en cours de montage, disque malade) : le
+    // fichier est peut-être intact. Démarrer à vide le ferait écraser par la
+    // première sauvegarde ; on sort et l'hébergeur relance le process.
+    console.error(`[store] lecture de ${DATA_FILE} impossible (${e.code || e.message}) — arrêt`);
+    process.exit(1);
+  }
+  try {
     const data = JSON.parse(raw);
     const out = {
       favorites: data.favorites || {},
@@ -31,16 +45,17 @@ function load() {
     console.log(`[store] ${DATA_FILE} : ${nFav} favoris, ${nGrp} groupes`);
     return out;
   } catch (e) {
-    if (e.code === 'ENOENT') {
-      console.log(`[store] aucun store.json dans ${DATA_DIR} — démarrage à vide`);
-    } else {
-      // Illisible (JSON cassé par une édition à la main…) : on le met de côté
-      // au lieu de laisser la prochaine sauvegarde l'écraser pour de bon.
-      const aside = `${DATA_FILE}.corrupt-${Date.now()}`;
-      console.error(`[store] store.json illisible (${e.message}), renommé en ${aside}`);
-      try { fs.renameSync(DATA_FILE, aside); } catch {}
+    // Lu mais inexploitable (JSON cassé par une édition à la main, `null`…) :
+    // on le met de côté au lieu de laisser la prochaine sauvegarde l'écraser.
+    const aside = `${DATA_FILE}.corrupt-${Date.now()}`;
+    try {
+      fs.renameSync(DATA_FILE, aside);
+    } catch (re) {
+      console.error(`[store] store.json illisible et impossible à mettre de côté (${re.message}) — arrêt`);
+      process.exit(1);
     }
-    return { favorites: {}, groups: {}, stats: {} };
+    console.error(`[store] store.json illisible (${e.message}), renommé en ${aside}`);
+    return empty;
   }
 }
 
