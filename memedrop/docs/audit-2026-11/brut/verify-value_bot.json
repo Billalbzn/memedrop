@@ -1,0 +1,148 @@
+{
+ "verdicts": [
+  {
+   "id": "bot#1-http-malformed-url-crash",
+   "verdict": "accept",
+   "reason": "Reproduced with a copy of lines 95-108. `GET //localhost:99999/`, `GET //[` and `GET http://[::1` all pass Node's HTTP parser, then `new URL()` throws inside the synchronous 'request' listener and the process exits with code 1. Upgrade requests go to ws's 'upgrade' path and never reach this listener, so only plain HTTP is affected. The try/catch that answers 400 is trivially safe. The optional uncaughtException flush is a reasonable last resort. The same crash class also exists in the WS and interaction handlers (see missed).",
+   "amended_change": ""
+  },
+  {
+   "id": "bot#2-android-onclosing-never-reconnects",
+   "verdict": "accept",
+   "reason": "Verified. The listener (128-141) overrides only onOpen, onMessage, onClosed and onFailure. In OkHttp 4.x, a close started by the server calls only onClosing; onClosed fires only after the app calls close(). The reader loop exits after reading the close frame, so the FIN that follows is never read. RealWebSocket.cancel(), called by the heartbeat at line 46, closes the socket without calling any listener. Nothing else reconnects automatically: only MainActivity's reconnect, setServer and setPaused buttons do. Meanwhile Hub.status stays \"linked\" and the notification keeps saying \"Connecté\". The bot sends close frames at shutdown (1254). The proposed onClosing handler and the heartbeat that does not depend on OkHttp are correct: dropSocket() sets ws to null, so a late onClosed or onFailure post is ignored by the `webSocket === ws` guard. High confidence in the OkHttp contract (it is documented).",
+   "amended_change": ""
+  },
+  {
+   "id": "bot#3-bot-shutdown-close-frames",
+   "verdict": "accept",
+   "reason": "Verified. On SIGINT/SIGTERM, line 1254 calls `ws.close()`, which sends a close frame (code 1005) to every client. That signal is what Fly sends on every deploy and restart. With terminate(), the blocked reader of installed APKs hits EOF or a reset, which calls onFailure and triggers a reconnect. Electron's ws client fires 'close' either way, and neither client reads close codes. It is a one-line, bot-only fix for APKs that cannot be updated remotely. The note that the first deploy is still stopped by the old handler is correct.",
+   "amended_change": ""
+  },
+  {
+   "id": "bot#4-ws-unbounded-rest-amplification",
+   "verdict": "modify",
+   "reason": "The premise is verified: uncapped arrays (362-363), no per-socket limit, one sequential users.fetch per blocked ID (289-295), and /link, /block and /unblock await the snapshot before replying. It is worse than stated. discord.js builds `/users/${id}` without encoding, so a 'blocked id' such as `../channels/<id>` makes the bot send arbitrary authenticated GETs to Discord, and 401/403 answers count toward Discord's limit of 10,000 invalid requests per 10 minutes, after which the IP is banned. Snowflake validation is therefore the essential part. Two flaws: part 3's module-level `unknownUserIds` Set is filled with attacker-chosen IDs and never shrinks, which adds a new way to grow memory. Part 4 also misses the /link new-link path, which awaits buildLinksSnapshot (767) before replying (773).",
+   "amended_change": "1) register (362-363): `const SNOWFLAKE = /^\\d{17,20}$/; const ids = (a, max) => (Array.isArray(a) ? a : []).filter(v => typeof v === 'string' && SNOWFLAKE.test(v)).slice(0, max);` then `guildIds = new Set(ids(id.guildIds, 200))` (200 = Nitro server cap) and `blockedUsers = new Set(ids(id.blockedIds, 100))`. This is the key part: it also closes the `/users/${id}` path injection.\n2) Per-socket budget right after `ws.isAlive = true` (348), as proposed (30 messages per 10 s; extra messages are dropped).\n3) buildBlockedSnapshot: use `client.users.cache.get(id)?.username` first. Fetch at most 10 uncached IDs per snapshot over REST; the rest show the raw ID, and discord.js keeps fetched users in its cache. Remember failed IDs in a capped Map (≤1000 entries, delete the oldest on overflow) and skip them. Do not use an unbounded module-level Set.\n4) Reply before any snapshot work. In /block, /unblock and the /link extension path, call `interaction.reply(...)` first, then `pushLinksUpdate(id).catch(() => {})`. In the /link new-link path, set userLinks and wsMeta, send the reply without awaiting it (`.catch` logs the error), then `await buildLinksSnapshot`, send 'linked' and call issueExtensionCode.\n5) Optional: timingSafeEqual as proposed (hardening only)."
+  },
+  {
+   "id": "bot#5-tts-ratelimit-xff-spoofable",
+   "verdict": "accept",
+   "reason": "Verified that lines 70-71 key the limit on the first X-Forwarded-For entry. Behind a proxy that appends to the header, that entry is chosen by the client. So the 30-per-minute limit can be bypassed, and ttsHits gains one entry per spoofed IP until the 5-minute sweep. Fly's edge sets Fly-Client-IP itself, and the last-hop fallback is correct everywhere else. The global upstream budget is cheap extra protection for the Google quota every friend shares; put the check where a new upstream fetch starts (inside getTtsAudio if bot#7 lands). URL signing is optional and stays compatible, since clients treat ttsUrl as opaque.",
+   "amended_change": ""
+  },
+  {
+   "id": "bot#6-multi-device-mutual-unlink",
+   "verdict": "modify",
+   "reason": "Verified. The bot keeps one ws per user, and register (383-387) and /link (745-750) kick the other device with 'unlinked'. Both clients wipe their identity on any 'unlinked' (main.js:485-487, MemeDropService.kt:232-235). The root README says 'une app par personne (Windows ou Android)', but the PC app starts with Windows and keeps its identity while it is off. So linking the phone silently unlinks it at the next PC boot, and the reverse also happens. This is a real bug even for someone switching devices, and links that hold several sockets are the only fix that does not ping-pong. The design is right, but its guard after the await is flawed: `link.sockets.has(ws)` checks the link object captured before the await. That check stays true after /unlink or unlink_guild deleted or replaced the link during the await, so the socket still gets a stale 'linked' and the user's extension code.",
+   "amended_change": "Same bot-only design, wire protocol unchanged, with these corrections:\n- userLinks: userId → { sockets: Set<ws>, scope, guildIds, blockedUsers }. Helpers: `openSockets(link)`, and `sendToUser(userId, obj)`, which stringifies once. isReachable, /status, /who, /dropall and the /link extension check use `openSockets(link).length`. Delivery (deliverDrop, bot#15) and pushLinksUpdate use sendToUser.\n- register, and /link with a pending code: if the user's link has an open socket, do `sockets.add(ws)`, union guildIds (plus the current guild for /link) and blockedUsers, and set scope 'global' if either side has it. Otherwise create the link as today. Never send 'unlinked' here.\n- After every await in register and /link, check the current state, not the captured object: `const cur = userLinks.get(uid); if (!cur || !cur.sockets.has(ws) || wsMeta.get(ws)?.userId !== uid) return;`. Then send 'linked' to ws and links_update to the user's other sockets, and issue the code.\n- issueExtensionCode(userId): delete the user's old codes and send one new code to every open socket.\n- /unlink, and unlink_guild leaving no guild: send 'unlinked' and call reissuePairingCode on every socket, then delete the link and the user's extension codes.\n- close: `sockets.delete(ws)`. When the set is empty, delete the link and the user's extension codes."
+  },
+  {
+   "id": "bot#7-tts-stampede-no-timeout",
+   "verdict": "accept",
+   "reason": "Verified. The cache is filled only after the fetch returns (78-86), and renderDrop calls speakTTS immediately on every overlay (overlay.js:558). So a multi-target TTS drop sends N identical concurrent requests, which become N Google calls. The fetch has no signal, so undici's 300 s header and body timeouts apply, and the <audio> 'error' fallback fires only when the request fails. The in-flight map is correct: .finally runs after the set, and every caller attaches a handler. Small nit: the warm-up key matches handleTts's key only if payload.tts has no trailing whitespace after the 200-unit cut; using `payload.tts.trim()` makes them always match. The worst case today is one redundant fetch.",
+   "amended_change": ""
+  },
+  {
+   "id": "bot#8-unused-guildmessages-intent",
+   "verdict": "accept",
+   "reason": "Verified: nothing in bot/ listens to messageCreate or reads the message cache. Interactions, channels.fetch, ch.send and members.fetch(id) (a REST call) need only the Guilds intent. GuildMessages makes Discord stream every MESSAGE_CREATE/UPDATE/DELETE; discord.js caches 200 messages per channel and adds every author and member to its caches. It is a one-line change and the intent is not privileged. One small side effect: fewer members get cached in passing, so the first /who or /dropall after a restart may make a few more REST member lookups. Those commands defer their reply first, so this is harmless.",
+   "amended_change": ""
+  },
+  {
+   "id": "bot#9-prod-config-silent-failures",
+   "verdict": "modify",
+   "reason": "The premise is verified. Without LINK_SECRET, lines 205-210 use a random secret, so every token is invalid after a restart and clients wipe their identity on register_failed. store.js:16 defaults to a folder on an ephemeral root filesystem. .env.example has neither DATA_DIR nor PUBLIC_BASE_URL. The Fly config is not in the repo. Refusing to start on Fly without the secret is worth it, because it turns an irreversible mass unlink into a loud outage the owner can recover from. Two problems: a warning when DATA_DIR is unset is a false positive when the volume is mounted at the default bot/data path. And a hand-written fly.toml would be used by the next `fly deploy` run from bot/ and could silently change ports, mounts or machine count; only the owner can produce the real file.",
+   "amended_change": "1) Keep: right after line 205, `if (!process.env.LINK_SECRET && process.env.FLY_APP_NAME) { console.error('[security] LINK_SECRET manquant sur Fly — arrêt (sinon tous les liens seraient invalidés)'); process.exit(1); }`.\n2) Replace the DATA_DIR warning with an informational log of what load() found: `[store] <DATA_FILE> : N favoris, M groupes`, or `[store] aucun store.json dans <dir> — démarrage à vide`. An empty store after a deploy then shows up in the logs.\n3) Keep the .env.example additions: DATA_DIR and PUBLIC_BASE_URL; PORT is provided by the host; DISCORD_TOKEN, CLIENT_ID and LINK_SECRET go through `fly secrets set`.\n4) Do not hand-write bot/fly.toml. Add a short README note in the Fly section: exactly one machine (two would split overlays and handle each interaction twice), auto-stop off, a volume for DATA_DIR, and a connection concurrency limit above the number of overlays. The owner commits the real file himself with `fly config save`."
+  },
+  {
+   "id": "bot#10-client-register-failed-wipes-identity",
+   "verdict": "accept",
+   "reason": "Verified that main.js:467-471 and MemeDropService.kt:216-220 wipe the identity on register_failed. No UI reads the stored identity (grep: only the WS code in main.js and Prefs/MemeDropService), the bot re-checks it on every register, and 'linked' overwrites it. Keeping it is harmless and makes a wrong LINK_SECRET recoverable. It costs two lines per client and ships with the client release that the onClosing fix needs anyway.",
+   "amended_change": ""
+  },
+  {
+   "id": "bot#11-delayed-drop-cooldown-bypass",
+   "verdict": "accept",
+   "reason": "Verified. The 2 s cooldown is consumed once, when the drop is scheduled (908), and nothing limits pending timers (921-933). With delays of 1 to 60 minutes, about 30 drops per minute can be scheduled so they all fire in the same minute. TTS-only and rain-only drops bypass the overlay queue: renderDrop applies MAX_QUEUE to media drops only (overlay.js:551-554). The change is small and local, and a cap of 3 pending drops per sender is a reasonable product limit for a prank feature.",
+   "amended_change": ""
+  },
+  {
+   "id": "bot#12-cooldown-check-mark-race",
+   "verdict": "accept",
+   "reason": "Verified the check, then await, then mark sequence at 945/958/964 and 1185/1204/1210. members.fetch and users.fetch check the cache first, but they go to REST after a restart and for non-members (404s are never cached), which leaves a window where a second invocation passes the check. Reserving before the awaits and rolling back is correct, and validation errors still cost no cooldown. Low value, no risk.",
+   "amended_change": ""
+  },
+  {
+   "id": "bot#13-empty-server-list-before-ready",
+   "verdict": "accept",
+   "reason": "Verified. The server listens at line 493 while login runs at 1249. Before ClientReady, client.guilds.cache is empty, or holds unavailable stubs with no name. buildLinksSnapshot then returns `guilds: []` or nameless entries, and both settings screens show 'Aucun serveur. Utilise /link…' (settings.js:110-115, app.js:177-183) until some later links_update. Pushing links_update on ClientReady fixes it in 3 lines, using a message both clients already handle. The name/icon filter on GuildUpdate is safe. Nit: add `.catch(() => {})` to the pushLinksUpdate calls in the ready loop.",
+   "amended_change": ""
+  },
+  {
+   "id": "bot#14-store-debounce-and-corrupt-load",
+   "verdict": "accept",
+   "reason": "Verified. save() re-arms its timer on every call (49-53), and load() swallows parse errors (28-30), so the next save silently overwrites an unreadable store.json. That can happen, for example, after a typo during a manual edit on the volume. Writing at most 500 ms after the first change bounds the loss window, and renaming the bad file aside keeps it recoverable. The lazy snapshot builder is a small bonus. Low value, no risk.",
+   "amended_change": ""
+  },
+  {
+   "id": "bot#15-duplicated-drop-delivery",
+   "verdict": "accept",
+   "reason": "Verified the three copies (643-657, 921-933, 967-973). Also verified the /dropall edge case: `r.ws` is captured before the awaits (959). If the recipient reconnects meanwhile, sendJson skips the closed socket, yet the drop is still counted as delivered and the stats are bumped. The stringify and persist savings are negligible. The real value is that a single delivery path turns multi-device support (bot#6) and the TTS warm-up (bot#7) into one change instead of three.",
+   "amended_change": ""
+  },
+  {
+   "id": "bot#16-link-code-bruteforce",
+   "verdict": "accept",
+   "reason": "Verified. Codes have 6 digits (231-237), and a pending socket keeps the same code as long as it stays connected. An unlinked Android service even shows it in its permanent notification (MemeDropService.kt:319). /link has no failure limit, and a correct guess lets the attacker push any media to that device. The threat is unlikely in a friend group, but the limit is about 15 lines and does not affect normal use.",
+   "amended_change": ""
+  },
+  {
+   "id": "bot#17-tts-slice-splits-surrogate",
+   "verdict": "accept",
+   "reason": "Verified in node: `('a'+'🔥'.repeat(199)).slice(0,200)` makes encodeURIComponent throw 'URIError: URI malformed', and the proposed clip() fixes it. Whether Discord's max_length counts code points (which would make this reachable) cannot be checked here. Either way the helper is 4 lines, harmless, and also fixes stray '�' characters in captions. Low value, near-zero risk.",
+   "amended_change": ""
+  },
+  {
+   "id": "bot#18-heartbeat-interval-battery",
+   "verdict": "accept",
+   "reason": "Verified. The bot pings every 30 s (481-491). Both clients only need some message within 75 s (main.js:363, MemeDropService.kt:34), and the JSON ping at the application level is what re-arms their timers. At 50 s, installed clients keep a 25 s margin, and phone radio wake-ups drop by 40 %; the ping is the service's only periodic network traffic. Slower detection of dead sockets (50-100 s) is an acceptable trade-off. Ship it only after confirming that the Fly proxy's idle timeout for WebSocket connections is at least 60 s.",
+   "amended_change": ""
+  },
+  {
+   "id": "bot#19-reconnect-backoff-no-jitter",
+   "verdict": "reject",
+   "reason": "The premise is true: both clients use a fixed 1000·1.6^n backoff with no jitter. But with tens of clients, and TLS ending at Fly's edge, a synchronized wave amounts to a few dozen HTTP upgrades and register messages, with no measurable effect. The change touches both clients for no real benefit. The problem that actually matters after a restart, overlays registering before READY, is handled by bot#13.",
+   "amended_change": ""
+  }
+ ],
+ "missed": [
+  {
+   "id": "ws-message-handler-throw-crash",
+   "file": "bot/index.js",
+   "line": 359,
+   "category": "security",
+   "severity": "high",
+   "title": "One anonymous WebSocket message crashes the bot (String() on attacker JSON inside an async handler)",
+   "evidence": "index.js:347 `ws.on('message', async (raw) => {`. The register branch runs before any token check: `const userId = String(id.userId || '')` (359), `String(id.username || 'unknown')` (360), `id.guildIds.map(String)` and `id.blockedIds.map(String)` (362-363). JSON can carry `{\"toString\":1}`, and String() on it throws TypeError 'Cannot convert object to primitive value' (verified in node). The throw rejects the async listener's promise, which ws's EventEmitter ignores. There is no 'unhandledRejection' handler, so Node ≥15 exits with code 1 (reproduced with an EventEmitter stand-in). One message `{\"type\":\"register\",\"identity\":{\"userId\":{\"toString\":1}}}` from any client kills the bot. Linked sockets can do the same through lines 407/427/439/441.",
+   "proposed_change": "1) Convert primitives only: `const str = (v) => (typeof v === 'string' || typeof v === 'number') ? String(v) : '';`. Use str(...) at 359, at 360 (`str(id.username) || 'unknown'`), at 372 (`str(id.token)`), and at 407, 427, 439 and 441. For the arrays at 362-363, keep only `typeof v === 'string'` entries; bot#4's snowflake filter already does this.\n2) Make sure no rejection can escape the handler: move the current body into `async function onWsMessage(ws, raw) { … }` and register `ws.on('message', (raw) => { onWsMessage(ws, raw).catch((e) => console.error('[ws] message ignoré :', e.message)); });`. Wrapping the body in try/catch works too.\n3) Add a last-resort handler next to the SIGINT handler: `process.on('unhandledRejection', (e) => console.error('[bot] rejet non géré :', e));` (also covers interaction-reply-rejection-crash).",
+   "behavior_change": "bugfix: malformed WebSocket messages are ignored instead of killing the process",
+   "cross_component": "none (bot#4's snowflake filter covers lines 362-363)",
+   "risk": "None: legitimate clients only send strings and arrays of strings.",
+   "value": "Removes a remote crash that needs no authentication and one message. The bot is the only instance, so every overlay drops, and delayed drops, cooldowns and pending codes are lost; it can be repeated at will."
+  },
+  {
+   "id": "interaction-reply-rejection-crash",
+   "file": "bot/index.js",
+   "line": 722,
+   "category": "bug",
+   "severity": "high",
+   "title": "Any failed interaction.reply() crashes the bot: `return interaction.reply()` escapes the try/catch",
+   "evidence": "The InteractionCreate listener (722-1247) wraps the switch in try/catch, but 33 branches do `return interaction.reply({...})` without await (773, 792, 833, 852, 993, 1011, 1068, 1153…). An async function does not await a returned promise inside the try, so its rejection skips the catch and rejects the listener. discord.js 14's Client is an EventEmitter, from memory created with captureRejections: true. The rejection then becomes an 'error' event with no listener, which throws; without captureRejections it is an unhandled rejection. Both exit with code 1 (verified with an EventEmitter stand-in in both modes). Triggers: Unknown interaction (10062) when the 3 s deadline is missed (/link, /block and /unblock await REST snapshots first; gateway lag), Discord 5xx errors after retries, and network errors.",
+   "proposed_change": "Make it impossible for the listener's rejection to escape, without touching the 33 branches:\n```js\nasync function onInteraction(interaction) { /* corps actuel du listener (723-1246), inchangé */ }\nclient.on(Events.InteractionCreate, (interaction) => {\n  onInteraction(interaction).catch((e) => console.error('[bot] interaction échouée :', e.message));\n});\nclient.on(Events.Error, (e) => console.error('[bot] erreur client :', e.message));\n```\nAdd the process-level `unhandledRejection` logger (see ws-message-handler-throw-crash), plus `.catch(() => {})` on the fire-and-forget `pushLinksUpdate(userId)` in GuildUpdate (509) and on `handleTts(req, u, res)` (103). An equivalent option is `return await interaction.reply(...)` at the 33 sites, so the existing catch (1243-1246) handles them.",
+   "behavior_change": "bugfix: a reply that fails (Unknown interaction, Discord 5xx, network) is logged and the bot keeps running",
+   "cross_component": "none",
+   "risk": "None.",
+   "value": "Removes the most likely real-world crash of the bot. One /status or /fav list during a Discord API incident, or a /link that misses the 3 s deadline, currently drops every overlay and loses delayed drops, cooldowns, pending codes and up to 500 ms of store writes."
+  }
+ ]
+}

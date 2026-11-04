@@ -1,0 +1,118 @@
+{
+ "verdicts": [
+  {
+   "id": "android-native#1-okhttp-server-close-zombie",
+   "verdict": "accept",
+   "reason": "Premise checked. The listener at MemeDropService.kt:128-141 has no onClosing. The bot's SIGINT/SIGTERM handler (bot/index.js:1254) calls ws.close() on every client at each deploy or restart. In OkHttp 4.12, RealWebSocket.onReadClose() calls only onClosing() unless the client had already queued a close. loopReader() stops once receivedCloseCode is set, so the EOF that follows is never read, and onClosed() fires only after the app's own close frame is written. heartbeatRunnable (l.46) only calls cancel(): that closes a socket nobody is reading, produces no callback, and is never re-armed. The app therefore stays 'linked' until the user acts. The fix is small and idempotent (the webSocket === ws guard ignores late callbacks), and the self-contained heartbeat recovers even if my reading of the internals (~85% sure) is off. Also recommended in the bot area: call ws.terminate() at shutdown so APKs already installed get EOF -> onFailure -> reconnect.",
+   "amended_change": ""
+  },
+  {
+   "id": "android-native#2-ci-publishes-branch-builds",
+   "verdict": "accept",
+   "reason": "Premise checked. android.yml:6-12 triggers on a push to any branch (only a paths filter), and l.77-86 always deletes and recreates android-latest. versionCode is GITHUB_RUN_NUMBER, a single counter shared by every branch, and Updater.kt:58 offers any higher versionCode. So any claude/* push that touches android/ or overlay/src is offered to every phone at once, and Android refuses the downgrade. This run's own push is one of these: its Android changes cannot be built or tested on a device here. A step-level `if: github.ref == 'refs/heads/main'` keeps branch builds as compile checks with downloadable artifacts. Commit it together with the Android changes so the guard already applies to that push. Skip the optional --clobber rework, which is not needed.",
+   "amended_change": ""
+  },
+  {
+   "id": "android-native#3-renderer-gone-kills-app",
+   "verdict": "accept",
+   "reason": "Premise checked. Neither WebViewClient (OverlayController.kt:96-103, MainActivity.kt:39-48) overrides onRenderProcessGone. The method exists since API 26 = minSdk, so no version check is needed. Per the WebViewClient docs, returning false (the default) crashes the app when the renderer crashes and kills it when the system kills the renderer. The callback runs for every WebView that shares the renderer, so both must return true or the process, and with it the 24/7 service, dies. Destroying the WebView inside the callback and returning true is the pattern the docs show. destroy() is idempotent, and the next drop recreates the WebView. Small change, should compile as written.",
+   "amended_change": ""
+  },
+  {
+   "id": "android-native#4-no-restart-after-self-update",
+   "verdict": "accept",
+   "reason": "Premise checked. BootReceiver.kt:10 ignores every action except BOOT_COMPLETED, and the manifest (l.43-45) registers only that one. Installing an update kills the process, and its services are not restarted. So after Updater.install() the user stays offline until they reopen the app or reboot, if they tap 'OK' instead of 'Ouvrir'. MY_PACKAGE_REPLACED is a protected broadcast sent only to the updated package, and it is one of the documented exemptions for starting a foreground service from the background (on 12-14 the SYSTEM_ALERT_WINDOW grant also exempts the app). The startForegroundService call is already wrapped in runCatching. Two-line change, using the same autostart check as at boot.",
+   "amended_change": ""
+  },
+  {
+   "id": "android-native#5-app-heartbeat-radio-cost",
+   "verdict": "reject",
+   "reason": "The premise holds: the bot pings every 30 s (index.js:481-491), and the APK must answer each ping or be terminated, so it cannot lower this on its own. This is probably the largest battery cost on cellular. But the change cannot be shipped untested. The 120 s cadence depends on Fly proxy and carrier NAT idle timeouts that this run cannot measure. If the proxy drops idle sockets at about 60 s, every updated phone would reconnect in a loop, which costs far more than the pings and loses drops. The bot would also take about 4x longer to notice a dead phone, so drops sent in that window are lost silently (a visible trade-off). And it needs a coordinated bot change (per-socket counters plus hello/hello_ack). This is an experiment for the owner: deploy the bot side, run one phone on cellular for a day, and count reconnects. It is not a change for this audit.",
+   "amended_change": ""
+  },
+  {
+   "id": "android-native#6-drops-rendered-while-locked",
+   "verdict": "reject",
+   "reason": "The premise is only partly right. Overlay windows are hidden behind the keyguard, but audio and TTS drops are heard while the phone is locked, so holding them changes how drops are delivered. The change adds new product behavior (a queue capped at 3 drops / 10 min, playback at unlock, a new receiver) rather than fixing a bug. The cost it saves (one WebView start plus one media fetch per drop received while locked, a few per day) is small next to the 24/7 heartbeat. This is a product decision for the owner, outside an audit that must keep behavior unchanged.",
+   "amended_change": ""
+  },
+  {
+   "id": "android-native#7-settings-activity-background-work",
+   "verdict": "accept",
+   "reason": "Premise checked. The listener is added in onCreate (l.52) and removed only in onDestroy (l.64). The foreground service keeps the process alive, and Android 12+ does not finish root activities on Back, so the stopped activity lives for days. Every Hub.changed() (state changes, drops, mute changes, every 500 ms during an update download) then runs getState: 3 binder calls, a re-parse of settings and history, and a full rebuild of the history and server lists with their <img>s. On top of that, app.js:413 does the same every 30 s forever. None of it is visible. Moving the listener to onStart/onStop and calling web.onPause()/onResume() is small and safe; pauseTimers() would be wrong because it applies to the whole process. Skipping the poll when document.hidden is set completes it, and onResume already refreshes the state when the user returns.",
+   "amended_change": ""
+  },
+  {
+   "id": "android-native#8-overlay-webview-lingers-90s",
+   "verdict": "reject",
+   "reason": "The premises are true: the WebView stays 90 s after the last drop, and stageEmpty is a no-op on Android. But the cost of those extra seconds is small. An empty transparent page produces no frames, and the shim's 120 ms timer only serializes an empty list; it does not call the bridge because nothing changed. What remains is memory held about 65 s longer per burst. A shorter window would make drops spaced 25-90 s apart pay for a full WebView and page re-creation, with a CPU spike and a visible delay before the drop appears, which is what the 90 s window avoids. It also adds a new bridge method and timing heuristics (a 2 s guard, a 20 s grace for TTS audio that is not tracked). No clear net gain.",
+   "amended_change": ""
+  },
+  {
+   "id": "android-native#9-reconnect-stalls-in-deep-sleep",
+   "verdict": "modify",
+   "reason": "The problem is real. Handler.postDelayed uses uptimeMillis, which stops in deep sleep, and the service holds no wakelock. So the backoff (up to 30 s) and the 75 s heartbeat only advance while the phone is awake. A socket that dies during sleep leaves the phone offline for up to 30-75 s after unlock, and nothing reacts when a network comes back. A NetworkCallback plus a screen-on kick is cheap and safe. Drop the jitter: tens of clients reconnecting at once cost the bot nothing, so it brings no measurable benefit. The screen-on receiver must be its own, since the locked-drops proposal is rejected. Also set lastRxAt in onSocketOpen.",
+   "amended_change": "Same as proposed, minus the jitter (keep l.156 unchanged), with a separate screen-on receiver:\n```kotlin\nprivate var lastRxAt = 0L  // onSocketOpen() + onSocketMessage(): lastRxAt = SystemClock.elapsedRealtime()\n// Écran rallumé / réseau revenu : les timers Handler (backoff, heartbeat)\n// sont gelés pendant la veille profonde, on n'attend pas leur échéance.\nprivate fun kick() {\n    if (Prefs.paused) return\n    val open = Hub.status == \"linked\" || Hub.status == \"awaiting_link\"\n    if (ws == null || (open && SystemClock.elapsedRealtime() - lastRxAt > HEARTBEAT_TIMEOUT_MS)) {\n        attempts = 0\n        connect()\n    }\n}\nprivate val netCallback = object : ConnectivityManager.NetworkCallback() {\n    override fun onAvailable(network: Network) { Hub.main.post { kick() } }\n}\nprivate val screenOn = object : BroadcastReceiver() {\n    override fun onReceive(c: Context, i: Intent) { kick() }\n}\n```\nonCreate, after connect(): runCatching { getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(netCallback) }; val f = IntentFilter(Intent.ACTION_SCREEN_ON); if (Build.VERSION.SDK_INT >= 33) registerReceiver(screenOn, f, Context.RECEIVER_NOT_EXPORTED) else registerReceiver(screenOn, f).\nonDestroy, first lines: runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(netCallback) }; runCatching { unregisterReceiver(screenOn) }.\nManifest: <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\" />. Imports: BroadcastReceiver, Context, IntentFilter, ConnectivityManager, Network, SystemClock."
+  },
+  {
+   "id": "android-native#10-prefs-reparse-and-mute-write-race",
+   "verdict": "reject",
+   "reason": "No material effect, as the auditor concedes: each call costs tens of µs, on paths that run at most every 30 s or once per drop. The cache would hand callers one shared mutable JSONObject; stateJson embeds it and serializes it on the JavaBridge thread, so any future mutation would corrupt the settings. The muteUntil race needs getState on the bridge thread to fall within microseconds of a setMute, and only in the window of up to 30 s after a timed mute expired. In practice it cannot happen. Removing the write also leaves a stale timestamp behind, which a backward clock change could turn into an active mute again. Not worth the change.",
+   "amended_change": ""
+  },
+  {
+   "id": "android-native#11-notification-reposted-unchanged",
+   "verdict": "reject",
+   "reason": "The premise is true but the effect is negligible. The duplicate posts happen a few times per reconnection, per links_update, per slider change (already debounced by 150 ms) and once after each mute. That is a few binder calls and SystemUI updates per day, with no measurable CPU or battery effect. The diff rewrites notification building and changes Android 14 behavior: a dismissed notification would stay hidden until its text changes. The benefit does not justify that.",
+   "amended_change": ""
+  },
+  {
+   "id": "android-native#12-updater-unbounded-main-thread-poll",
+   "verdict": "modify",
+   "reason": "The problem is real, but parts of the change go too far. Keep (a) the try/catch: download() runs on the main thread (via ui{} from the JS bridge), and if enqueue throws (DownloadManager disabled) or setDestinationInExternalFilesDir throws (no external files dir), the whole process crashes, service included. Keep (b) calling Hub.changed() only when progress changes, and a slower poll while not RUNNING (today: a provider IPC plus a re-render twice a second while waiting for network). Drop the 10-min give-up: it cancels a download that DownloadManager resumes by itself, a behavior change for no gain. Drop the Thread-to-enqueue change in check(): a few threads per day, no measurable value.",
+   "amended_change": "download(): wrap the delete + Request + enqueue block:\n```kotlin\ntry {\n    ctx.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.let { File(it, APK_NAME).delete() }\n    val req = DownloadManager.Request(Uri.parse(APK_URL)) /* … inchangé … */\n    downloadId = dm.enqueue(req)\n} catch (e: Exception) {\n    // Gestionnaire de téléchargements désactivé, stockage absent… : sur le\n    // thread principal, l'exception tuait l'appli entière (service compris).\n    error = e.message ?: \"téléchargement impossible\"\n    set(\"error\")\n    return\n}\n```\npoll(), else branch of the when (replaces `if (total > 0) progress = …; Hub.changed()`):\n```kotlin\nval p = if (total > 0) (done * 100 / total).toInt() else progress\nif (p != progress) { progress = p; Hub.changed() }\n// En attente de réseau / en pause : inutile d'interroger 2 fois par seconde\nHub.main.postDelayed({ poll(ctx) }, if (status == DownloadManager.STATUS_RUNNING) 500L else 3_000L)\nreturn\n```\nThe final postDelayed(500) then only handles a null cursor. No 10-min give-up, no change to check()."
+  },
+  {
+   "id": "android-native#13-shim-injection-silent-failure",
+   "verdict": "accept",
+   "reason": "Premise checked. build.gradle.kts:15-20 replaces the exact string <script src=\"./overlay.js\"></script> found at overlay.html:443, a file shared with Windows. If the string no longer matches, the build stays green and every Android drop breaks, because overlay.js then calls window.memedrop.onDrop with no shim loaded. overlay.html never mentions android-shim.js, so the check is meaningful. It is a build-time check of about 6 lines, with no runtime risk.",
+   "amended_change": ""
+  },
+  {
+   "id": "android-native#14-r8-disabled",
+   "verdict": "reject",
+   "reason": "R8 is probably safe: the default optimize file already keeps @JavascriptInterface methods. But the APK cannot be built or tested on a device here. The gain is only about 2 MB less per update download plus a little dex memory. A missing keep rule would silently break both JS bridges (blank settings screen, no touch zones) on every phone, and phones cannot roll back because Android refuses downgrades. The auditor reaches the same conclusion.",
+   "amended_change": ""
+  }
+ ],
+ "missed": [
+  {
+   "id": "handshake-no-timeout",
+   "file": "android/app/src/main/java/com/memedrop/app/MemeDropService.kt",
+   "line": 128,
+   "category": "bug",
+   "severity": "medium",
+   "title": "WebSocket handshake has no timeout: a stalled connect leaves the service stuck on 'Connexion au bot…' forever",
+   "evidence": "client is built with readTimeout(0) (l.37-39) and no callTimeout. OkHttp 4.x uses readTimeout as the socket soTimeout during the TLS handshake and while reading the 101 upgrade response; connectTimeout (10 s) only bounds the TCP connect. connect() (l.112-142) never arms the watchdog: armHeartbeat() runs only in onSocketOpen (l.169) and onSocketMessage (l.189). If TCP connects but TLS or the upgrade never completes (captive portal, weak Wi-Fi dropping packets, a middlebox), neither onOpen nor onFailure arrives. The status stays 'connecting' with no retry scheduled until the user taps reconnect or the network interface goes away.",
+   "proposed_change": "In connect(), right after `ws = client.newWebSocket(request, object : WebSocketListener() { … })` (l.128-141), add:\n```kotlin\n// Garde-fou de la poignée de main : readTimeout(0) (indispensable une fois\n// la socket ouverte) laisse TLS et l'upgrade HTTP sans délai maximum.\narmHeartbeat()\n```\nonSocketOpen() re-arms it as today; onSocketClosed()/dropSocket() already remove it. With the current heartbeatRunnable, cancel() on an in-flight call fails the call, so OkHttp calls onFailure -> onSocketClosed -> reconnect. With android-native#1's heartbeatRunnable (onSocketClosed() then cancel()) it works without relying on any callback.",
+   "behavior_change": "bugfix: a stalled handshake is abandoned and retried after 75 s instead of hanging forever",
+   "cross_component": "none (compatible with either version of heartbeatRunnable, including android-native#1's)",
+   "risk": "Very low: a one-line change, and the 75 s limit is far above a normal handshake (under 2 s).",
+   "value": "Removes a silent stuck state in which the phone is offline indefinitely while showing 'Connexion au bot…'."
+  },
+  {
+   "id": "settings-activity-kept-for-days",
+   "file": "android/app/src/main/java/com/memedrop/app/MainActivity.kt",
+   "line": 63,
+   "category": "perf",
+   "severity": "medium",
+   "title": "Settings activity, its WebView and the WebView renderer process stay in memory for days after the user leaves the app",
+   "evidence": "MainActivity creates its WebView in onCreate (l.34-50) and frees it only in onDestroy (l.63-67). The foreground service keeps the process alive, and on Android 12+ Back on a root launcher activity moves the task to the back instead of finishing it. So once a user has opened the settings and left (Home, Back, or testDrop/replay's moveTaskToBack), the activity, its WebView and the renderer process it keeps bound stay resident until the task is swiped away, typically for days. The service needs a WebView only while a drop is shown (OverlayController frees its own after 90 s).",
+   "proposed_change": "MainActivity:\n```kotlin\n// Écran laissé en arrière-plan : le service garde le process en vie, donc\n// l'activité et sa WebView (avec son moteur de rendu) restaient en mémoire\n// des jours. On les libère après 10 min ; l'écran se recharge à la\n// prochaine ouverture (onglet mémorisé).\nprivate val releaseUi = Runnable { if (!isFinishing) finish() }\noverride fun onStart() { super.onStart(); Hub.main.removeCallbacks(releaseUi) }\noverride fun onStop() {\n    if (!isChangingConfigurations) Hub.main.postDelayed(releaseUi, 10 * 60_000L)\n    super.onStop()\n}\n```\nonDestroy(), first line: Hub.main.removeCallbacks(releaseUi). If android-native#7 is applied, merge these lines into its onStart/onStop overrides. Use finish(), not finishAndRemoveTask(), so the recents entry stays and relaunches the screen.",
+   "behavior_change": "visible (minor): after 10 min of awake time in the background, reopening MemeDrop reloads the settings page. The tab is restored from localStorage; scroll position and an unsaved server-URL edit are lost.",
+   "cross_component": "none (app.js already restores the tab and reads all its state from MD.getState on load)",
+   "risk": "Low: finish() on a stopped activity only runs the existing onDestroy (listener removal + web.destroy()). A system permission or installer screen left open for more than 10 min returns to the home screen on Back instead of to MemeDrop. Updater state is held by a process-level object (not the activity) and survives.",
+   "value": "Frees the settings WebView and, when no drop is showing, its renderer process (typically several tens of MB). Most installs otherwise keep this memory resident 24/7 next to the service. It also stops any remaining background JS work."
+  }
+ ]
+}

@@ -1,0 +1,3717 @@
+{
+ "meta": {
+  "harness": "1695885dc96b",
+  "mode": "android",
+  "viewport": {
+   "width": 412,
+   "height": 915
+  },
+  "deviceScaleFactor": 2.625,
+  "shimInjected": true,
+  "replacements": 1
+ },
+ "scenarios": {
+  "android-load-idle": {
+   "desc": "Boot: settings pushed, the 120 ms reporter sends one empty rect list, then nothing while idle.",
+   "steps": [
+    {
+     "step": "load",
+     "t": 0,
+     "dom": {
+      "theme": null,
+      "bodyClass": [],
+      "bodyStyle": {},
+      "spotlight": {
+       "style": {},
+       "computedOpacity": "0",
+       "target": null
+      },
+      "stage": [],
+      "overlays": [],
+      "rain": {
+       "count": 0,
+       "violations": [],
+       "violationCount": 0
+      },
+      "idleTimers": 1,
+      "trackedMedia": []
+     }
+    },
+    {
+     "step": "booted",
+     "t": 0,
+     "dom": {
+      "theme": "classic",
+      "bodyClass": [],
+      "bodyStyle": {},
+      "bodyComputed": {
+       "animation-name": "none",
+       "transform": "none"
+      },
+      "spotlight": {
+       "style": {
+        "opacity": "0"
+       },
+       "computedOpacity": "0",
+       "target": null
+      },
+      "stage": [],
+      "overlays": [],
+      "rain": {
+       "count": 0,
+       "violations": [],
+       "violationCount": 0
+      },
+      "idleTimers": 1,
+      "trackedMedia": []
+     }
+    },
+    {
+     "step": "first report (empty)",
+     "t": 120,
+     "events": {
+      "rects": [
+       {
+        "t": 120,
+        "dpr": 2.625,
+        "rects": []
+       }
+      ]
+     }
+    },
+    {
+     "step": "idle: no more reports",
+     "t": 5120
+    }
+   ]
+  },
+  "android-image": {
+   "desc": "Image drop on a phone: mobile CSS (close always visible, no reaction bar), rect reported with key/x/y/w/h, removed after 4 s, reports stop.",
+   "steps": [
+    {
+     "step": "load",
+     "t": 0,
+     "dom": {
+      "theme": null,
+      "bodyClass": [],
+      "bodyStyle": {},
+      "spotlight": {
+       "style": {},
+       "computedOpacity": "0",
+       "target": null
+      },
+      "stage": [],
+      "overlays": [],
+      "rain": {
+       "count": 0,
+       "violations": [],
+       "violationCount": 0
+      },
+      "idleTimers": 1,
+      "trackedMedia": []
+     }
+    },
+    {
+     "step": "shown",
+     "t": 0,
+     "events": {
+      "pops": [
+       {
+        "t": 0,
+        "type": "sine"
+       }
+      ],
+      "audioContextsTotal": 1
+     },
+     "dom": {
+      "theme": "classic",
+      "bodyClass": [],
+      "bodyStyle": {},
+      "bodyComputed": {
+       "animation-name": "none",
+       "transform": "none"
+      },
+      "spotlight": {
+       "style": {
+        "opacity": "0"
+       },
+       "computedOpacity": "0",
+       "target": null
+      },
+      "stage": [
+       {
+        "tag": "div",
+        "cls": [
+         "anchor"
+        ],
+        "attrs": {
+         "data-key": "1"
+        },
+        "style": {
+         "opacity": "1",
+         "~left": "40.406%",
+         "~top": "50.66%"
+        },
+        "~pos": [
+         166,
+         464
+        ],
+        "size": [
+         0,
+         0
+        ],
+        "computed": {
+         "opacity": "1"
+        },
+        "kids": [
+         {
+          "tag": "div",
+          "cls": [
+           "drop"
+          ],
+          "box": [
+           0,
+           0,
+           321,
+           245
+          ],
+          "computed": {
+           "animation-name": "drop-in, drop-bob",
+           "cursor": "auto",
+           "filter": "drop-shadow(rgba(0, 0, 0, 0.55) 0px 30px 60px) drop-shadow(rgba(0, 0, 0, 0.4) 0px 6px 12px)",
+           "opacity": "1",
+           "pointer-events": "auto",
+           "transform": "matrix(1, 0, 0, 1, -160.68, -122.508)"
+          },
+          "kids": [
+           {
+            "tag": "div",
+            "cls": [
+             "avatar-bubble"
+            ],
+            "attrs": {
+             "data-username": "alice"
+            },
+            "box": [
+             161,
+             0,
+             50,
+             50
+            ],
+            "computed": {
+             "background-image": "linear-gradient(135deg, rgb(255, 94, 138) 0%, rgb(255, 180, 94) 100%), linear-gradient(135deg, rgb(255, 94, 138) 0%, rgb(255, 180, 94) 100%)",
+             "height": "44px",
+             "width": "44px"
+            },
+            "kids": [
+             {
+              "tag": "img",
+              "attrs": {
+               "alt": "",
+               "draggable": "false",
+               "referrerpolicy": "no-referrer",
+               "src": "asset:avatar64"
+              },
+              "box": [
+               3,
+               3,
+               44,
+               44
+              ],
+              "img": {
+               "complete": true,
+               "naturalWidth": 64,
+               "naturalHeight": 64
+              }
+             }
+            ]
+           },
+           {
+            "tag": "button",
+            "cls": [
+             "drop-close"
+            ],
+            "attrs": {
+             "title": "Fermer",
+             "type": "button"
+            },
+            "text": "✕",
+            "box": [
+             301,
+             -14,
+             34,
+             34
+            ],
+            "computed": {
+             "display": "flex",
+             "height": "34px",
+             "opacity": "1",
+             "pointer-events": "auto",
+             "transform": "none",
+             "width": "34px"
+            }
+           },
+           {
+            "tag": "div",
+            "cls": [
+             "react-bar"
+            ],
+            "box": [
+             0,
+             0,
+             0,
+             0
+            ],
+            "computed": {
+             "display": "none",
+             "opacity": "0"
+            },
+            "kids": [
+             {
+              "tag": "button",
+              "cls": [
+               "react-btn"
+              ],
+              "attrs": {
+               "type": "button"
+              },
+              "text": "😂",
+              "box": [
+               0,
+               0,
+               0,
+               0
+              ],
+              "computed": {
+               "opacity": "1",
+               "transform": "none"
+              }
+             },
+             {
+              "tag": "button",
+              "cls": [
+               "react-btn"
+              ],
+              "attrs": {
+               "type": "button"
+              },
+              "text": "💀",
+              "box": [
+               0,
+               0,
+               0,
+               0
+              ],
+              "computed": {
+               "opacity": "1",
+               "transform": "none"
+              }
+             },
+             {
+              "tag": "button",
+              "cls": [
+               "react-btn"
+              ],
+              "attrs": {
+               "type": "button"
+              },
+              "text": "🔥",
+              "box": [
+               0,
+               0,
+               0,
+               0
+              ],
+              "computed": {
+               "opacity": "1",
+               "transform": "none"
+              }
+             },
+             {
+              "tag": "button",
+              "cls": [
+               "react-btn"
+              ],
+              "attrs": {
+               "type": "button"
+              },
+              "text": "😭",
+              "box": [
+               0,
+               0,
+               0,
+               0
+              ],
+              "computed": {
+               "opacity": "1",
+               "transform": "none"
+              }
+             },
+             {
+              "tag": "button",
+              "cls": [
+               "react-btn"
+              ],
+              "attrs": {
+               "type": "button"
+              },
+              "text": "🖕",
+              "box": [
+               0,
+               0,
+               0,
+               0
+              ],
+              "computed": {
+               "opacity": "1",
+               "transform": "none"
+              }
+             }
+            ]
+           },
+           {
+            "tag": "div",
+            "cls": [
+             "media-box"
+            ],
+            "box": [
+             0,
+             0,
+             321,
+             241
+            ],
+            "kids": [
+             {
+              "tag": "img",
+              "attrs": {
+               "alt": "",
+               "draggable": "false",
+               "referrerpolicy": "no-referrer",
+               "src": "asset:png400x300"
+              },
+              "box": [
+               0,
+               0,
+               321,
+               241
+              ],
+              "img": {
+               "complete": true,
+               "naturalWidth": 400,
+               "naturalHeight": 300
+              },
+              "computed": {
+               "border-radius": "14px",
+               "height": "241.016px",
+               "width": "321.344px"
+              }
+             },
+             {
+              "tag": "div",
+              "cls": [
+               "caption-bar"
+              ],
+              "style": {
+               "-webkit-text-stroke-color": "rgb(0, 0, 0)",
+               "-webkit-text-stroke-width": "2px",
+               "font-size": "29px"
+              },
+              "text": "sur le téléphone",
+              "box": [
+               0,
+               186,
+               321,
+               55
+              ],
+              "computed": {
+               "-webkit-text-stroke-width": "2px",
+               "font-size": "29px",
+               "line-height": "31.32px"
+              }
+             },
+             {
+              "tag": "div",
+              "cls": [
+               "life-bar"
+              ],
+              "style": {
+               "transform": "scaleX(0)",
+               "transition-behavior": "normal",
+               "transition-delay": "0s",
+               "transition-duration": "4000ms",
+               "transition-property": "transform",
+               "transition-timing-function": "linear"
+              },
+              "box": [
+               12,
+               232,
+               297,
+               3
+              ],
+              "computed": {
+               "background-image": "linear-gradient(90deg, rgb(255, 94, 138), rgb(255, 180, 94))",
+               "transform": "matrix(0, 0, 0, 1, 0, 0)"
+              }
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "overlays": [],
+      "rain": {
+       "count": 0,
+       "violations": [],
+       "violationCount": 0
+      },
+      "trackedMedia": []
+     }
+    },
+    {
+     "step": "rect reported, drop fitted on screen",
+     "t": 120,
+     "events": {
+      "rects": [
+       {
+        "t": 120,
+        "dpr": 2.625,
+        "rects": [
+         {
+          "key": "1",
+          "w": 937,
+          "h": 738,
+          "~x": 7,
+          "~y": 849,
+          "~cx": 181,
+          "~cy": 464,
+          "inScreen": true
+         }
+        ]
+       }
+      ]
+     },
+     "dom": {
+      "theme": "classic",
+      "bodyClass": [],
+      "bodyStyle": {},
+      "spotlight": {
+       "style": {
+        "opacity": "0"
+       },
+       "computedOpacity": "0",
+       "target": null
+      },
+      "stage": [
+       {
+        "tag": "div",
+        "cls": [
+         "anchor"
+        ],
+        "attrs": {
+         "data-key": "1"
+        },
+        "style": {
+         "opacity": "1",
+         "~left": "43.811%",
+         "~top": "50.71%"
+        },
+        "~pos": [
+         181,
+         464
+        ],
+        "size": [
+         0,
+         0
+        ],
+        "kids": [
+         {
+          "tag": "div",
+          "cls": [
+           "drop"
+          ],
+          "box": [
+           0,
+           0,
+           321,
+           245
+          ],
+          "kids": [
+           {
+            "tag": "div",
+            "cls": [
+             "avatar-bubble"
+            ],
+            "attrs": {
+             "data-username": "alice"
+            },
+            "box": [
+             161,
+             0,
+             50,
+             50
+            ],
+            "kids": [
+             {
+              "tag": "img",
+              "attrs": {
+               "alt": "",
+               "draggable": "false",
+               "referrerpolicy": "no-referrer",
+               "src": "asset:avatar64"
+              },
+              "box": [
+               3,
+               3,
+               44,
+               44
+              ],
+              "img": {
+               "complete": true,
+               "naturalWidth": 64,
+               "naturalHeight": 64
+              }
+             }
+            ]
+           },
+           {
+            "tag": "button",
+            "cls": [
+             "drop-close"
+            ],
+            "attrs": {
+             "title": "Fermer",
+             "type": "button"
+            },
+            "text": "✕",
+            "box": [
+             301,
+             -14,
+             34,
+             34
+            ]
+           },
+           {
+            "tag": "div",
+            "cls": [
+             "react-bar"
+            ],
+            "box": [
+             0,
+             0,
+             0,
+             0
+            ],
+            "kids": [
+             {
+              "tag": "button",
+              "cls": [
+               "react-btn"
+              ],
+              "attrs": {
+               "type": "button"
+              },
+              "text": "😂",
+              "box": [
+               0,
+               0,
+               0,
+               0
+              ]
+             },
+             {
+              "tag": "button",
+              "cls": [
+               "react-btn"
+              ],
+              "attrs": {
+               "type": "button"
+              },
+              "text": "💀",
+              "box": [
+               0,
+               0,
+               0,
+               0
+              ]
+             },
+             {
+              "tag": "button",
+              "cls": [
+               "react-btn"
+              ],
+              "attrs": {
+               "type": "button"
+              },
+              "text": "🔥",
+              "box": [
+               0,
+               0,
+               0,
+               0
+              ]
+             },
+             {
+              "tag": "button",
+              "cls": [
+               "react-btn"
+              ],
+              "attrs": {
+               "type": "button"
+              },
+              "text": "😭",
+              "box": [
+               0,
+               0,
+               0,
+               0
+              ]
+             },
+             {
+              "tag": "button",
+              "cls": [
+               "react-btn"
+              ],
+              "attrs": {
+               "type": "button"
+              },
+              "text": "🖕",
+              "box": [
+               0,
+               0,
+               0,
+               0
+              ]
+             }
+            ]
+           },
+           {
+            "tag": "div",
+            "cls": [
+             "media-box"
+            ],
+            "box": [
+             0,
+             0,
+             321,
+             241
+            ],
+            "kids": [
+             {
+              "tag": "img",
+              "attrs": {
+               "alt": "",
+               "draggable": "false",
+               "referrerpolicy": "no-referrer",
+               "src": "asset:png400x300"
+              },
+              "box": [
+               0,
+               0,
+               321,
+               241
+              ],
+              "img": {
+               "complete": true,
+               "naturalWidth": 400,
+               "naturalHeight": 300
+              }
+             },
+             {
+              "tag": "div",
+              "cls": [
+               "caption-bar"
+              ],
+              "style": {
+               "-webkit-text-stroke-color": "rgb(0, 0, 0)",
+               "-webkit-text-stroke-width": "2px",
+               "font-size": "29px"
+              },
+              "text": "sur le téléphone",
+              "box": [
+               0,
+               186,
+               321,
+               55
+              ]
+             },
+             {
+              "tag": "div",
+              "cls": [
+               "life-bar"
+              ],
+              "style": {
+               "transform": "scaleX(0)",
+               "transition-behavior": "normal",
+               "transition-delay": "0s",
+               "transition-duration": "4000ms",
+               "transition-property": "transform",
+               "transition-timing-function": "linear"
+              },
+              "box": [
+               12,
+               232,
+               297,
+               3
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "overlays": [],
+      "rain": {
+       "count": 0,
+       "violations": [],
+       "violationCount": 0
+      },
+      "trackedMedia": []
+     },
+     "extra": [
+      {
+       "key": "1",
+       "size": [
+        321,
+        245
+       ],
+       "insideX": true,
+       "insideY": true
+      }
+     ]
+    },
+    {
+     "step": "unchanged → not re-sent",
+     "t": 360
+    },
+    {
+     "step": "t=4000 leaving",
+     "t": 4000
+    },
+    {
+     "step": "leaving drop no longer reported",
+     "t": 4120,
+     "events": {
+      "rects": [
+       {
+        "t": 4080,
+        "dpr": 2.625,
+        "rects": []
+       }
+      ]
+     }
+    },
+    {
+     "step": "t=4400 removed",
+     "t": 4400
+    },
+    {
+     "step": "idle: no reports",
+     "t": 7400
+    }
+   ]
+  },
+  "android-move-close": {
+   "desc": "__mdDropCtl.move (clamped to the screen), close (smooth), unknown keys ignored; rects follow.",
+   "steps": [
+    {
+     "step": "load",
+     "t": 0,
+     "dom": {
+      "theme": null,
+      "bodyClass": [],
+      "bodyStyle": {},
+      "spotlight": {
+       "style": {},
+       "computedOpacity": "0",
+       "target": null
+      },
+      "stage": [],
+      "overlays": [],
+      "rain": {
+       "count": 0,
+       "violations": [],
+       "violationCount": 0
+      },
+      "idleTimers": 1,
+      "trackedMedia": []
+     }
+    },
+    {
+     "step": "two rects",
+     "t": 120,
+     "events": {
+      "pops": [
+       {
+        "t": 0,
+        "type": "sine"
+       },
+       {
+        "t": 0,
+        "type": "sine"
+       }
+      ],
+      "audioContextsTotal": 1,
+      "rects": [
+       {
+        "t": 120,
+        "dpr": 2.625,
+        "rects": [
+         {
+          "key": "1",
+          "w": 499,
+          "h": 1113,
+          "~x": 5,
+          "~y": 236,
+          "~cx": 97,
+          "~cy": 302,
+          "inScreen": true
+         },
+         {
+          "key": "2",
+          "w": 357,
+          "h": 315,
+          "~x": 234,
+          "~y": 520,
+          "~cx": 157,
+          "~cy": 258,
+          "inScreen": true
+         }
+        ]
+       }
+      ]
+     },
+     "extra": [
+      {
+       "key": "1",
+       "size": [
+        154,
+        388
+       ],
+       "insideX": true,
+       "insideY": true
+      },
+      {
+       "key": "2",
+       "size": [
+        100,
+        84
+       ],
+       "insideX": true,
+       "insideY": true
+      }
+     ]
+    },
+    {
+     "step": "move 1 → (100,200) clamped",
+     "t": 240,
+     "events": {
+      "rects": [
+       {
+        "t": 240,
+        "dpr": 2.625,
+        "rects": [
+         {
+          "key": "1",
+          "w": 499,
+          "h": 1113,
+          "~x": 13,
+          "~y": 79,
+          "~cx": 100,
+          "~cy": 242,
+          "inScreen": true
+         },
+         {
+          "key": "2",
+          "w": 357,
+          "h": 315,
+          "~x": 234,
+          "~y": 520,
+          "~cx": 157,
+          "~cy": 258,
+          "inScreen": true
+         }
+        ]
+       }
+      ]
+     },
+     "extra": {
+      "1": [
+       "24.2718%",
+       "26.4481%"
+      ],
+      "2": [
+       "38.1068%",
+       "28.1967%"
+      ]
+     }
+    },
+    {
+     "step": "move 1 far off-screen → clamped to bottom-left",
+     "t": 360,
+     "events": {
+      "rects": [
+       {
+        "t": 360,
+        "dpr": 2.625,
+        "rects": [
+         {
+          "key": "1",
+          "w": 499,
+          "h": 1113,
+          "~x": 5,
+          "~y": 1284,
+          "~cx": 97,
+          "~cy": 701,
+          "inScreen": true
+         },
+         {
+          "key": "2",
+          "w": 357,
+          "h": 315,
+          "~x": 234,
+          "~y": 520,
+          "~cx": 157,
+          "~cy": 258,
+          "inScreen": true
+         }
+        ]
+       }
+      ]
+     },
+     "extra": {
+      "1": [
+       "23.5437%",
+       "76.612%"
+      ],
+      "2": [
+       "38.1068%",
+       "28.1967%"
+      ]
+     }
+    },
+    {
+     "step": "move 2 → centre",
+     "t": 480,
+     "events": {
+      "rects": [
+       {
+        "t": 480,
+        "dpr": 2.625,
+        "rects": [
+         {
+          "key": "1",
+          "w": 499,
+          "h": 1113,
+          "~x": 5,
+          "~y": 1284,
+          "~cx": 97,
+          "~cy": 701,
+          "inScreen": true
+         },
+         {
+          "key": "2",
+          "w": 357,
+          "h": 315,
+          "~x": 362,
+          "~y": 1045,
+          "~cx": 206,
+          "~cy": 458,
+          "inScreen": true
+         }
+        ]
+       }
+      ]
+     },
+     "dom": {
+      "theme": "classic",
+      "bodyClass": [],
+      "bodyStyle": {},
+      "spotlight": {
+       "style": {
+        "opacity": "0"
+       },
+       "computedOpacity": "0",
+       "target": null
+      },
+      "stage": [
+       {
+        "tag": "div",
+        "cls": [
+         "anchor"
+        ],
+        "attrs": {
+         "data-key": "1"
+        },
+        "style": {
+         "opacity": "1",
+         "~left": "23.544%",
+         "~top": "76.612%"
+        },
+        "~pos": [
+         97,
+         701
+        ],
+        "size": [
+         0,
+         0
+        ],
+        "kids": [
+         {
+          "tag": "div",
+          "cls": [
+           "drop"
+          ],
+          "box": [
+           0,
+           0,
+           154,
+           388
+          ],
+          "kids": [
+           {
+            "tag": "div",
+            "cls": [
+             "avatar-bubble"
+            ],
+            "attrs": {
+             "data-username": "alice"
+            },
+            "box": [
+             77,
+             0,
+             50,
+             50
+            ],
+            "kids": [
+             {
+              "tag": "div",
+              "style": {
+               "align-items": "center",
+               "background-attachment": "initial",
+               "background-clip": "initial",
+               "background-color": "initial",
+               "background-image": "linear-gradient(135deg, rgb(255, 94, 138), rgb(255, 180, 94))",
+               "background-origin": "initial",
+               "background-position-x": "initial",
+               "background-position-y": "initial",
+               "background-repeat": "initial",
+               "background-size": "initial",
+               "border-bottom-left-radius": "50%",
+               "border-bottom-right-radius": "50%",
+               "border-top-left-radius": "50%",
+               "border-top-right-radius": "50%",
+               "color": "rgb(255, 255, 255)",
+               "display": "flex",
+               "font-family": "system-ui, sans-serif",
+               "font-size": "24px",
+               "font-weight": "800",
+               "height": "100%",
+               "justify-content": "center",
+               "width": "100%"
+              },
+              "text": "A",
+              "box": [
+               3,
+               3,
+               44,
+               44
+              ]
+             }
+            ]
+           },
+           {
+            "tag": "button",
+            "cls": [
+             "drop-close"
+            ],
+            "attrs": {
+             "title": "Fermer",
+             "type": "button"
+            },
+            "text": "✕",
+            "box": [
+             134,
+             -14,
+             34,
+             34
+            ]
+           },
+           {
+            "tag": "div",
+            "cls": [
+             "media-box"
+            ],
+            "box": [
+             0,
+             0,
+             154,
+             384
+            ],
+            "kids": [
+             {
+              "tag": "img",
+              "attrs": {
+               "alt": "",
+               "draggable": "false",
+               "referrerpolicy": "no-referrer",
+               "src": "asset:png200x500"
+              },
+              "box": [
+               0,
+               0,
+               154,
+               384
+              ],
+              "img": {
+               "complete": true,
+               "naturalWidth": 200,
+               "naturalHeight": 500
+              }
+             },
+             {
+              "tag": "div",
+              "cls": [
+               "life-bar"
+              ],
+              "style": {
+               "transform": "scaleX(0)",
+               "transition-behavior": "normal",
+               "transition-delay": "0s",
+               "transition-duration": "30000ms",
+               "transition-property": "transform",
+               "transition-timing-function": "linear"
+              },
+              "box": [
+               12,
+               375,
+               130,
+               3
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "tag": "div",
+        "cls": [
+         "anchor"
+        ],
+        "attrs": {
+         "data-key": "2"
+        },
+        "style": {
+         "opacity": "1",
+         "~left": "50%",
+         "~top": "50.055%"
+        },
+        "~pos": [
+         206,
+         458
+        ],
+        "size": [
+         0,
+         0
+        ],
+        "kids": [
+         {
+          "tag": "div",
+          "cls": [
+           "drop"
+          ],
+          "box": [
+           0,
+           0,
+           100,
+           84
+          ],
+          "kids": [
+           {
+            "tag": "div",
+            "cls": [
+             "avatar-bubble"
+            ],
+            "attrs": {
+             "data-username": "alice"
+            },
+            "box": [
+             50,
+             0,
+             50,
+             50
+            ],
+            "kids": [
+             {
+              "tag": "div",
+              "style": {
+               "align-items": "center",
+               "background-attachment": "initial",
+               "background-clip": "initial",
+               "background-color": "initial",
+               "background-image": "linear-gradient(135deg, rgb(255, 94, 138), rgb(255, 180, 94))",
+               "background-origin": "initial",
+               "background-position-x": "initial",
+               "background-position-y": "initial",
+               "background-repeat": "initial",
+               "background-size": "initial",
+               "border-bottom-left-radius": "50%",
+               "border-bottom-right-radius": "50%",
+               "border-top-left-radius": "50%",
+               "border-top-right-radius": "50%",
+               "color": "rgb(255, 255, 255)",
+               "display": "flex",
+               "font-family": "system-ui, sans-serif",
+               "font-size": "24px",
+               "font-weight": "800",
+               "height": "100%",
+               "justify-content": "center",
+               "width": "100%"
+              },
+              "text": "A",
+              "box": [
+               3,
+               3,
+               44,
+               44
+              ]
+             }
+            ]
+           },
+           {
+            "tag": "button",
+            "cls": [
+             "drop-close"
+            ],
+            "attrs": {
+             "title": "Fermer",
+             "type": "button"
+            },
+            "text": "✕",
+            "box": [
+             80,
+             -14,
+             34,
+             34
+            ]
+           },
+           {
+            "tag": "div",
+            "cls": [
+             "media-box"
+            ],
+            "box": [
+             0,
+             0,
+             100,
+             80
+            ],
+            "kids": [
+             {
+              "tag": "img",
+              "attrs": {
+               "alt": "",
+               "draggable": "false",
+               "referrerpolicy": "no-referrer",
+               "src": "asset:png100x80"
+              },
+              "box": [
+               0,
+               0,
+               100,
+               80
+              ],
+              "img": {
+               "complete": true,
+               "naturalWidth": 100,
+               "naturalHeight": 80
+              }
+             },
+             {
+              "tag": "div",
+              "cls": [
+               "life-bar"
+              ],
+              "style": {
+               "transform": "scaleX(0)",
+               "transition-behavior": "normal",
+               "transition-delay": "0s",
+               "transition-duration": "30000ms",
+               "transition-property": "transform",
+               "transition-timing-function": "linear"
+              },
+              "box": [
+               12,
+               71,
+               76,
+               3
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "overlays": [],
+      "rain": {
+       "count": 0,
+       "violations": [],
+       "violationCount": 0
+      },
+      "trackedMedia": []
+     },
+     "extra": {
+      "1": [
+       "23.5437%",
+       "76.612%"
+      ],
+      "2": [
+       "50%",
+       "50.0546%"
+      ]
+     }
+    },
+    {
+     "step": "close 2 → closing",
+     "t": 480,
+     "extra": [
+      "drop",
+      "closing drop"
+     ]
+    },
+    {
+     "step": "closing drop dropped from the report",
+     "t": 600,
+     "events": {
+      "rects": [
+       {
+        "t": 600,
+        "dpr": 2.625,
+        "rects": [
+         {
+          "key": "1",
+          "w": 499,
+          "h": 1113,
+          "~x": 5,
+          "~y": 1284,
+          "~cx": 97,
+          "~cy": 701,
+          "inScreen": true
+         }
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "step": "t+220 removed",
+     "t": 700,
+     "dom": {
+      "theme": "classic",
+      "bodyClass": [],
+      "bodyStyle": {},
+      "spotlight": {
+       "style": {
+        "opacity": "0"
+       },
+       "computedOpacity": "0",
+       "target": null
+      },
+      "stage": [
+       {
+        "tag": "div",
+        "cls": [
+         "anchor"
+        ],
+        "attrs": {
+         "data-key": "1"
+        },
+        "style": {
+         "opacity": "1",
+         "~left": "23.544%",
+         "~top": "76.612%"
+        },
+        "~pos": [
+         97,
+         701
+        ],
+        "size": [
+         0,
+         0
+        ],
+        "kids": [
+         {
+          "tag": "div",
+          "cls": [
+           "drop"
+          ],
+          "box": [
+           0,
+           0,
+           154,
+           388
+          ],
+          "kids": [
+           {
+            "tag": "div",
+            "cls": [
+             "avatar-bubble"
+            ],
+            "attrs": {
+             "data-username": "alice"
+            },
+            "box": [
+             77,
+             0,
+             50,
+             50
+            ],
+            "kids": [
+             {
+              "tag": "div",
+              "style": {
+               "align-items": "center",
+               "background-attachment": "initial",
+               "background-clip": "initial",
+               "background-color": "initial",
+               "background-image": "linear-gradient(135deg, rgb(255, 94, 138), rgb(255, 180, 94))",
+               "background-origin": "initial",
+               "background-position-x": "initial",
+               "background-position-y": "initial",
+               "background-repeat": "initial",
+               "background-size": "initial",
+               "border-bottom-left-radius": "50%",
+               "border-bottom-right-radius": "50%",
+               "border-top-left-radius": "50%",
+               "border-top-right-radius": "50%",
+               "color": "rgb(255, 255, 255)",
+               "display": "flex",
+               "font-family": "system-ui, sans-serif",
+               "font-size": "24px",
+               "font-weight": "800",
+               "height": "100%",
+               "justify-content": "center",
+               "width": "100%"
+              },
+              "text": "A",
+              "box": [
+               3,
+               3,
+               44,
+               44
+              ]
+             }
+            ]
+           },
+           {
+            "tag": "button",
+            "cls": [
+             "drop-close"
+            ],
+            "attrs": {
+             "title": "Fermer",
+             "type": "button"
+            },
+            "text": "✕",
+            "box": [
+             134,
+             -14,
+             34,
+             34
+            ]
+           },
+           {
+            "tag": "div",
+            "cls": [
+             "media-box"
+            ],
+            "box": [
+             0,
+             0,
+             154,
+             384
+            ],
+            "kids": [
+             {
+              "tag": "img",
+              "attrs": {
+               "alt": "",
+               "draggable": "false",
+               "referrerpolicy": "no-referrer",
+               "src": "asset:png200x500"
+              },
+              "box": [
+               0,
+               0,
+               154,
+               384
+              ],
+              "img": {
+               "complete": true,
+               "naturalWidth": 200,
+               "naturalHeight": 500
+              }
+             },
+             {
+              "tag": "div",
+              "cls": [
+               "life-bar"
+              ],
+              "style": {
+               "transform": "scaleX(0)",
+               "transition-behavior": "normal",
+               "transition-delay": "0s",
+               "transition-duration": "30000ms",
+               "transition-property": "transform",
+               "transition-timing-function": "linear"
+              },
+              "box": [
+               12,
+               375,
+               130,
+               3
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "overlays": [],
+      "rain": {
+       "count": 0,
+       "violations": [],
+       "violationCount": 0
+      },
+      "trackedMedia": []
+     }
+    },
+    {
+     "step": "unknown / removed keys ignored, fit idempotent",
+     "t": 820,
+     "extra": {
+      "1": [
+       "23.5437%",
+       "76.612%"
+      ]
+     }
+    }
+   ]
+  },
+  "android-fit-large": {
+   "desc": "Large image (1200x900 → 78vw) and portrait image: re-fitted on screen once loaded; video rect after metadata, removed at end.",
+   "steps": [
+    {
+     "step": "load",
+     "t": 0,
+     "dom": {
+      "theme": null,
+      "bodyClass": [],
+      "bodyStyle": {},
+      "spotlight": {
+       "style": {},
+       "computedOpacity": "0",
+       "target": null
+      },
+      "stage": [],
+      "overlays": [],
+      "rain": {
+       "count": 0,
+       "violations": [],
+       "violationCount": 0
+      },
+      "idleTimers": 1,
+      "trackedMedia": []
+     }
+    },
+    {
+     "step": "fitted",
+     "t": 120,
+     "events": {
+      "pops": [
+       {
+        "t": 0,
+        "type": "sine"
+       },
+       {
+        "t": 0,
+        "type": "sine"
+       }
+      ],
+      "audioContextsTotal": 1,
+      "rects": [
+       {
+        "t": 120,
+        "dpr": 2.625,
+        "rects": [
+         {
+          "key": "1",
+          "w": 937,
+          "h": 738,
+          "~x": 7,
+          "~y": 1033,
+          "~cx": 181,
+          "~cy": 534,
+          "inScreen": true
+         },
+         {
+          "key": "2",
+          "w": 499,
+          "h": 1113,
+          "~x": 386,
+          "~y": 270,
+          "~cx": 242,
+          "~cy": 315,
+          "inScreen": true
+         }
+        ]
+       }
+      ]
+     },
+     "dom": {
+      "theme": "classic",
+      "bodyClass": [],
+      "bodyStyle": {},
+      "bodyComputed": {
+       "animation-name": "none",
+       "transform": "none"
+      },
+      "spotlight": {
+       "style": {
+        "opacity": "0"
+       },
+       "computedOpacity": "0",
+       "target": null
+      },
+      "stage": [
+       {
+        "tag": "div",
+        "cls": [
+         "anchor"
+        ],
+        "attrs": {
+         "data-key": "1"
+        },
+        "style": {
+         "opacity": "1",
+         "~left": "43.811%",
+         "~top": "58.361%"
+        },
+        "~pos": [
+         181,
+         534
+        ],
+        "size": [
+         0,
+         0
+        ],
+        "computed": {
+         "opacity": "1"
+        },
+        "kids": [
+         {
+          "tag": "div",
+          "cls": [
+           "drop"
+          ],
+          "box": [
+           0,
+           0,
+           321,
+           245
+          ],
+          "computed": {
+           "animation-name": "drop-in, drop-bob",
+           "cursor": "auto",
+           "filter": "drop-shadow(rgba(0, 0, 0, 0.55) 0px 30px 60px) drop-shadow(rgba(0, 0, 0, 0.4) 0px 6px 12px)",
+           "opacity": "1",
+           "pointer-events": "auto",
+           "transform": "matrix(1, 0, 0, 1, -160.68, -122.508)"
+          },
+          "kids": [
+           {
+            "tag": "div",
+            "cls": [
+             "avatar-bubble"
+            ],
+            "attrs": {
+             "data-username": "alice"
+            },
+            "box": [
+             161,
+             0,
+             50,
+             50
+            ],
+            "computed": {
+             "background-image": "linear-gradient(135deg, rgb(255, 94, 138) 0%, rgb(255, 180, 94) 100%), linear-gradient(135deg, rgb(255, 94, 138) 0%, rgb(255, 180, 94) 100%)",
+             "height": "44px",
+             "width": "44px"
+            },
+            "kids": [
+             {
+              "tag": "div",
+              "style": {
+               "align-items": "center",
+               "background-attachment": "initial",
+               "background-clip": "initial",
+               "background-color": "initial",
+               "background-image": "linear-gradient(135deg, rgb(255, 94, 138), rgb(255, 180, 94))",
+               "background-origin": "initial",
+               "background-position-x": "initial",
+               "background-position-y": "initial",
+               "background-repeat": "initial",
+               "background-size": "initial",
+               "border-bottom-left-radius": "50%",
+               "border-bottom-right-radius": "50%",
+               "border-top-left-radius": "50%",
+               "border-top-right-radius": "50%",
+               "color": "rgb(255, 255, 255)",
+               "display": "flex",
+               "font-family": "system-ui, sans-serif",
+               "font-size": "24px",
+               "font-weight": "800",
+               "height": "100%",
+               "justify-content": "center",
+               "width": "100%"
+              },
+              "text": "A",
+              "box": [
+               3,
+               3,
+               44,
+               44
+              ]
+             }
+            ]
+           },
+           {
+            "tag": "button",
+            "cls": [
+             "drop-close"
+            ],
+            "attrs": {
+             "title": "Fermer",
+             "type": "button"
+            },
+            "text": "✕",
+            "box": [
+             301,
+             -14,
+             34,
+             34
+            ],
+            "computed": {
+             "display": "flex",
+             "height": "34px",
+             "opacity": "1",
+             "pointer-events": "auto",
+             "transform": "none",
+             "width": "34px"
+            }
+           },
+           {
+            "tag": "div",
+            "cls": [
+             "media-box"
+            ],
+            "box": [
+             0,
+             0,
+             321,
+             241
+            ],
+            "kids": [
+             {
+              "tag": "img",
+              "attrs": {
+               "alt": "",
+               "draggable": "false",
+               "referrerpolicy": "no-referrer",
+               "src": "asset:png1200x900"
+              },
+              "box": [
+               0,
+               0,
+               321,
+               241
+              ],
+              "img": {
+               "complete": true,
+               "naturalWidth": 1200,
+               "naturalHeight": 900
+              },
+              "computed": {
+               "border-radius": "14px",
+               "height": "241.016px",
+               "width": "321.344px"
+              }
+             },
+             {
+              "tag": "div",
+              "cls": [
+               "caption-bar"
+              ],
+              "style": {
+               "-webkit-text-stroke-color": "rgb(0, 0, 0)",
+               "-webkit-text-stroke-width": "2px",
+               "font-size": "29px"
+              },
+              "text": "grande",
+              "box": [
+               0,
+               186,
+               321,
+               55
+              ],
+              "computed": {
+               "-webkit-text-stroke-width": "2px",
+               "font-size": "29px",
+               "line-height": "31.32px"
+              }
+             },
+             {
+              "tag": "div",
+              "cls": [
+               "life-bar"
+              ],
+              "style": {
+               "transform": "scaleX(0)",
+               "transition-behavior": "normal",
+               "transition-delay": "0s",
+               "transition-duration": "30000ms",
+               "transition-property": "transform",
+               "transition-timing-function": "linear"
+              },
+              "box": [
+               12,
+               232,
+               297,
+               3
+              ],
+              "computed": {
+               "background-image": "linear-gradient(90deg, rgb(255, 94, 138), rgb(255, 180, 94))",
+               "transform": "matrix(0, 0, 0, 1, 0, 0)"
+              }
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "tag": "div",
+        "cls": [
+         "anchor"
+        ],
+        "attrs": {
+         "data-key": "2"
+        },
+        "style": {
+         "opacity": "1",
+         "~left": "58.738%",
+         "~top": "34.426%"
+        },
+        "~pos": [
+         242,
+         315
+        ],
+        "size": [
+         0,
+         0
+        ],
+        "computed": {
+         "opacity": "1"
+        },
+        "kids": [
+         {
+          "tag": "div",
+          "cls": [
+           "drop"
+          ],
+          "box": [
+           0,
+           0,
+           154,
+           388
+          ],
+          "computed": {
+           "animation-name": "drop-in, drop-bob",
+           "cursor": "auto",
+           "filter": "drop-shadow(rgba(0, 0, 0, 0.55) 0px 30px 60px) drop-shadow(rgba(0, 0, 0, 0.4) 0px 6px 12px)",
+           "opacity": "1",
+           "pointer-events": "auto",
+           "transform": "matrix(1, 0, 0, 1, -76.859, -194.148)"
+          },
+          "kids": [
+           {
+            "tag": "div",
+            "cls": [
+             "avatar-bubble"
+            ],
+            "attrs": {
+             "data-username": "alice"
+            },
+            "box": [
+             77,
+             0,
+             50,
+             50
+            ],
+            "computed": {
+             "background-image": "linear-gradient(135deg, rgb(255, 94, 138) 0%, rgb(255, 180, 94) 100%), linear-gradient(135deg, rgb(255, 94, 138) 0%, rgb(255, 180, 94) 100%)",
+             "height": "44px",
+             "width": "44px"
+            },
+            "kids": [
+             {
+              "tag": "div",
+              "style": {
+               "align-items": "center",
+               "background-attachment": "initial",
+               "background-clip": "initial",
+               "background-color": "initial",
+               "background-image": "linear-gradient(135deg, rgb(255, 94, 138), rgb(255, 180, 94))",
+               "background-origin": "initial",
+               "background-position-x": "initial",
+               "background-position-y": "initial",
+               "background-repeat": "initial",
+               "background-size": "initial",
+               "border-bottom-left-radius": "50%",
+               "border-bottom-right-radius": "50%",
+               "border-top-left-radius": "50%",
+               "border-top-right-radius": "50%",
+               "color": "rgb(255, 255, 255)",
+               "display": "flex",
+               "font-family": "system-ui, sans-serif",
+               "font-size": "24px",
+               "font-weight": "800",
+               "height": "100%",
+               "justify-content": "center",
+               "width": "100%"
+              },
+              "text": "A",
+              "box": [
+               3,
+               3,
+               44,
+               44
+              ]
+             }
+            ]
+           },
+           {
+            "tag": "button",
+            "cls": [
+             "drop-close"
+            ],
+            "attrs": {
+             "title": "Fermer",
+             "type": "button"
+            },
+            "text": "✕",
+            "box": [
+             134,
+             -14,
+             34,
+             34
+            ],
+            "computed": {
+             "display": "flex",
+             "height": "34px",
+             "opacity": "1",
+             "pointer-events": "auto",
+             "transform": "none",
+             "width": "34px"
+            }
+           },
+           {
+            "tag": "div",
+            "cls": [
+             "media-box"
+            ],
+            "box": [
+             0,
+             0,
+             154,
+             384
+            ],
+            "kids": [
+             {
+              "tag": "img",
+              "attrs": {
+               "alt": "",
+               "draggable": "false",
+               "referrerpolicy": "no-referrer",
+               "src": "asset:png200x500"
+              },
+              "box": [
+               0,
+               0,
+               154,
+               384
+              ],
+              "img": {
+               "complete": true,
+               "naturalWidth": 200,
+               "naturalHeight": 500
+              },
+              "computed": {
+               "border-radius": "14px",
+               "height": "384.297px",
+               "width": "153.719px"
+              }
+             },
+             {
+              "tag": "div",
+              "cls": [
+               "caption-bar"
+              ],
+              "style": {
+               "-webkit-text-stroke-color": "rgb(0, 0, 0)",
+               "-webkit-text-stroke-width": "1.5px",
+               "font-size": "14px"
+              },
+              "text": "haute",
+              "box": [
+               0,
+               345,
+               154,
+               39
+              ],
+              "computed": {
+               "-webkit-text-stroke-width": "1.5px",
+               "font-size": "14px",
+               "line-height": "15.12px"
+              }
+             },
+             {
+              "tag": "div",
+              "cls": [
+               "life-bar"
+              ],
+              "style": {
+               "transform": "scaleX(0)",
+               "transition-behavior": "normal",
+               "transition-delay": "0s",
+               "transition-duration": "30000ms",
+               "transition-property": "transform",
+               "transition-timing-function": "linear"
+              },
+              "box": [
+               12,
+               375,
+               130,
+               3
+              ],
+              "computed": {
+               "background-image": "linear-gradient(90deg, rgb(255, 94, 138), rgb(255, 180, 94))",
+               "transform": "matrix(0, 0, 0, 1, 0, 0)"
+              }
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "overlays": [],
+      "rain": {
+       "count": 0,
+       "violations": [],
+       "violationCount": 0
+      },
+      "trackedMedia": []
+     },
+     "extra": [
+      {
+       "key": "1",
+       "size": [
+        321,
+        245
+       ],
+       "insideX": true,
+       "insideY": true
+      },
+      {
+       "key": "2",
+       "size": [
+        154,
+        388
+       ],
+       "insideX": true,
+       "insideY": true
+      }
+     ]
+    },
+    {
+     "step": "video rect",
+     "t": 240,
+     "events": {
+      "pops": [
+       {
+        "t": 120,
+        "type": "sine"
+       }
+      ],
+      "rects": [
+       {
+        "t": 240,
+        "dpr": 2.625,
+        "rects": [
+         {
+          "key": "1",
+          "w": 937,
+          "h": 738,
+          "~x": 7,
+          "~y": 1033,
+          "~cx": 181,
+          "~cy": 534,
+          "inScreen": true
+         },
+         {
+          "key": "2",
+          "w": 499,
+          "h": 1113,
+          "~x": 386,
+          "~y": 270,
+          "~cx": 242,
+          "~cy": 315,
+          "inScreen": true
+         },
+         {
+          "key": "3",
+          "w": 935,
+          "h": 735,
+          "~x": 5,
+          "~y": 1173,
+          "~cx": 180,
+          "~cy": 587,
+          "inScreen": true
+         }
+        ]
+       }
+      ]
+     },
+     "extra": [
+      {
+       "key": "1",
+       "size": [
+        321,
+        245
+       ],
+       "insideX": true,
+       "insideY": true
+      },
+      {
+       "key": "2",
+       "size": [
+        154,
+        388
+       ],
+       "insideX": true,
+       "insideY": true
+      },
+      {
+       "key": "3",
+       "size": [
+        320,
+        244
+       ],
+       "insideX": true,
+       "insideY": true
+      }
+     ]
+    },
+    {
+     "step": "video ended → not reported",
+     "t": 360,
+     "events": {
+      "rects": [
+       {
+        "t": 360,
+        "dpr": 2.625,
+        "rects": [
+         {
+          "key": "1",
+          "w": 937,
+          "h": 738,
+          "~x": 7,
+          "~y": 1033,
+          "~cx": 181,
+          "~cy": 534,
+          "inScreen": true
+         },
+         {
+          "key": "2",
+          "w": 499,
+          "h": 1113,
+          "~x": 386,
+          "~y": 270,
+          "~cx": 242,
+          "~cy": 315,
+          "inScreen": true
+         }
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "step": "video removed",
+     "t": 760
+    }
+   ]
+  },
+  "android-test-drop": {
+   "desc": "Test drop from MemeDropService.testDrop() (SVG placeholder) on a phone.",
+   "steps": [
+    {
+     "step": "load",
+     "t": 0,
+     "dom": {
+      "theme": null,
+      "bodyClass": [],
+      "bodyStyle": {},
+      "spotlight": {
+       "style": {},
+       "computedOpacity": "0",
+       "target": null
+      },
+      "stage": [],
+      "overlays": [],
+      "rain": {
+       "count": 0,
+       "violations": [],
+       "violationCount": 0
+      },
+      "idleTimers": 1,
+      "trackedMedia": []
+     }
+    },
+    {
+     "step": "shown + reported",
+     "t": 120,
+     "events": {
+      "pops": [
+       {
+        "t": 0,
+        "type": "sine"
+       }
+      ],
+      "audioContextsTotal": 1,
+      "rects": [
+       {
+        "t": 120,
+        "dpr": 2.625,
+        "rects": [
+         {
+          "key": "1",
+          "w": 935,
+          "h": 945,
+          "~x": 142,
+          "~y": 536,
+          "~cx": 232,
+          "~cy": 384,
+          "inScreen": true
+         }
+        ]
+       }
+      ]
+     },
+     "dom": {
+      "theme": "classic",
+      "bodyClass": [],
+      "bodyStyle": {},
+      "bodyComputed": {
+       "animation-name": "none",
+       "transform": "none"
+      },
+      "spotlight": {
+       "style": {
+        "opacity": "0"
+       },
+       "computedOpacity": "0",
+       "target": null
+      },
+      "stage": [
+       {
+        "tag": "div",
+        "cls": [
+         "anchor"
+        ],
+        "attrs": {
+         "data-key": "1"
+        },
+        "style": {
+         "opacity": "1",
+         "~left": "56.311%",
+         "~top": "41.967%"
+        },
+        "~pos": [
+         232,
+         384
+        ],
+        "size": [
+         0,
+         0
+        ],
+        "computed": {
+         "opacity": "1"
+        },
+        "kids": [
+         {
+          "tag": "div",
+          "cls": [
+           "drop"
+          ],
+          "box": [
+           0,
+           0,
+           320,
+           324
+          ],
+          "computed": {
+           "animation-name": "drop-in, drop-bob",
+           "cursor": "auto",
+           "filter": "drop-shadow(rgba(0, 0, 0, 0.55) 0px 30px 60px) drop-shadow(rgba(0, 0, 0, 0.4) 0px 6px 12px)",
+           "opacity": "1",
+           "pointer-events": "auto",
+           "transform": "matrix(1, 0, 0, 1, -160, -162)"
+          },
+          "kids": [
+           {
+            "tag": "div",
+            "cls": [
+             "avatar-bubble"
+            ],
+            "attrs": {
+             "data-username": "Toi (test)"
+            },
+            "box": [
+             160,
+             0,
+             50,
+             50
+            ],
+            "computed": {
+             "background-image": "linear-gradient(135deg, rgb(255, 94, 138) 0%, rgb(255, 180, 94) 100%), linear-gradient(135deg, rgb(255, 94, 138) 0%, rgb(255, 180, 94) 100%)",
+             "height": "44px",
+             "width": "44px"
+            },
+            "kids": [
+             {
+              "tag": "div",
+              "style": {
+               "align-items": "center",
+               "background-attachment": "initial",
+               "background-clip": "initial",
+               "background-color": "initial",
+               "background-image": "linear-gradient(135deg, rgb(255, 94, 138), rgb(255, 180, 94))",
+               "background-origin": "initial",
+               "background-position-x": "initial",
+               "background-position-y": "initial",
+               "background-repeat": "initial",
+               "background-size": "initial",
+               "border-bottom-left-radius": "50%",
+               "border-bottom-right-radius": "50%",
+               "border-top-left-radius": "50%",
+               "border-top-right-radius": "50%",
+               "color": "rgb(255, 255, 255)",
+               "display": "flex",
+               "font-family": "system-ui, sans-serif",
+               "font-size": "24px",
+               "font-weight": "800",
+               "height": "100%",
+               "justify-content": "center",
+               "width": "100%"
+              },
+              "text": "T",
+              "box": [
+               3,
+               3,
+               44,
+               44
+              ]
+             }
+            ]
+           },
+           {
+            "tag": "button",
+            "cls": [
+             "drop-close"
+            ],
+            "attrs": {
+             "title": "Fermer",
+             "type": "button"
+            },
+            "text": "✕",
+            "box": [
+             300,
+             -14,
+             34,
+             34
+            ],
+            "computed": {
+             "display": "flex",
+             "height": "34px",
+             "opacity": "1",
+             "pointer-events": "auto",
+             "transform": "none",
+             "width": "34px"
+            }
+           },
+           {
+            "tag": "div",
+            "cls": [
+             "media-box"
+            ],
+            "box": [
+             0,
+             0,
+             320,
+             320
+            ],
+            "kids": [
+             {
+              "tag": "div",
+              "box": [
+               0,
+               0,
+               320,
+               320
+              ],
+              "kids": [
+               {
+                "tag": "svg",
+                "attrs": {
+                 "height": "320",
+                 "viewBox": "0 0 320 320",
+                 "width": "320",
+                 "xmlns": "http://www.w3.org/2000/svg"
+                },
+                "style": {
+                 "border-bottom-left-radius": "14px",
+                 "border-bottom-right-radius": "14px",
+                 "border-top-left-radius": "14px",
+                 "border-top-right-radius": "14px",
+                 "display": "block"
+                },
+                "computed": {
+                 "border-radius": "14px",
+                 "height": "320px",
+                 "width": "320px"
+                },
+                "kids": [
+                 {
+                  "tag": "defs",
+                  "kids": [
+                   {
+                    "tag": "lineargradient",
+                    "id": "g",
+                    "attrs": {
+                     "x1": "0",
+                     "x2": "1",
+                     "y1": "0",
+                     "y2": "1"
+                    },
+                    "kids": [
+                     {
+                      "tag": "stop",
+                      "attrs": {
+                       "offset": "0%",
+                       "stop-color": "#ff5e8a"
+                      }
+                     },
+                     {
+                      "tag": "stop",
+                      "attrs": {
+                       "offset": "100%",
+                       "stop-color": "#ffb45e"
+                      }
+                     }
+                    ]
+                   }
+                  ]
+                 },
+                 {
+                  "tag": "rect",
+                  "attrs": {
+                   "fill": "url(#g)",
+                   "height": "320",
+                   "rx": "22",
+                   "width": "320"
+                  }
+                 },
+                 {
+                  "tag": "text",
+                  "attrs": {
+                   "fill": "#fff",
+                   "font-family": "system-ui",
+                   "font-size": "48",
+                   "font-weight": "800",
+                   "text-anchor": "middle",
+                   "x": "50%",
+                   "y": "48%"
+                  },
+                  "text": "TEST"
+                 },
+                 {
+                  "tag": "text",
+                  "attrs": {
+                   "fill": "rgba(255,255,255,.85)",
+                   "font-family": "system-ui",
+                   "font-size": "20",
+                   "text-anchor": "middle",
+                   "x": "50%",
+                   "y": "62%"
+                  },
+                  "text": "MemeDrop overlay"
+                 }
+                ]
+               }
+              ]
+             },
+             {
+              "tag": "div",
+              "cls": [
+               "caption-bar"
+              ],
+              "text": "TEST DROP",
+              "box": [
+               0,
+               281,
+               320,
+               39
+              ],
+              "computed": {
+               "-webkit-text-stroke-width": "2px",
+               "font-size": "14px",
+               "line-height": "15.12px"
+              }
+             },
+             {
+              "tag": "div",
+              "cls": [
+               "life-bar"
+              ],
+              "style": {
+               "transform": "scaleX(0)",
+               "transition-behavior": "normal",
+               "transition-delay": "0s",
+               "transition-duration": "4000ms",
+               "transition-property": "transform",
+               "transition-timing-function": "linear"
+              },
+              "box": [
+               12,
+               311,
+               296,
+               3
+              ],
+              "computed": {
+               "background-image": "linear-gradient(90deg, rgb(255, 94, 138), rgb(255, 180, 94))",
+               "transform": "matrix(0, 0, 0, 1, 0, 0)"
+              }
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "overlays": [],
+      "rain": {
+       "count": 0,
+       "violations": [],
+       "violationCount": 0
+      },
+      "trackedMedia": []
+     },
+     "extra": [
+      {
+       "key": "1",
+       "size": [
+        320,
+        324
+       ],
+       "insideX": true,
+       "insideY": true
+      }
+     ]
+    }
+   ]
+  },
+  "android-settings-live": {
+   "desc": "__mdSettings patch: opacity / theme / volume applied live; spotlight off by default on Android.",
+   "steps": [
+    {
+     "step": "load",
+     "t": 0,
+     "dom": {
+      "theme": null,
+      "bodyClass": [],
+      "bodyStyle": {},
+      "spotlight": {
+       "style": {},
+       "computedOpacity": "0",
+       "target": null
+      },
+      "stage": [],
+      "overlays": [],
+      "rain": {
+       "count": 0,
+       "violations": [],
+       "violationCount": 0
+      },
+      "idleTimers": 1,
+      "trackedMedia": []
+     }
+    },
+    {
+     "step": "default (no spotlight)",
+     "t": 120,
+     "events": {
+      "pops": [
+       {
+        "t": 0,
+        "type": "sine"
+       }
+      ],
+      "audioContextsTotal": 1,
+      "rects": [
+       {
+        "t": 120,
+        "dpr": 2.625,
+        "rects": [
+         {
+          "key": "1",
+          "w": 937,
+          "h": 738,
+          "~x": 112,
+          "~y": 311,
+          "~cx": 221,
+          "~cy": 259,
+          "inScreen": true
+         }
+        ]
+       }
+      ]
+     },
+     "dom": {
+      "theme": "classic",
+      "bodyClass": [],
+      "bodyStyle": {},
+      "spotlight": {
+       "style": {
+        "opacity": "0"
+       },
+       "computedOpacity": "0",
+       "target": null
+      },
+      "stage": [
+       {
+        "tag": "div",
+        "cls": [
+         "anchor"
+        ],
+        "attrs": {
+         "data-key": "1"
+        },
+        "style": {
+         "opacity": "1",
+         "~left": "53.641%",
+         "~top": "28.306%"
+        },
+        "~pos": [
+         221,
+         259
+        ],
+        "size": [
+         0,
+         0
+        ],
+        "kids": [
+         {
+          "tag": "div",
+          "cls": [
+           "drop"
+          ],
+          "box": [
+           0,
+           0,
+           321,
+           245
+          ],
+          "kids": [
+           {
+            "tag": "div",
+            "cls": [
+             "avatar-bubble"
+            ],
+            "attrs": {
+             "data-username": "alice"
+            },
+            "box": [
+             161,
+             0,
+             50,
+             50
+            ],
+            "kids": [
+             {
+              "tag": "div",
+              "style": {
+               "align-items": "center",
+               "background-attachment": "initial",
+               "background-clip": "initial",
+               "background-color": "initial",
+               "background-image": "linear-gradient(135deg, rgb(255, 94, 138), rgb(255, 180, 94))",
+               "background-origin": "initial",
+               "background-position-x": "initial",
+               "background-position-y": "initial",
+               "background-repeat": "initial",
+               "background-size": "initial",
+               "border-bottom-left-radius": "50%",
+               "border-bottom-right-radius": "50%",
+               "border-top-left-radius": "50%",
+               "border-top-right-radius": "50%",
+               "color": "rgb(255, 255, 255)",
+               "display": "flex",
+               "font-family": "system-ui, sans-serif",
+               "font-size": "24px",
+               "font-weight": "800",
+               "height": "100%",
+               "justify-content": "center",
+               "width": "100%"
+              },
+              "text": "A",
+              "box": [
+               3,
+               3,
+               44,
+               44
+              ]
+             }
+            ]
+           },
+           {
+            "tag": "button",
+            "cls": [
+             "drop-close"
+            ],
+            "attrs": {
+             "title": "Fermer",
+             "type": "button"
+            },
+            "text": "✕",
+            "box": [
+             301,
+             -14,
+             34,
+             34
+            ]
+           },
+           {
+            "tag": "div",
+            "cls": [
+             "media-box"
+            ],
+            "box": [
+             0,
+             0,
+             321,
+             241
+            ],
+            "kids": [
+             {
+              "tag": "img",
+              "attrs": {
+               "alt": "",
+               "draggable": "false",
+               "referrerpolicy": "no-referrer",
+               "src": "asset:png400x300"
+              },
+              "box": [
+               0,
+               0,
+               321,
+               241
+              ],
+              "img": {
+               "complete": true,
+               "naturalWidth": 400,
+               "naturalHeight": 300
+              }
+             },
+             {
+              "tag": "div",
+              "cls": [
+               "life-bar"
+              ],
+              "style": {
+               "transform": "scaleX(0)",
+               "transition-behavior": "normal",
+               "transition-delay": "0s",
+               "transition-duration": "30000ms",
+               "transition-property": "transform",
+               "transition-timing-function": "linear"
+              },
+              "box": [
+               12,
+               232,
+               297,
+               3
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "overlays": [],
+      "rain": {
+       "count": 0,
+       "violations": [],
+       "violationCount": 0
+      },
+      "trackedMedia": []
+     }
+    },
+    {
+     "step": "opacity + theme",
+     "t": 120,
+     "dom": {
+      "theme": "neon",
+      "bodyClass": [],
+      "bodyStyle": {},
+      "bodyComputed": {
+       "animation-name": "none",
+       "transform": "none"
+      },
+      "spotlight": {
+       "style": {
+        "opacity": "0"
+       },
+       "computedOpacity": "0",
+       "target": null
+      },
+      "stage": [
+       {
+        "tag": "div",
+        "cls": [
+         "anchor"
+        ],
+        "attrs": {
+         "data-key": "1"
+        },
+        "style": {
+         "opacity": "0.5",
+         "~left": "53.641%",
+         "~top": "28.306%"
+        },
+        "~pos": [
+         221,
+         259
+        ],
+        "size": [
+         0,
+         0
+        ],
+        "computed": {
+         "opacity": "0.5"
+        },
+        "kids": [
+         {
+          "tag": "div",
+          "cls": [
+           "drop"
+          ],
+          "box": [
+           0,
+           0,
+           321,
+           245
+          ],
+          "computed": {
+           "animation-name": "drop-in, drop-bob",
+           "cursor": "auto",
+           "filter": "drop-shadow(rgba(0, 0, 0, 0.55) 0px 30px 60px) drop-shadow(rgba(0, 0, 0, 0.4) 0px 6px 12px)",
+           "opacity": "1",
+           "pointer-events": "auto",
+           "transform": "matrix(1, 0, 0, 1, -160.68, -122.508)"
+          },
+          "kids": [
+           {
+            "tag": "div",
+            "cls": [
+             "avatar-bubble"
+            ],
+            "attrs": {
+             "data-username": "alice"
+            },
+            "box": [
+             161,
+             0,
+             50,
+             50
+            ],
+            "computed": {
+             "background-image": "linear-gradient(135deg, rgb(124, 58, 237) 0%, rgb(34, 211, 238) 100%), linear-gradient(135deg, rgb(124, 58, 237) 0%, rgb(34, 211, 238) 100%)",
+             "height": "44px",
+             "width": "44px"
+            },
+            "kids": [
+             {
+              "tag": "div",
+              "style": {
+               "align-items": "center",
+               "background-attachment": "initial",
+               "background-clip": "initial",
+               "background-color": "initial",
+               "background-image": "linear-gradient(135deg, rgb(255, 94, 138), rgb(255, 180, 94))",
+               "background-origin": "initial",
+               "background-position-x": "initial",
+               "background-position-y": "initial",
+               "background-repeat": "initial",
+               "background-size": "initial",
+               "border-bottom-left-radius": "50%",
+               "border-bottom-right-radius": "50%",
+               "border-top-left-radius": "50%",
+               "border-top-right-radius": "50%",
+               "color": "rgb(255, 255, 255)",
+               "display": "flex",
+               "font-family": "system-ui, sans-serif",
+               "font-size": "24px",
+               "font-weight": "800",
+               "height": "100%",
+               "justify-content": "center",
+               "width": "100%"
+              },
+              "text": "A",
+              "box": [
+               3,
+               3,
+               44,
+               44
+              ]
+             }
+            ]
+           },
+           {
+            "tag": "button",
+            "cls": [
+             "drop-close"
+            ],
+            "attrs": {
+             "title": "Fermer",
+             "type": "button"
+            },
+            "text": "✕",
+            "box": [
+             301,
+             -14,
+             34,
+             34
+            ],
+            "computed": {
+             "display": "flex",
+             "height": "34px",
+             "opacity": "1",
+             "pointer-events": "auto",
+             "transform": "none",
+             "width": "34px"
+            }
+           },
+           {
+            "tag": "div",
+            "cls": [
+             "media-box"
+            ],
+            "box": [
+             0,
+             0,
+             321,
+             241
+            ],
+            "kids": [
+             {
+              "tag": "img",
+              "attrs": {
+               "alt": "",
+               "draggable": "false",
+               "referrerpolicy": "no-referrer",
+               "src": "asset:png400x300"
+              },
+              "box": [
+               0,
+               0,
+               321,
+               241
+              ],
+              "img": {
+               "complete": true,
+               "naturalWidth": 400,
+               "naturalHeight": 300
+              },
+              "computed": {
+               "border-radius": "14px",
+               "height": "241.016px",
+               "width": "321.344px"
+              }
+             },
+             {
+              "tag": "div",
+              "cls": [
+               "life-bar"
+              ],
+              "style": {
+               "transform": "scaleX(0)",
+               "transition-behavior": "normal",
+               "transition-delay": "0s",
+               "transition-duration": "30000ms",
+               "transition-property": "transform",
+               "transition-timing-function": "linear"
+              },
+              "box": [
+               12,
+               232,
+               297,
+               3
+              ],
+              "computed": {
+               "background-image": "linear-gradient(90deg, rgb(124, 58, 237), rgb(34, 211, 238))",
+               "transform": "matrix(0, 0, 0, 1, 0, 0)"
+              }
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "overlays": [],
+      "rain": {
+       "count": 0,
+       "violations": [],
+       "violationCount": 0
+      },
+      "trackedMedia": []
+     }
+    },
+    {
+     "step": "t=120 duration→1 s: rescheduled, 880 ms left",
+     "t": 120,
+     "dom": {
+      "theme": "neon",
+      "bodyClass": [],
+      "bodyStyle": {},
+      "spotlight": {
+       "style": {
+        "opacity": "0"
+       },
+       "computedOpacity": "0",
+       "target": null
+      },
+      "stage": [
+       {
+        "tag": "div",
+        "cls": [
+         "anchor"
+        ],
+        "attrs": {
+         "data-key": "1"
+        },
+        "style": {
+         "opacity": "0.5",
+         "~left": "53.641%",
+         "~top": "28.306%"
+        },
+        "~pos": [
+         221,
+         259
+        ],
+        "size": [
+         0,
+         0
+        ],
+        "kids": [
+         {
+          "tag": "div",
+          "cls": [
+           "drop"
+          ],
+          "box": [
+           0,
+           0,
+           321,
+           245
+          ],
+          "kids": [
+           {
+            "tag": "div",
+            "cls": [
+             "avatar-bubble"
+            ],
+            "attrs": {
+             "data-username": "alice"
+            },
+            "box": [
+             161,
+             0,
+             50,
+             50
+            ],
+            "kids": [
+             {
+              "tag": "div",
+              "style": {
+               "align-items": "center",
+               "background-attachment": "initial",
+               "background-clip": "initial",
+               "background-color": "initial",
+               "background-image": "linear-gradient(135deg, rgb(255, 94, 138), rgb(255, 180, 94))",
+               "background-origin": "initial",
+               "background-position-x": "initial",
+               "background-position-y": "initial",
+               "background-repeat": "initial",
+               "background-size": "initial",
+               "border-bottom-left-radius": "50%",
+               "border-bottom-right-radius": "50%",
+               "border-top-left-radius": "50%",
+               "border-top-right-radius": "50%",
+               "color": "rgb(255, 255, 255)",
+               "display": "flex",
+               "font-family": "system-ui, sans-serif",
+               "font-size": "24px",
+               "font-weight": "800",
+               "height": "100%",
+               "justify-content": "center",
+               "width": "100%"
+              },
+              "text": "A",
+              "box": [
+               3,
+               3,
+               44,
+               44
+              ]
+             }
+            ]
+           },
+           {
+            "tag": "button",
+            "cls": [
+             "drop-close"
+            ],
+            "attrs": {
+             "title": "Fermer",
+             "type": "button"
+            },
+            "text": "✕",
+            "box": [
+             301,
+             -14,
+             34,
+             34
+            ]
+           },
+           {
+            "tag": "div",
+            "cls": [
+             "media-box"
+            ],
+            "box": [
+             0,
+             0,
+             321,
+             241
+            ],
+            "kids": [
+             {
+              "tag": "img",
+              "attrs": {
+               "alt": "",
+               "draggable": "false",
+               "referrerpolicy": "no-referrer",
+               "src": "asset:png400x300"
+              },
+              "box": [
+               0,
+               0,
+               321,
+               241
+              ],
+              "img": {
+               "complete": true,
+               "naturalWidth": 400,
+               "naturalHeight": 300
+              }
+             },
+             {
+              "tag": "div",
+              "cls": [
+               "life-bar"
+              ],
+              "style": {
+               "transform": "scaleX(0)",
+               "transition-behavior": "normal",
+               "transition-delay": "0s",
+               "transition-duration": "880ms",
+               "transition-property": "transform",
+               "transition-timing-function": "linear"
+              },
+              "box": [
+               12,
+               232,
+               297,
+               3
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "overlays": [],
+      "rain": {
+       "count": 0,
+       "violations": [],
+       "violationCount": 0
+      },
+      "trackedMedia": []
+     }
+    },
+    {
+     "step": "t=1000 leaving",
+     "t": 1000
+    },
+    {
+     "step": "t=1440 removed, empty report",
+     "t": 1440,
+     "events": {
+      "rects": [
+       {
+        "t": 1080,
+        "dpr": 2.625,
+        "rects": []
+       }
+      ]
+     }
+    }
+   ]
+  },
+  "android-tts-rain": {
+   "desc": "TTS-only + rain on Android: speech fallback once, rain particles, no rect.",
+   "steps": [
+    {
+     "step": "load",
+     "t": 0,
+     "dom": {
+      "theme": null,
+      "bodyClass": [],
+      "bodyStyle": {},
+      "spotlight": {
+       "style": {},
+       "computedOpacity": "0",
+       "target": null
+      },
+      "stage": [],
+      "overlays": [],
+      "rain": {
+       "count": 0,
+       "violations": [],
+       "violationCount": 0
+      },
+      "idleTimers": 1,
+      "trackedMedia": []
+     }
+    },
+    {
+     "step": "spoken once, rain, toast",
+     "t": 0,
+     "events": {
+      "speech": [
+       {
+        "t": 0,
+        "text": "bonjour",
+        "lang": "fr-FR",
+        "rate": 1.05,
+        "volume": 0.75
+       }
+      ],
+      "mediaPlay": [
+       {
+        "t": 0,
+        "op": "play",
+        "tag": "audio",
+        "src": "http://unreachable.test/tts?text=bonjour",
+        "volume": 0.75,
+        "muted": false,
+        "connected": false
+       }
+      ],
+      "pops": [
+       {
+        "t": 0,
+        "type": "sine"
+       }
+      ],
+      "audioContextsTotal": 1
+     },
+     "dom": {
+      "theme": "classic",
+      "bodyClass": [],
+      "bodyStyle": {},
+      "spotlight": {
+       "style": {
+        "opacity": "0"
+       },
+       "computedOpacity": "0",
+       "target": null
+      },
+      "stage": [],
+      "overlays": [
+       {
+        "tag": "div",
+        "cls": [
+         "audio-toast"
+        ],
+        "style": {
+         "--op": "1"
+        },
+        "box": [
+         206,
+         24,
+         92,
+         83
+        ],
+        "kids": [
+         {
+          "tag": "div",
+          "cls": [
+           "avatar-bubble"
+          ],
+          "attrs": {
+           "data-username": "alice"
+          },
+          "box": [
+           21,
+           0,
+           50,
+           50
+          ],
+          "kids": [
+           {
+            "tag": "div",
+            "style": {
+             "align-items": "center",
+             "background-attachment": "initial",
+             "background-clip": "initial",
+             "background-color": "initial",
+             "background-image": "linear-gradient(135deg, rgb(255, 94, 138), rgb(255, 180, 94))",
+             "background-origin": "initial",
+             "background-position-x": "initial",
+             "background-position-y": "initial",
+             "background-repeat": "initial",
+             "background-size": "initial",
+             "border-bottom-left-radius": "50%",
+             "border-bottom-right-radius": "50%",
+             "border-top-left-radius": "50%",
+             "border-top-right-radius": "50%",
+             "color": "rgb(255, 255, 255)",
+             "display": "flex",
+             "font-family": "system-ui, sans-serif",
+             "font-size": "24px",
+             "font-weight": "800",
+             "height": "100%",
+             "justify-content": "center",
+             "width": "100%"
+            },
+            "text": "A",
+            "box": [
+             3,
+             3,
+             44,
+             44
+            ]
+           }
+          ]
+         },
+         {
+          "tag": "div",
+          "cls": [
+           "audio-caption"
+          ],
+          "text": "🗣️ bonjour",
+          "box": [
+           0,
+           68,
+           92,
+           15
+          ]
+         }
+        ]
+       }
+      ],
+      "rain": {
+       "count": 38,
+       "violations": [],
+       "violationCount": 0,
+       "~emojis": [
+        "🎉x38"
+       ],
+       "~hash": "3c27081d",
+       "computedFirst": {
+        "position": "fixed",
+        "z-index": "9999",
+        "pointer-events": "none",
+        "animation-name": "rain-fall"
+       }
+      },
+      "trackedMedia": [
+       {
+        "tag": "audio",
+        "src": "http://unreachable.test/tts?text=bonjour",
+        "connected": false,
+        "paused": false,
+        "muted": false,
+        "volume": 0.75,
+        "autoplay": false,
+        "loop": false,
+        "preload": "auto",
+        "hasMetadata": false,
+        "error": 4
+       }
+      ]
+     }
+    },
+    {
+     "step": "no rect for non-visual drops",
+     "t": 120,
+     "events": {
+      "rects": [
+       {
+        "t": 120,
+        "dpr": 2.625,
+        "rects": []
+       }
+      ]
+     }
+    },
+    {
+     "step": "all gone",
+     "t": 5520
+    }
+   ]
+  },
+  "android-rapid": {
+   "desc": "8 drops at once on Android: 6 rects, queued drops get new keys when slots free up.",
+   "steps": [
+    {
+     "step": "load",
+     "t": 0,
+     "dom": {
+      "theme": null,
+      "bodyClass": [],
+      "bodyStyle": {},
+      "spotlight": {
+       "style": {},
+       "computedOpacity": "0",
+       "target": null
+      },
+      "stage": [],
+      "overlays": [],
+      "rain": {
+       "count": 0,
+       "violations": [],
+       "violationCount": 0
+      },
+      "idleTimers": 1,
+      "trackedMedia": []
+     }
+    },
+    {
+     "step": "6 rects",
+     "t": 120,
+     "events": {
+      "pops": [
+       {
+        "t": 0,
+        "type": "sine"
+       },
+       {
+        "t": 0,
+        "type": "sine"
+       },
+       {
+        "t": 0,
+        "type": "sine"
+       },
+       {
+        "t": 0,
+        "type": "sine"
+       },
+       {
+        "t": 0,
+        "type": "sine"
+       },
+       {
+        "t": 0,
+        "type": "sine"
+       }
+      ],
+      "audioContextsTotal": 1,
+      "rects": [
+       {
+        "t": 120,
+        "dpr": 2.625,
+        "rects": [
+         {
+          "key": "1",
+          "w": 357,
+          "h": 315,
+          "~x": 105,
+          "~y": 711,
+          "~cx": 108,
+          "~cy": 331,
+          "inScreen": true
+         },
+         {
+          "key": "2",
+          "w": 357,
+          "h": 315,
+          "~x": 522,
+          "~y": 1389,
+          "~cx": 267,
+          "~cy": 589,
+          "inScreen": true
+         },
+         {
+          "key": "3",
+          "w": 357,
+          "h": 315,
+          "~x": 123,
+          "~y": 1439,
+          "~cx": 115,
+          "~cy": 608,
+          "inScreen": true
+         },
+         {
+          "key": "4",
+          "w": 357,
+          "h": 315,
+          "~x": 554,
+          "~y": 1410,
+          "~cx": 279,
+          "~cy": 597,
+          "inScreen": true
+         },
+         {
+          "key": "5",
+          "w": 357,
+          "h": 315,
+          "~x": 247,
+          "~y": 1155,
+          "~cx": 162,
+          "~cy": 500,
+          "inScreen": true
+         },
+         {
+          "key": "6",
+          "w": 357,
+          "h": 315,
+          "~x": 184,
+          "~y": 1596,
+          "~cx": 138,
+          "~cy": 668,
+          "inScreen": true
+         }
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "step": "queued drops reported (keys 7, 8)",
+     "t": 4520,
+     "events": {
+      "pops": [
+       {
+        "t": 4400,
+        "type": "sine"
+       },
+       {
+        "t": 4400,
+        "type": "sine"
+       }
+      ],
+      "rects": [
+       {
+        "t": 4080,
+        "dpr": 2.625,
+        "rects": []
+       },
+       {
+        "t": 4440,
+        "dpr": 2.625,
+        "rects": [
+         {
+          "key": "7",
+          "w": 357,
+          "h": 315,
+          "~x": 102,
+          "~y": 903,
+          "~cx": 107,
+          "~cy": 404,
+          "inScreen": true
+         },
+         {
+          "key": "8",
+          "w": 357,
+          "h": 315,
+          "~x": 378,
+          "~y": 1572,
+          "~cx": 212,
+          "~cy": 659,
+          "inScreen": true
+         }
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "step": "all removed",
+     "t": 8920,
+     "events": {
+      "rects": [
+       {
+        "t": 8520,
+        "dpr": 2.625,
+        "rects": []
+       }
+      ]
+     }
+    }
+   ]
+  }
+ }
+}

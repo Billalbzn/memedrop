@@ -1,0 +1,189 @@
+{
+ "summary": "I implemented all 20 decisions from G1-bot.md in memedrop/bot/index.js, memedrop/bot/store.js and memedrop/bot/.env.example. Nothing else changed; git status shows only these 3 files modified, with no commit or push.\n\n1. A malformed request target (e.g. `GET //[`) now gets a 400 inside a try/catch around new URL(), instead of crashing the bot.\n\n2. The WebSocket handler body moved into `async function onWsMessage(ws, raw)`, called with `.catch(log)`. Client values no longer go through String(): a new helper `str()` is used for username, guildId, unblock userId, dropId and emoji. The register userId uses `sid()` and the token is checked with a typeof test (decision 7).\n\n3. The interaction listener body moved into `async function onInteraction()`, registered as `client.on(InteractionCreate, i => onInteraction(i).catch(log))`. The `return interaction.reply(...)` calls are unchanged. Events.Error and Events.ShardError now have logging listeners, and every fire-and-forget async call has a `.catch` (pushLinksUpdate in GuildUpdate/ClientReady//block//unblock//link, handleTts, the TTS warm-up).\n\n4. The process now has an unhandledRejection handler that logs and continues, and an uncaughtException handler that logs, flushes the store and exits 1. `client.login(...).catch` exits 1.\n\n5. Shutdown uses `ws.terminate()` instead of `ws.close()`, with the comment about APKs up to 1.6.0.\n\n6. Multi-device links, following S-AMEND plus the V-AMEND guard:\n   - `userLinks` maps userId to `{sockets:Set, scope, guildIds, blockedUsers}`.\n   - New helpers: openSockets/hasOpen/sendToUser (one stringify per message), clearExtensionCodes, detachSocket, unlinkUser.\n   - register joins a live link without merging the client's lists, sends 'linked' with the live snapshot, then the extension code. It never sends 'unlinked/replaced'.\n   - /link with a fresh code while already linked joins the link and adds the current guild. The new device gets 'linked', the others get links_update.\n   - A socket that registers or links as a different account is first detached from its old link.\n   - There is one extension code per user, sent to all of their open sockets.\n   - /unlink, and unlink_guild that empties the list, unlink every device and delete the extension codes.\n   - close removes only that socket; the link is deleted with its last socket.\n   - After the await in register and /link, the code checks the current link (`userLinks.get(uid)`, `sockets.has(ws)`, `wsMeta.userId`), not the captured object.\n   - No `link.ws` uses remain.\n\n7. Input limits and REST protection:\n   - Snowflake validation with SNOWFLAKE/sid/ids; guildIds are capped at 200 and blockedIds at 100.\n   - Each socket gets 30 messages per 10 s, counted right after `ws.isAlive = true`.\n   - buildBlockedSnapshot reads the discord.js cache first, makes at most 10 REST fetches per snapshot, and remembers 404 IDs in a bounded collection (1000 entries, oldest evicted); anything else shows the raw ID.\n   - /block, /unblock and the /link extension path reply first, then push links_update. The /link new-link path sends the reply without awaiting it (`.catch` logs), then the snapshot, then 'linked', then the extension code.\n   - Tokens are compared in constant time (`tokenMatches`).\n\n8. TTS client IP: `clientIp()` reads Fly-Client-IP only when FLY_APP_NAME is set, otherwise the last X-Forwarded-For hop, otherwise the socket address. `ipKey()` buckets IPv6 by /64 and strips `::ffff:`. A global budget of 120 Google fetches per fixed 60 s window is checked only where a new fetch starts; beyond it the reply is 503 'tts busy'. No URL signing.\n\n9. `getTtsAudio()` keeps one in-flight fetch per key (ttsInflight) with `AbortSignal.timeout(8000)`. Cache hits and requests joining an in-flight fetch skip the per-IP limit. When a drop with tts reaches at least one device, the audio is pre-fetched with exactly the key handleTts will compute (`normTtsText` = trim then clip, lang 'fr'). The comment about Google requests was corrected.\n\n10. `clip()` truncates without leaving half a surrogate pair. It is used in handleTts (via normTtsText), for the payload tts and caption, and for the favorite caption.\n\n11. Intents are now `[GatewayIntentBits.Guilds]` only.\n\n12. On ClientReady every linked user gets a links_update. GuildUpdate pushes only when the name or icon changed.\n\n13. A single `deliverDrop()` handles delivery: one stringify, sendToUser, stats bumped without saving per recipient then one persistStore, reactions registered with the set of recipients actually reached, TTS pre-fetch. It is used by dispatchToTargets (so /drop, /dropfav, /dropgroup), the delayed-drop timer and /dropall. /dropall replies with the existing \"Personne n'est atteignable…\" message when nobody is reached at send time.\n\n14. /dropall and /dropgroup reserve the cooldown before their awaits (`reserveCooldown`) and restore it when nothing is sent.\n\n15. A sender can have at most 3 delayed drops pending, checked before markCooldown and decremented first thing in the timer callback. The refusal message is the one given in the decision.\n\n16. /link refuses after 5 failures in 10 min (linkFails/linkLocked/noteLinkFail). Failures counted: 'belongs to another user' and both 'Invalid or expired code' replies. Expired entries are purged in the existing 5-min ttsHits sweep. Codes are not rotated.\n\n17. store.js:\n   - save() writes at most 500 ms after the first change and does not restart the timer on later saves.\n   - save() also accepts a builder function; persistStore passes one.\n   - load() renames an unreadable store.json to `store.json.corrupt-<ts>` (anything other than ENOENT) and logs \"[store] … : N favoris, M groupes\" or \"aucun store.json … — démarrage à vide\".\n\n18. The application ping now runs every 45 s, with the comment \"< 75 s : délai codé en dur dans les overlays/APK installés\". The JSON ping is kept.\n\n19. The bot does not exit when LINK_SECRET is missing. When FLY_APP_NAME is set, the warning becomes a more explicit console.error. .env.example gains DATA_DIR= and PUBLIC_BASE_URL=, one comment line each, plus a note that secrets are set with `fly secrets set` and that PORT comes from the host.\n\n20. formatCooldown rounds up to the tenth of a second. /blocklist is cut to stay at or under 2000 characters, ending with \"… et N autres\". Reactions are accepted only from users the drop was actually delivered to.",
+ "deviations": [
+  "Decision 7: the 404 IDs are remembered in a bounded insertion-ordered Set (at most 1000, oldest evicted) instead of a Map. Bound and eviction are the same; no value per entry is needed.",
+  "Decision 13: bumpStats no longer saves at all, rather than taking a persist=false parameter. deliverDrop is its only caller and saves once per drop.",
+  "Decision 14 together with 13: in /dropall the cooldown reservation is also undone when deliverDrop reaches nobody at send time (the S-AMEND case). Nothing was sent, so this follows 'restaurer si rien n'est envoyé'.",
+  "Decision 20: the /blocklist suffix uses correct singular/plural ('… et 1 autre' / '… et N autres'). The room for the suffix is reserved for the worst-case count, so close to the limit one more line than strictly needed may be hidden, but the reply never exceeds 2000 characters.",
+  "Decision 16: the decision gives no wording for the lock reply. I used the proposal's text: '⏱️ Trop de codes invalides — réessaie dans quelques minutes.'",
+  "Decision 19: the new Fly console.error is in English, like the existing warning next to it and all other log lines. The new .env.example comment lines are in French; the existing English WS_PORT comment line was edited in English to say the host (Fly or Railway) provides PORT.",
+  "Decisions 2 and 7: eslint raises 2 no-shadow warnings. Untouched original code (`extractEmojis(str)` and the `([gName, ids])` callback in /group list) shadows the module-level helpers `str` and `ids`, whose names the decisions give. This is harmless, and I did not rename the untouched code. My own `clip` parameter is named `text` to avoid the same shadowing.",
+  "Outside my scope, not changed: comments in overlay/main.js:360 and MemeDropService.kt:32 still say the bot pings every 30 s; it is now 45 s (decision 18). The README Fly note from V-AMEND item 4 is also not done; that file is outside the three I may edit.",
+  "Expected but large harness consequence of decision 16: in the baseline scenario alice fails /link 5 times within 10 virtual minutes (p1.049, p1.050, p1.221, p1.256, p1.274). Her next /link at p1.275 is refused, so C stays unlinked for the rest of p1. A scratch copy with only LINK_FAIL_MAX=1000 confirms that p1.275–p1.314 otherwise match the baseline, apart from heartbeat timing (decision 18) and close codes (decision 5)."
+ ],
+ "harness_out": "/tmp/claude-0/-home-user-memedrop/065ca17e-4939-5472-b348-276c03e80469/scratchpad/impl-bot/final.json",
+ "diff_steps": [
+  {
+   "step": "p1.001 p2.001 p3.001 p4.001 p5.001 p6.001",
+   "what": "The 'new Client' intents no longer include GuildMessages (only Guilds).",
+   "cause": "Decision 11"
+  },
+  {
+   "step": "p1.025",
+   "what": "GET /tts with 'b'×199+😂 now returns 200 with audio of 'b'×199 and makes 1 upstream call, instead of 502 'tts failed'.",
+   "cause": "Decision 10 (clip in handleTts)"
+  },
+  {
+   "step": "p1.026",
+   "what": "5 concurrent identical /tts requests make 1 Google call instead of 5; all 5 still get 200.",
+   "cause": "Decision 9 (single in-flight fetch)"
+  },
+  {
+   "step": "p1.035",
+   "what": "XFF '198.51.100.7, 10.0.0.1' now gets 200 plus an upstream call instead of 429: the key is the last hop, 10.0.0.1.",
+   "cause": "Decision 8"
+  },
+  {
+   "step": "p1.036",
+   "what": "XFF '10.0.0.1, 198.51.100.7' now gets 429 instead of 200: the last hop is the rate-limited IP.",
+   "cause": "Decision 8"
+  },
+  {
+   "step": "p1.072",
+   "what": "The cooldown message says 'encore 0.1s' instead of 'encore 0s'.",
+   "cause": "Decision 20 (formatCooldown rounds up)"
+  },
+  {
+   "step": "p1.086",
+   "what": "The caption sent to A and B no longer ends with a lone '\\ud83d'. New upstream call for 'salut toi' at drop time (pre-fetch).",
+   "cause": "Decision 10 and decision 9"
+  },
+  {
+   "step": "p1.090 p1.096 p1.122 p1.209 p2.011 p3.007 p3.008",
+   "what": "A new upstream call appears in the drop step: the TTS audio is pre-fetched with the same key /tts will use ('t'×200 clipped in p1.090).",
+   "cause": "Decision 9 (and 10 for the 200-character clip)"
+  },
+  {
+   "step": "p1.092",
+   "what": "/drop with tts 'a'×199+😂 is now delivered ('✅ Drop envoyé sur **alice** !', tts 'a'×199) instead of '⚠️ Internal error', with a pre-fetch upstream call.",
+   "cause": "Decision 10 (and 9)"
+  },
+  {
+   "step": "p1.123",
+   "what": "The second /dropall in the same tick gets '⏱️ Doucement — encore 15s…'. alice and bob each receive one drop instead of two.",
+   "cause": "Decision 14"
+  },
+  {
+   "step": "p1.134",
+   "what": "erin's reaction to a /dropall drop she never received is no longer posted.",
+   "cause": "Decision 20 (reactions only from recipients)"
+  },
+  {
+   "step": "p1.144 p1.296 p1.297 p1.303 p1.305 p1.308",
+   "what": "Heartbeat every 45 s: different ping counts (28→19, 14→9, 72→48), no ping in p1.144 and p1.296. Z is terminated with 1006 during p1.303 instead of p1.297.",
+   "cause": "Decision 18"
+  },
+  {
+   "step": "p1.218 p1.219",
+   "what": "/stats: carol sent 13→14 (p1.092 now delivered); bob sent 10→8 and received 11→10 (p1.123 now delivered once).",
+   "cause": "Decisions 10 and 14"
+  },
+  {
+   "step": "p1.220",
+   "what": "On ws.A the rotated extension code now comes before the links_update. The reply and the code no longer wait for the snapshot; the push is asynchronous. Message contents are unchanged.",
+   "cause": "Decision 7"
+  },
+  {
+   "step": "p1.227",
+   "what": "A guildUpdate with the same name and icon no longer pushes links_update to A, B and E.",
+   "cause": "Decision 12"
+  },
+  {
+   "step": "p1.265",
+   "what": "C2's register joins alice's live link. C gets no 'unlinked/replaced'. C2's 'linked' carries the live snapshot (G1, bob blocked) instead of its identity's lists (G1+G2, none blocked). One extension code goes to both C and C2.",
+   "cause": "Decision 6 (S-AMEND: live link is the source of truth, no merge)"
+  },
+  {
+   "step": "p1.266",
+   "what": "C, still linked, sends unblock_user bob: links_update goes to both C and C2.",
+   "cause": "Decision 6"
+  },
+  {
+   "step": "p1.268",
+   "what": "/block carol sends links_update to both devices, with the live guild list (G1 only).",
+   "cause": "Decision 6"
+  },
+  {
+   "step": "p1.269",
+   "what": "C's code is now the shared extension code. Reply is '✅ Added **Les Potes** to your linked sources (1 total).'; new code and links_update go to C and C2; C2 is not unlinked.",
+   "cause": "Decision 6"
+  },
+  {
+   "step": "p1.274",
+   "what": "/unlink deleted the extension codes, so the reply is 'Invalid or expired code. Open the overlay…' instead of 'The overlay for that code is no longer connected.'",
+   "cause": "Decision 6"
+  },
+  {
+   "step": "p1.275",
+   "what": "Reply is '⏱️ Trop de codes invalides — réessaie dans quelques minutes.' (alice's 5th failure in 10 min was p1.274). C stays unlinked.",
+   "cause": "Decision 16"
+  },
+  {
+   "step": "p1.298 p1.300 p1.302 p1.304 p1.309 p1.312 p1.313 p1.314",
+   "what": "/who no longer lists alice, drops to alice are not reachable (including the 60-min delayed drop), and no reaction posts follow. All because alice is locked out from p1.275.",
+   "cause": "Decision 16 (cascade; verified with the LINK_FAIL_MAX=1000 variant, where these steps match the baseline)"
+  },
+  {
+   "step": "p1.289",
+   "what": "unblock_user with an object userId is ignored (str() gives '') and no longer triggers links_update.",
+   "cause": "Decision 2"
+  },
+  {
+   "step": "p1.315 p1.317 p1.320 p2.008 p2.022",
+   "what": "Stats in replies and in store.json reflect the changes above: p1.092 now delivered, p1.123 delivered once, alice locked out, p2.016 not delivered.",
+   "cause": "Decisions 10, 14, 16, 6"
+  },
+  {
+   "step": "p1.319 p2.021",
+   "what": "Sockets are closed with 1006 (TCP cut) instead of 1005 at SIGINT/SIGTERM.",
+   "cause": "Decision 5"
+  },
+  {
+   "step": "p2.014",
+   "what": "When A switches from alice to bob, bob's B is not unlinked and receives the shared extension code; alice's link is released.",
+   "cause": "Decision 6 (one socket, two identities)"
+  },
+  {
+   "step": "p2.016 p2.017",
+   "what": "The drop to alice is not delivered and alice's /status is 🔴: A no longer holds alice's identity.",
+   "cause": "Decision 6"
+  },
+  {
+   "step": "p2.020",
+   "what": "bob's /status is 🟢 after A closed, because B is still linked.",
+   "cause": "Decision 6"
+  },
+  {
+   "step": "p3.011",
+   "what": "/blocklist with 60 entries is cut to 1977 characters ending '… et 16 autres', with no more 50035 error.",
+   "cause": "Decision 20 (also decision 7: only 10 lookups per snapshot)"
+  },
+  {
+   "step": "p4.011",
+   "what": "The unparsable store.json is kept as store.json.corrupt-1800014484001 next to the new store.json.",
+   "cause": "Decision 17"
+  },
+  {
+   "step": "p5.005 p5.006 p5.007 p5.008",
+   "what": "GET //[ now gets 400 Bad Request with no crash. /health returns 200 and /status 🟢 (new steps), and the process ends with the end-of-block SIGKILL.",
+   "cause": "Decision 1"
+  },
+  {
+   "step": "p6.008 p6.009 p6.010 p6.011 p6.012",
+   "what": "The expired /link no longer crashes the bot: B is linked and A and B stay open. /status works, and the expired /status rejection is only logged. These are new steps up to the end-of-block SIGKILL.",
+   "cause": "Decision 3 (+4; and 7: reply not awaited)"
+  },
+  {
+   "step": "summary",
+   "what": "p5/p6 now exit by SIGKILL instead of code 1. Upstream calls 130→136 (p1: -4 from the in-flight sharing, +1 for 'b'×199, rl-33/rl-34 swapped, +6 pre-fetches; p2 +1; p3 +2). Step count 383→388.",
+   "cause": "Decisions 1, 3, 8, 9, 10"
+  },
+  {
+   "step": "counters (informational)",
+   "what": "users.fetch p1 54→32, p2 13→11, p3 120→20; fewer channel posts and member fetches. p5/p6 now report counters.",
+   "cause": "Decision 7 (cache first, 404 memo, 10-fetch cap); cascades of 14, 16, 20"
+  }
+ ],
+ "unexplained_diffs": [],
+ "checks": "1. `node --check` passes on bot/index.js and bot/store.js.\n\n2. Harness:\n   - Final run is /tmp/claude-0/-home-user-memedrop/065ca17e-4939-5472-b348-276c03e80469/scratchpad/impl-bot/final.json (388 steps, about 22 s, no settle timeouts).\n   - It is byte-identical to two earlier runs (run1.json, run2.json), so the result is deterministic.\n   - compare.js against baseline.json lists 70 differing entries (69 steps plus summary). I went through every one with view.js and compare output; each maps to a decision in diff_steps. The full output is in impl-bot/final.compare.txt.\n   - To isolate the lock-out cascade I ran a scratch copy with only LINK_FAIL_MAX=1000 (impl-bot/final-nolock.json). There p1.275–p1.314 match the baseline except heartbeat timing (decision 18) and close codes (decision 5), and the stats differences are exactly what p1.092, p1.123 and p2.016 explain.\n   - Bot logs show the new store load lines, the corrupt-file rename in p4, and rejected replies only logged in p6. No unexpected errors.\n\n3. Extra scenario, /tmp/claude-0/-home-user-memedrop/065ca17e-4939-5472-b348-276c03e80469/scratchpad/impl-bot/extra-scenario.js:\n   - It reuses the harness driver and normalize with assertions instead of a baseline. Run it as `node extra-scenario.js <bot-dir> <out.json>`; the optional env vars ONLY=m2 and SKIP_CRASH=1 are only for the control run.\n   - Process m1 (multi-device):\n     - Phone /link while the PC is linked: it joins and gains G2, the PC gets links_update, they share one code, nobody is unlinked.\n     - Drops reach both devices with the same dropId; a second reaction from the other device is ignored; /dropall and /stats count alice once.\n     - The shared extension code works from either device.\n     - The PC closing keeps the phone linked and the code valid.\n     - The PC coming back with a stale identity gets the live lists, which are not merged.\n     - Race A: frank's two devices register at the same instant with slow snapshots (10 REST 404s). Both get linked with the same final code, which is valid; the superseded code is rejected.\n     - Race B: /unlink lands during a register's snapshot await. The device gets unlinked + pairing_code and no stale 'linked'.\n     - /unlink with two devices unlinks both and deletes the code.\n     - unlink_guild emptying a shared link unlinks every device.\n     - A socket switching from bob to carol releases bob.\n     - GuildUpdate: an icon change pushes links_update; a description change does not.\n   - Process m2 (other decisions):\n     - /dropgroup same-tick race, with the group loaded from disk so member lookups really hit REST.\n     - Delayed-drop cap: the 4th is refused, the refusal costs no cooldown, a slot frees once a drop fires.\n     - /link lock after 5 failures, per user, lifted after 10 min.\n     - Pre-fetch key: a tts cut right after a space hits the warm cache through ttsUrl.\n     - An overlay asking while the pre-fetch is in flight shares it: 1 upstream call.\n     - Global budget: 150 texts from 5 IPs give 120×200 then 503 'tts busy', and it resets after the window.\n     - Object or number userId, object username and non-snowflake IDs are rejected or dropped, and the bot stays up.\n     - Per-socket budget: 30 of 35 messages processed, reset after 10 s.\n     - Store write at most 500 ms after the first change while saves keep coming (real time).\n   - Result on the new code: 64/64 checks pass, three times in a row.\n   - Control on the original code: m1 fails at the first multi-device step (PC gets unlinked/replaced, the phone loses G1). m2 fails 12 of 20 checks; the 8 that pass are generic controls. The original bot also crashes on the {\"userId\":{\"toString\":1}} register frame.\n\n4. Helper checks, /tmp/claude-0/-home-user-memedrop/065ca17e-4939-5472-b348-276c03e80469/scratchpad/impl-bot/helpers-test.js: it extracts clip, normTtsText, ipKey, clientIp, capLines, formatCooldown, reserveCooldown, str/sid/ids from index.js and runs them in a vm sandbox. All 8 groups pass.\n\n5. eslint 10 (local binary, scratch core-rules config at impl-bot/eslint.config.cjs): the only findings are the pre-existing unused MAX_GROUP_MEMBERS in untouched code and 2 harmless no-shadow warnings from untouched code shadowing the new `str`/`ids` helpers.\n\n6. git status shows only the 3 allowed files modified. No commit, push, stash or checkout, and the harness was not edited."
+}

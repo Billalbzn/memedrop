@@ -1,0 +1,141 @@
+{
+  "favorites": {
+    "210000000000000001": [
+      {
+        "name": "TOMATO",
+        "url": "https://cdn.discordapp.com/attachments/310000000000000001/600000000000000004/dance.gif",
+        "mime": "image/gif",
+        "kind": "gif",
+        "size": 1048576,
+        "caption": "at the limit",
+        "savedAt": 1800000162001
+      },
+      {
+        "name": "f3",
+        "url": "https://cdn.discordapp.com/attachments/310000000000000001/600000000000000005/clip.mp4",
+        "mime": "video/mp4",
+        "kind": "video",
+        "size": 5242880,
+        "caption": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "savedAt": 1800000162001
+      },
+      {
+        "name": "f4",
+        "url": "https://cdn.discordapp.com/attachments/310000000000000001/600000000000000007/song.mp3",
+        "mime": "audio/mpeg",
+        "kind": "audio",
+        "size": 3145728,
+        "caption": null,
+        "savedAt": 1800000162001
+      },
+      {
+        "name": "f5",
+        "url": "https://cdn.discordapp.com/attachments/310000000000000001/600000000000000004/dance.gif",
+        "mime": "image/gif",
+        "kind": "gif",
+        "size": 1048576,
+        "caption": null,
+        "savedAt": 1800000162001
+      },
+      {
+        "name": "f6",
+        "url": "https://cdn.discordapp.com/attachments/310000000000000001/600000000000000002/photo.jpg",
+        "mime": "image/jpeg",
+        "kind": "image",
+        "size": 91234,
+        "caption": null,
+        "savedAt": 1800000162001
+      },
+      {
+        "name": "f7",
+        "url": "https://cdn.discordapp.com/attachments/310000000000000001/600000000000000003/sticker.webp",
+        "mime": "image/webp",
+        "kind": "image",
+        "size": 20480,
+        "caption": null,
+        "savedAt": 1800000162001
+      },
+      {
+        "name": "f8",
+        "url": "https://cdn.discordapp.com/attachments/310000000000000001/600000000000000006/iphone.mov",
+        "mime": "video/quicktime",
+        "kind": "video",
+        "size": 7340032,
+        "caption": null,
+        "savedAt": 1800000162001
+      },
+      {
+        "name": "f9",
+        "url": "https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png",
+        "mime": "image/png",
+        "kind": "image",
+        "size": 48213,
+        "caption": null,
+        "savedAt": 1800000162001
+      },
+      {
+        "name": "f10",
+        "url": "https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png",
+        "mime": "image/png",
+        "kind": "image",
+        "size": 48213,
+        "caption": null,
+        "savedAt": 1800000162001
+      }
+    ]
+  },
+  "groups": {
+    "210000000000000003": {
+      "ghosts": [
+        "210000000000000007"
+      ],
+      "duo": [
+        "210000000000000002",
+        "210000000000000001"
+      ],
+      "g2": [
+        "210000000000000001"
+      ],
+      "g3": [
+        "210000000000000001"
+      ],
+      "g4": [
+        "210000000000000001"
+      ],
+      "g5": [
+        "210000000000000001"
+      ],
+      "g6": [
+        "210000000000000001"
+      ],
+      "g7": [
+        "210000000000000001"
+      ],
+      "G1": [
+        "210000000000000002"
+      ]
+    }
+  },
+  "stats": {
+    "210000000000000002": {
+      "sent": 8,
+      "received": 10
+    },
+    "210000000000000001": {
+      "sent": 7,
+      "received": 19
+    },
+    "210000000000000003": {
+      "sent": 15,
+      "received": 0
+    },
+    "210000000000000006": {
+      "sent": 1,
+      "received": 0
+    },
+    "210000000000000005": {
+      "sent": 0,
+      "received": 2
+    }
+  }
+}

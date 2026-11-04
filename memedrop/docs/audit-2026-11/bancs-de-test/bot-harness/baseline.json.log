@@ -1,0 +1,181 @@
+harness run 2026-11-04T17:32:51.803Z bot=/home/user/memedrop/memedrop/bot
+
+===== bot p1 start (port 45221) =====
+[http+ws] listening on port 45221
+[bot] logged in as MemeDrop
+[tts] failed: URI malformed
+[tts] failed: upstream 503
+[tts] failed: upstream 503
+[tts] failed: fetch failed
+[ws] overlay connected, pairing code = 288888
+[ws] extension code 513382 for user 210000000000000001
+[ws] overlay connected, pairing code = 540334
+[ws] extension code 826339 for user 210000000000000002
+[ws] overlay connected, pairing code = 318228
+[ws] extension code 395110 for user 210000000000000006
+[ws] auto-registered user 210000000000000006 (guild, 1 guild(s))
+[ws] overlay connected, pairing code = 191836
+[ws] extension code 210323 for user 210000000000000005
+[ws] auto-registered user 210000000000000005 (guild, 2 guild(s))
+[bot] interaction error: URIError: URI malformed
+    at encodeURIComponent (<anonymous>)
+    at ttsUrlFor (/tmp/claude-0/-home-user-memedrop/065ca17e-4939-5472-b348-276c03e80469/scratchpad/bot-harness/.work/run-3073-1793813571800/code/index.js:585:41)
+    at buildDropPayload (/tmp/claude-0/-home-user-memedrop/065ca17e-4939-5472-b348-276c03e80469/scratchpad/bot-harness/.work/run-3073-1793813571800/code/index.js:597:13)
+    at Client.<anonymous> (/tmp/claude-0/-home-user-memedrop/065ca17e-4939-5472-b348-276c03e80469/scratchpad/bot-harness/.work/run-3073-1793813571800/code/index.js:912:25)
+[ws] overlay disconnected (user=210000000000000006)
+[drop] delayed drop fired (1/2 delivered)
+[ws] overlay connected, pairing code = 151687
+[react] failed to post reaction: Unknown Channel
+[ws] extension code 052505 for user 210000000000000001
+[ws] reissued pairing code = 399517
+[ws] overlay connected, pairing code = 450727
+[ws] extension code 900088 for user 210000000000000004
+[ws] auto-registered user 210000000000000004 (global, 0 guild(s))
+[ws] overlay connected, pairing code = 609434
+[ws] extension code 912705 for user 210000000000000003
+[ws] reissued pairing code = 611586
+[ws] overlay disconnected (user=unlinked)
+[ws] overlay disconnected (user=unlinked)
+[ws] overlay disconnected (user=210000000000000001)
+[ws] overlay connected, pairing code = 147905
+[ws] extension code 407318 for user 210000000000000001
+[ws] auto-registered user 210000000000000001 (guild, 1 guild(s))
+[ws] extension code 426036 for user 210000000000000001
+[ws] auto-registered user 210000000000000001 (guild, 1 guild(s))
+[ws] overlay connected, pairing code = 984473
+[ws] reissued pairing code = 797894
+[ws] extension code 562792 for user 210000000000000001
+[ws] auto-registered user 210000000000000001 (guild, 2 guild(s))
+[ws] reissued pairing code = 645682
+[ws] extension code 313199 for user 210000000000000001
+[ws] overlay disconnected (user=unlinked)
+[ws] reissued pairing code = 365454
+[ws] extension code 918195 for user 210000000000000001
+[ws] error: Max payload size exceeded
+[ws] overlay disconnected (user=210000000000000002)
+[ws] overlay connected, pairing code = 233518
+[ws] terminating unresponsive overlay
+[ws] overlay disconnected (user=unlinked)
+[drop] delayed drop fired (1/1 delivered)
+
+[bot] shutting down…
+===== bot p1 exit code=0 signal=null =====
+
+===== bot p2 start (port 36557) =====
+[http+ws] listening on port 36557
+[bot] logged in as MemeDrop
+[ws] overlay connected, pairing code = 359809
+[ws] extension code 419927 for user 210000000000000001
+[ws] auto-registered user 210000000000000001 (guild, 2 guild(s))
+[ws] overlay connected, pairing code = 468073
+[ws] extension code 972358 for user 210000000000000002
+[ws] auto-registered user 210000000000000002 (guild, 1 guild(s))
+[ws] reissued pairing code = 822350
+[ws] extension code 242915 for user 210000000000000002
+[ws] auto-registered user 210000000000000002 (guild, 1 guild(s))
+[ws] overlay disconnected (user=210000000000000002)
+
+[bot] shutting down…
+===== bot p2 exit code=0 signal=null =====
+
+===== bot p3 start (port 36787) =====
+[http+ws] listening on port 36787
+[bot] logged in as MemeDrop
+[ws] overlay connected, pairing code = 458504
+[ws] extension code 168816 for user 210000000000000001
+[ws] auto-registered user 210000000000000001 (guild, 1 guild(s))
+[ws] overlay connected, pairing code = 817647
+[ws] extension code 127935 for user 210000000000000006
+[ws] auto-registered user 210000000000000006 (guild, 1 guild(s))
+[bot] reply failed: Invalid Form Body
+content[BASE_TYPE_MAX_LENGTH]: Must be 2000 or fewer in length.
+===== bot p3 exit code=null signal=SIGKILL =====
+
+===== bot p4 start (port 34131) =====
+[security] LINK_SECRET not set — using an ephemeral secret. Zero-touch re-link will require a fresh /link after every restart. Set LINK_SECRET to a long random string in your environment to persist links across redeploys.
+[http+ws] listening on port 34131
+[bot] logged in as MemeDrop
+[ws] overlay connected, pairing code = 603404
+[ws] extension code 807724 for user 210000000000000001
+[ws] overlay disconnected (user=210000000000000001)
+[ws] overlay connected, pairing code = 314435
+[ws] extension code 114991 for user 210000000000000001
+[ws] auto-registered user 210000000000000001 (guild, 1 guild(s))
+===== bot p4 exit code=null signal=SIGKILL =====
+
+===== bot p5 start (port 41407) =====
+[http+ws] listening on port 41407
+[bot] logged in as MemeDrop
+[ws] overlay connected, pairing code = 933453
+[ws] extension code 380393 for user 210000000000000001
+[ws] auto-registered user 210000000000000001 (guild, 1 guild(s))
+node:internal/url:818
+      href = bindingUrl.parse(input, base, true);
+                        ^
+
+TypeError: Invalid URL
+    at new URL (node:internal/url:818:25)
+    at Server.<anonymous> (/tmp/claude-0/-home-user-memedrop/065ca17e-4939-5472-b348-276c03e80469/scratchpad/bot-harness/.work/run-3073-1793813571800/code/index.js:96:13)
+    at Server.emit (node:events:519:28)
+    at parserOnIncoming (node:_http_server:1186:12)
+    at HTTPParser.parserOnHeadersComplete (node:_http_common:125:17) {
+  code: 'ERR_INVALID_URL',
+  input: '//[',
+  base: 'http://localhost'
+}
+
+Node.js v22.23.4
+===== bot p5 exit code=1 signal=null =====
+
+===== bot p6 start (port 40087) =====
+[http+ws] listening on port 40087
+[bot] logged in as MemeDrop
+[ws] overlay connected, pairing code = 407819
+[ws] extension code 649796 for user 210000000000000001
+[ws] auto-registered user 210000000000000001 (guild, 1 guild(s))
+[bot] interaction error: DiscordAPIError[10062]: Unknown interaction
+    at /tmp/claude-0/-home-user-memedrop/065ca17e-4939-5472-b348-276c03e80469/scratchpad/bot-harness/lib/fake-discord.js:889:47
+    at async Object.op (/tmp/claude-0/-home-user-memedrop/065ca17e-4939-5472-b348-276c03e80469/scratchpad/bot-harness/lib/preload.js:64:18)
+    at async Client.<anonymous> (/tmp/claude-0/-home-user-memedrop/065ca17e-4939-5472-b348-276c03e80469/scratchpad/bot-harness/.work/run-3073-1793813571800/code/index.js:892:9) {
+  code: 10062,
+  status: 404,
+  method: 'POST',
+  url: '/interactions/500000000000000184/itoken-500000000000000184/callback',
+  rawError: { message: 'Unknown interaction', code: 10062 },
+  requestBody: { files: undefined, json: undefined }
+}
+[bot] reply failed: Unknown interaction
+[bot] interaction error: DiscordAPIError[10062]: Unknown interaction
+    at /tmp/claude-0/-home-user-memedrop/065ca17e-4939-5472-b348-276c03e80469/scratchpad/bot-harness/lib/fake-discord.js:889:47
+    at async Object.op (/tmp/claude-0/-home-user-memedrop/065ca17e-4939-5472-b348-276c03e80469/scratchpad/bot-harness/lib/preload.js:64:18)
+    at async Client.<anonymous> (/tmp/claude-0/-home-user-memedrop/065ca17e-4939-5472-b348-276c03e80469/scratchpad/bot-harness/.work/run-3073-1793813571800/code/index.js:874:9) {
+  code: 10062,
+  status: 404,
+  method: 'POST',
+  url: '/interactions/500000000000000186/itoken-500000000000000186/callback',
+  rawError: { message: 'Unknown interaction', code: 10062 },
+  requestBody: { files: undefined, json: undefined }
+}
+[bot] reply failed: Unknown interaction
+[ws] overlay connected, pairing code = 215554
+[ws] extension code 444866 for user 210000000000000002
+node:events:497
+      throw er; // Unhandled 'error' event
+      ^
+
+DiscordAPIError[10062]: Unknown interaction
+    at /tmp/claude-0/-home-user-memedrop/065ca17e-4939-5472-b348-276c03e80469/scratchpad/bot-harness/lib/fake-discord.js:889:47
+    at async Object.op (/tmp/claude-0/-home-user-memedrop/065ca17e-4939-5472-b348-276c03e80469/scratchpad/bot-harness/lib/preload.js:64:18)
+Emitted 'error' event on Client instance at:
+    at emitUnhandledRejectionOrErr (node:events:402:10)
+    at process.processTicksAndRejections (node:internal/process/task_queues:91:21) {
+  code: 10062,
+  status: 404,
+  method: 'POST',
+  url: '/interactions/500000000000000187/itoken-500000000000000187/callback',
+  rawError: { message: 'Unknown interaction', code: 10062 },
+  requestBody: { files: undefined, json: undefined }
+}
+
+Node.js v22.23.4
+===== bot p6 exit code=1 signal=null =====

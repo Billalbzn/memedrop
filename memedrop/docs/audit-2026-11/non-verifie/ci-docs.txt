@@ -1,0 +1,200 @@
+## [?/?] android-apk-published-from-any-ref (high,bug) ../.github/workflows/android.yml:7 — APK workflow republishes android-latest from any branch or tag push and for files not in the APK; parallel publishes race
+EVIDENCE: android.yml:7-11 has only a `paths` filter (no `branches`), so any branch push runs it, and per GitHub docs every tag push too (path filters are not evaluated for tags), e.g. the `v*` tags windows.yml:10-12 suggests. :77-86 then always deletes and recreates android-latest. Actions history: 12 runs, 7 on claude/sharp-faraday-028jsr; runs 2/6/9/11 shipped unmerged code to android-latest before main re-published. Concurrency is per ref (:18): runs 4 (branch) and 5 (main) published in the same seconds (09:48:20-24); run 4 died with `HTTP 404 Reference does not exist` then `HTTP 422 Published releases must have a valid tag`. `memedrop/overlay/src/**` also matches settings.html/settings.js, never copied into the APK (build.gradle.kts:12-14). Each publish bumps versionCode, so Updater.kt:58 offers every phone an 'update' at next app open.
+CHANGE: on:
+  push:
+    branches: ['**']   # branches seulement : un tag v1.2.3 (release Windows) ne republie pas l'APK
+    paths:
+      - 'memedrop/android/**'
+      # seuls fichiers de overlay/src copiés dans l'APK (syncWebAssets)
+      - 'memedrop/overlay/src/overlay.js'
+      - 'memedrop/overlay/src/overlay.html'
+      - 'memedrop/overlay/src/styles.css'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+concurrency:
+  group: android-apk-${{ github.ref }}
+  # main : ne jamais couper une publication entre delete et create
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+...
+      - name: Publish to the android-latest release
+        # les branches de travail compilent (artefact) mais ne publient pas
+        if: github.ref == 'refs/heads/main'
+Optional hardening: when the release exists, `gh release upload android-latest MemeDrop.apk --clobber`, then `gh release upload android-latest version.json --clobber` and `gh release edit android-latest --notes ...` instead of delete+create (create only if missing), so a failed/cancelled publish never leaves friends without android-latest. Update memedrop/README.md:140-144 ('every push to main').
+BEHAVIOR: bugfix: only main builds reach friends' phones; feature branches, tag pushes and settings-only commits no longer republish the APK or trigger a bogus update prompt | CROSS: memedrop/README.md:140-144; android/app/build.gradle.kts:12-14 (the paths list must mirror the files syncWebAssets copies)
+RISK: Low. Branch pushes still build and upload the APK artifact for testing; shipping a branch build to phones now requires merging to main. Land this in the same commit as (or before) any push of this run touching memedrop/android or memedrop/overlay/src: GitHub uses the workflow file of the pushed commit, otherwise pushing claude/charming-goodall-c84gcl itself republishes an unmerged APK to every friend.
+
+## [?/?] windows-release-silent-noop (medium,bug) ../.github/workflows/windows.yml:43 — Windows release run can go green without releasing anything, accepts a tag that doesn't match package.json, and tags the wrong commit
+EVIDENCE: Nothing checks that overlay/package.json was bumped. If v$VERSION is already published, electron-builder 24 (default releaseType draft) only warns 'GitHub release not created' (existing type not compatible with publishing type), skips the uploads and exits 0; then :47-50 `gh release edit "v$VERSION" --draft=false --latest --title ... --notes ...` rewrites that old release. Green run, nothing shipped (unbumped releases already happened: see a01401a message about 1.4.3/1.4.4). A pushed tag (:10-12) is never compared with package.json. electron-builder creates the draft without target_commitish (releases show target_commitish 'main'), so publishing tags the default-branch HEAD, not the built commit: a dispatch from another branch ships that branch's code tagged on main. No concurrency group (tag push + manual run share one draft).
+CHANGE: jobs:
+  release:
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    concurrency:
+      group: windows-release
+      cancel-in-progress: false
+    steps (after setup-node, before npm):
+      - name: Check version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME ≠ package.json (v$VERSION)"; exit 1
+          fi
+          if [ "$(gh release view "v$VERSION" --json isDraft -q .isDraft 2>/dev/null)" = false ]; then
+            echo "::error::v$VERSION déjà publiée : augmente la version dans overlay/package.json"; exit 1
+          fi
+Publish step: `gh release edit "v$VERSION" --target "$GITHUB_SHA" --draft=false --latest ...` (target is ignored when the tag already exists, e.g. tag-triggered runs). A leftover draft from a failed run still passes the guard and is reused by electron-builder.
+BEHAVIOR: bugfix: an unbumped or mismatched release now fails loudly instead of going green and rewriting an existing release; the tag lands on the built commit | CROSS: RELEASE.md (document 'bump first'); no code
+RISK: Low. Re-running a release for an already published version is refused on purpose (a published latest.yml and its binaries must not change under clients).
+
+## [?/?] docs-false-windows-autoupdate (medium,docs) ../README.md:56 — Docs and release notes say Windows installs update themselves; they only update if the user opens the settings (no 1.5.x download so far)
+EVIDENCE: overlay/main.js:543 `autoUpdater.autoDownload = false`; the 30-min checks (:856-857) only set updateState. Downloading needs a click in the settings window, which is not opened when the app starts at login (:817-830), and nothing (tray, OS notification) signals the update. Yet ../README.md:56 « se met à jour automatiquement », windows.yml:50 « Les PC déjà équipés se mettent à jour tout seuls », RELEASE.md:53 « Tes potes vont recevoir la notif ». Release stats (read-only GitHub API): since 2026-09-24, v1.5.1's latest.yml was fetched 786 times but MemeDrop-Setup-1.5.1.exe and its .blockmap 0 times (same for 1.5.0; v1.4.4 had 5/5): no client has pulled 1.5.x.
+CHANGE: Docs only (no behavior change): ../README.md:56 → « MemeDrop se lance ensuite tout seul au démarrage (icône dans la barre des tâches) et te signale les mises à jour : clic sur l'icône → réglages → Télécharger → Installer & redémarrer. » windows.yml:50 notes → « ... Les PC déjà équipés la proposent dans les réglages de l'app (Télécharger → Installer & redémarrer). ... » RELEASE.md:53 → same wording. Optional code (overlay/main.js, visible, owner's call): in autoUpdater.on('update-available'), when the check was not manual and info.version was not yet announced, `tray?.displayBalloon({ iconType: 'info', title: 'MemeDrop', content: `Mise à jour v${info.version} disponible — clique pour l'installer` })`, with `tray.on('balloon-click', () => createSettingsWindow())` registered once in createTray; or `autoUpdater.autoDownload = true` so the existing autoInstallOnAppQuit installs at the next quit.
+BEHAVIOR: none (docs); the optional code variant is visible (tray balloon or background download) | CROSS: ../.github/workflows/windows.yml:50, RELEASE.md:53; optional overlay/main.js:551 and createTray
+RISK: None for the docs. The balloon variant must fire once per version, not every 30 min.
+
+## [?/?] default-server-build-env-noop (medium,docs) README.md:92 — 'Set DEFAULT_SERVER before building' is a no-op: self-hosted builds still connect to the owner's bot
+EVIDENCE: overlay/main.js:8-9 reads process.env.DEFAULT_SERVER at run time on the user's PC; electron-builder copies main.js verbatim (no bundler, no extraMetadata), so the variable set at build time by memedrop/README.md:90-106 (« main.js already reads from a build-time env var ... $env:DEFAULT_SERVER = "wss://memedrop-bot.up.railway.app" # YOUR Railway URL »), RELEASE.md:40 and windows.yml:38 changes nothing: every .exe defaults to wss://memedrop-bot.fly.dev. Anyone following « Héberger ton propre MemeDrop » ships an app that pairs with the owner's bot. The guide also claims the overlay « tries wss://memedrop-bot.up.railway.app by default » (:273) and never says Android has its own default (Prefs.kt:12).
+CHANGE: memedrop/README.md Part 2.1 (:90-106) → « Le serveur par défaut est une constante : DEFAULT_SERVER dans overlay/main.js (l. 8-9) et dans android/app/src/main/java/com/memedrop/app/Prefs.kt (l. 12). Pour ton propre bot, modifie ces deux lignes avant de compiler (ou saisis l'URL dans Réglages → « URL du serveur bot »). La variable d'environnement DEFAULT_SERVER n'agit qu'au lancement (dev : `DEFAULT_SERVER=ws://localhost:8765 npm start`, sur une config neuve). » Fix :273 (default is wss://memedrop-bot.fly.dev). Delete the dead `DEFAULT_SERVER:` line in windows.yml:38 and the `$env:DEFAULT_SERVER` line in RELEASE.md:40. Alternative if a real build-time setting is wanted: build with `npx electron-builder ... -c.extraMetadata.defaultServer="$DEFAULT_SERVER"` and read `process.env.DEFAULT_SERVER || require('./package.json').defaultServer || 'wss://memedrop-bot.fly.dev'` in main.js.
+BEHAVIOR: none | CROSS: ../.github/workflows/windows.yml:38, RELEASE.md:40; overlay/main.js:8-9 only for the extraMetadata alternative
+RISK: None (docs and a dead env line).
+
+## [?/?] bot-deploy-docs-railway-no-fly-config (medium,docs) README.md:37 — Technical guide documents a Railway deployment that no longer exists; the real Fly.io setup is nowhere in the repo
+EVIDENCE: Railway was dropped for Fly.io (a01401a « Railway coupé »; release v1.4.3 « le bot est passé de Railway à Fly.io »), yet memedrop/README.md only documents Railway: :8, diagram :18-33, all of Part 1 :37-82 (railway CLI, Variables tab, Generate Domain, wss://memedrop-bot.up.railway.app), :255, limitations :283-284, layout :297-298. The repo has no Fly config (no fly.toml/Dockerfile; only bot/railway.json, now dead, and nixpacks.toml), so prod can't be redeployed from the repo. Fly specifics that lose data/uptime are undocumented: store.json (favorites/groups/stats, store.js:16) lives on the Machine's ephemeral rootfs (reset on deploy) unless a volume is mounted and DATA_DIR points to it; with fly launch's default auto_stop_machines a stopped Machine means the bot is offline on Discord.
+CHANGE: 1) Commit the Fly config actually used in prod (bot/fly.toml, plus Dockerfile if any). It should contain: [http_service] internal_port = the port the bot listens on (PORT, else WS_PORT, else 8765), auto_stop_machines = 'off', min_machines_running = 1, a check on /health; [mounts] source = 'memedrop_data', destination = '/data' and [env] DATA_DIR = '/data'. If the start command chains deploy-commands.js, end it with `exec node index.js` so Fly's kill signal reaches node and store.flush() runs (index.js:1251-1259). 2) Rewrite memedrop/README.md for Fly: :8 and :18-33 ('on Fly.io'); Part 1.2 → `fly launch --no-deploy`, `fly secrets set DISCORD_TOKEN=... CLIENT_ID=... LINK_SECRET=...`, `fly volumes create memedrop_data --size 1`, `fly deploy`, URL wss://<app>.fly.dev; :255 'Local development'; :283-284 Railway → Fly volume; :297-298. 3) Delete bot/railway.json (or mark it legacy): unused, and the apps force-migrate Railway URLs anyway (see railway-url-migration-too-broad).
+BEHAVIOR: none | CROSS: bot/store.js:9-12 (comment mentions Railway), bot/.env.example:7, bot/railway.json
+RISK: None for docs. Don't invent the app name/region: commit the owner's real config (`fly config save -a memedrop-bot` writes it to fly.toml).
+
+## [?/?] electron-33-eol (medium,security) overlay/package.json:21 — Overlay ships Electron 33 (Chromium 130), end-of-life since April 2025, while decoding untrusted media 24/7
+EVIDENCE: package.json:21 `"electron": "^33.4.11"` (lock: 33.4.11, the last 33.x). Electron supports only its latest three majors; 33 reached end-of-life on 2025-04-29, so this Chromium/V8 has had no security backports for about 18 months. The overlay runs all day on friends' gaming PCs and decodes attacker-chosen bytes: any non-blocked member of a linked server can /drop an image/GIF/video/audio of their choice (the bot only checks Discord's contentType, bot/index.js:514-516, 541-548) plus caption/username text. electron-builder ^24.13.3 is two majors behind as well.
+CHANGE: Not doable in this offline run (needs the npm registry to regenerate package-lock and a Windows machine to test). Track as a dedicated change: in overlay/, `npm i -D electron@<current supported major> electron-builder@latest`, commit package.json + lock, then test on Windows: transparent always-on-top overlay over a borderless game, click-through with setIgnoreMouseEvents forwarding and the cursor-polling drag, tray menu, settings window, electron-store data kept, and an electron-updater update from an installed 1.5.1. Bump the overlay version and release through windows.yml.
+BEHAVIOR: none intended | CROSS: overlay/package-lock.json; overlay/main.js if a breaking API change hits
+RISK: Medium: Electron majors carry breaking changes; must be tested on Windows; the first update after the bump is close to a full download.
+
+## [?/?] railway-url-migration-too-broad (low,bug) overlay/main.js:14 — Server-URL migration rewrites every Railway URL, so a self-hoster on Railway is forced back to the owner's Fly bot
+EVIDENCE: main.js:14-16 tests `/\.up\.railway\.app/i` and :58 rewrites any matching saved serverUrl to DEFAULT_SERVER at every launch; Prefs.kt:24-28 ignores any Railway URL on read. The project only ever used memedrop-production-3106.up.railway.app (old default, a01401a^) and the placeholder memedrop-bot.up.railway.app (initial commit). A self-hoster on Railway (the deployment memedrop/README.md Part 1 still teaches) enters their URL in the settings and is silently switched back to wss://memedrop-bot.fly.dev at the next start (on Android the getter never even returns it).
+CHANGE: main.js:
+// Seules les anciennes URL Railway de CE projet sont migrées vers Fly.io
+const LEGACY_SERVER_RE = /^\w+:\/\/(memedrop-production-3106|memedrop-bot)\.up\.railway\.app\/?$/i;
+function isLegacyServerUrl(url) {
+  return LEGACY_SERVER_RE.test(String(url || '').trim());
+}
+Prefs.kt:
+private val LEGACY_SERVER = Regex("^\\w+://(memedrop-production-3106|memedrop-bot)\\.up\\.railway\\.app/?$", RegexOption.IGNORE_CASE)
+get() = sp.getString("serverUrl", null)?.takeUnless { LEGACY_SERVER.matches(it.trim()) } ?: DEFAULT_SERVER
+BEHAVIOR: bugfix: a user-chosen Railway URL is kept; the owner's old URLs are still migrated | CROSS: android/app/src/main/java/com/memedrop/app/Prefs.kt:24-28 (same rule on Android)
+RISK: Low: a friend who typed some other Railway host by hand would no longer be auto-migrated (none known).
+
+## [?/?] portable-target-unused-broken-autostart (low,bug) overlay/package.json:50 — Portable build is shipped on every release but nearly unused, and its autostart is broken
+EVIDENCE: package.json:48-50,54-56 build an NSIS installer and a portable exe for each release (MemeDrop-Portable-1.5.1.exe = 82,038,629 B). Release stats: 3 portable downloads across all 12 Windows releases (all v1.2.1). electron-builder's portable launcher unpacks the app (~280 MB) into %TEMP%\<build id> at each launch and deletes it on exit, so process.execPath lives there; main.js:633 and :823-827 call setLoginItemSettings without `path`, so the Run key points at a file that is gone once the app quits: autostart (the 24/7 promise) silently fails for portable users, and electron-updater turns them into NSIS installs at the first update anyway.
+CHANGE: Preferred (release content change): windows.yml:39 → `npx electron-builder --win nsis --publish always`, and drop « (ou la version Portable) » from the notes (:50); keep package.json so `npm run build:portable` still works locally; update memedrop/README.md:113 and :192. One ~82 MB artifact and one NSIS packaging pass less per release. If the portable must stay instead: in main.js:633 and :823 pass `path: process.env.PORTABLE_EXECUTABLE_FILE || process.execPath` (env var set by electron-builder's portable launcher) to both setLoginItemSettings calls.
+BEHAVIOR: visible: releases stop including MemeDrop-Portable-x.y.z.exe (alternative: bugfix, portable autostart works) | CROSS: ../.github/workflows/windows.yml:39,50; memedrop/README.md:113,192; overlay/main.js:633,823 for the keep-portable alternative
+RISK: Low: about zero users; an existing portable user keeps working and is migrated to NSIS by the updater.
+
+## [?/?] android-versionname-static (low,bug) android/app/build.gradle.kts:37 — Every CI build gets a new versionCode but the same versionName, so the updater offers 'v1.6.0' to users running v1.6.0
+EVIDENCE: build.gradle.kts:36-37: versionCode = GITHUB_RUN_NUMBER but versionName is a hand-edited literal, and android.yml:66-67 re-derives versionName by grepping the Gradle file. Updater.kt:58 offers an update whenever versionCode grows, and app.js:56 then shows « Mise à jour disponible — v1.6.0 » / « Tu as la v1.6.0 ». It already happened: runs 9 (branch) and 10 (main) both published '1.5.3' (versionCodes 9 and 10), and 287abbd changed APK code without touching versionName. Renaming android.yml would also restart run_number at 1, so versionCode would go backwards (update never offered, install refused).
+CHANGE: build.gradle.kts:
+        // Ne pas renommer android.yml : GITHUB_RUN_NUMBER repartirait à 1 et les
+        // APK suivants ne s'installeraient plus par-dessus (versionCode plus petit).
+        val ciBuild = System.getenv("GITHUB_RUN_NUMBER")
+        versionCode = (ciBuild ?: "1").toInt()
+        versionName = "1.6.0" + (ciBuild?.let { " ($it)" } ?: "")
+android.yml 'Rename APK + version.json': replace the grep by AGP's metadata so version.json always matches the APK:
+          jq -c '{versionCode: .elements[0].versionCode, versionName: .elements[0].versionName}' \
+            memedrop/android/app/build/outputs/apk/release/output-metadata.json > version.json
+BEHAVIOR: visible: the app and its update card show the build number, e.g. « v1.6.0 (14) » (UX bugfix; old APKs just display the new string) | CROSS: ../.github/workflows/android.yml:61-68; app.js renderUpdate needs no change
+RISK: Low. jq is preinstalled on ubuntu runners; AGP writes output-metadata.json next to the APK (elements[0].versionCode/versionName, high confidence for AGP 8.5).
+
+## [?/?] syncwebassets-silent-shim-failure (low,robustness) android/app/build.gradle.kts:15 — syncWebAssets silently produces a broken Android overlay if overlay.html's script tag or a file name changes
+EVIDENCE: build.gradle.kts:15-20 injects android-shim.js by replacing the exact text `<script src="./overlay.js"></script>` (today overlay.html:443). Any edit of that tag on the Windows side (defer, quotes, path) turns the filter into a no-op without error; overlay.js then runs without window.memedrop (defined only by android-shim.js:11) and the Android overlay stops rendering drops, yet the build is green and android.yml auto-publishes it to every phone. A renamed overlay.js/styles.css is likewise just not copied. Copy (not Sync) also leaves stale files in build/generated/webassets for local incremental builds.
+CHANGE: In the syncWebAssets registration, after into(webAssetsDir):
+    filteringCharset = "UTF-8"
+    // Sans android-shim.js, overlay.js plante (window.memedrop absent) : on
+    // refuse de produire un APK plutôt que de publier un overlay muet.
+    doLast {
+        val out = webAssetsDir.get().asFile
+        listOf("overlay.js", "styles.css", "overlay.html").forEach {
+            check(File(out, it).isFile) { "syncWebAssets : $it introuvable dans overlay/src" }
+        }
+        check("android-shim.js" in File(out, "overlay.html").readText()) {
+            "syncWebAssets : balise <script src=\"./overlay.js\"></script> introuvable dans overlay.html"
+        }
+    }
+Optional: tasks.register<Sync> instead of Copy (same API, removes stale outputs); and in android.yml a `node --check` of memedrop/overlay/src/overlay.js and assets/app.js + android-shim.js before the Gradle step (all pass today).
+BEHAVIOR: none (a build that would ship a dead Android overlay now fails) | CROSS: overlay/src/overlay.html:443 (the tag the filter depends on)
+RISK: Very low.
+
+## [?/?] node-20-eol (low,security) bot/nixpacks.toml:2 — Bot runtime pinned to Node 20, end-of-life since 2026-04-30
+EVIDENCE: bot/nixpacks.toml:2 `nixPkgs = ["nodejs_20"]` and windows.yml:29 `node-version: '20'`. Node 20 reached end-of-life on 2026-04-30 (no security releases since), while the bot is an internet-facing HTTP + WebSocket server (/, /health, /tts, WS upgrade). The bot only needs Node >= 18 APIs (global fetch, http, crypto; discord.js 14.26.4, ws 8.21.0); all bot files pass `node --check` under Node 22.23.4 here. Caveat: the repo doesn't show whether the Fly image is built from nixpacks.toml (no fly.toml/Dockerfile).
+CHANGE: bot/nixpacks.toml: `nixPkgs = ["nodejs_22"]` (Node 22 LTS, maintained until 2027-04-30). If Fly builds from a Dockerfile, use `FROM node:22-slim` there; check with `fly ssh console -C 'node -v'` after deploy. windows.yml:29 → `node-version: '22'` (build-time only). Update the layout comment memedrop/README.md:297 (« Node 20 LTS »).
+BEHAVIOR: none | CROSS: ../.github/workflows/windows.yml:29, memedrop/README.md:297, the Fly build config
+RISK: Low: no Node-20-specific API is used; verify the bot boots and /drop + /tts work after deploy.
+
+## [?/?] root-gitignore-signing-keys (low,security) ../.gitignore:1 — Signing keys and .env are only ignored inside some subfolders of a public repo
+EVIDENCE: Only memedrop/android/.gitignore:7-9 ignores *.p12/*.keystore/*.jks, and .env is ignored only in bot/ and overlay/. memedrop/README.md:161 tells the owner to run `base64 -w0 memedrop-release.p12` without saying where the key lives; a key created at the repo root or in memedrop/ (or a stray .env holding DISCORD_TOKEN) is picked up by `git add -A` in this public repo. Precedent: the previous signing key was committed in clear (3a7989b) and remains in history.
+CHANGE: New file /home/user/memedrop/.gitignore:
+# Secrets : jamais commités, où qu'ils soient dans le repo
+*.p12
+*.jks
+*.keystore
+.env
+(per-folder .gitignore files unchanged).
+BEHAVIOR: none | CROSS: none
+RISK: None: `git ls-files` lists no tracked file matching these patterns (.env.example is not matched).
+
+## [?/?] windows-ci-npm-ci (low,build) ../.github/workflows/windows.yml:31 — Windows release uses npm install on a false premise; the lock is in sync and npm ci works
+EVIDENCE: windows.yml:31-33 « npm install (pas npm ci) : le package-lock n'est pas toujours à jour ». Not true: overlay/package-lock.json packages[""] declares exactly package.json's dependencies/devDependencies and every locked version satisfies them (electron 33.4.11, electron-builder 24.13.3, electron-store 8.2.0, electron-updater 6.8.3, ws 8.21.0). Only packages[""].version is stale (1.1.0 vs 1.5.1, lock lines 3 and 9); npm ci builds the root node from package.json and its lockfile validation compares dependency versions only, so it accepts this lock (high confidence, npm 10/arborist). Measured 'Install dependencies' in both runs: 14-15 s, so cache: npm would save only seconds on a rarely run workflow.
+CHANGE: -      # npm install (pas npm ci) : le package-lock n'est pas toujours à jour
+-      - name: Install dependencies
+-        run: npm install --no-audit --no-fund
++      # npm ci : installe exactement le package-lock (échoue s'il diverge de package.json)
++      - name: Install dependencies
++        run: npm ci --no-audit --no-fund
+Optional: set lock lines 3 and 9 to "1.5.1" (or run `npm install --package-lock-only` next time the registry is reachable). Do not add caching: measured gain is negligible.
+BEHAVIOR: none (same locked versions installed); a future package.json/lock divergence fails the release instead of silently resolving new versions | CROSS: overlay/package-lock.json (optional cosmetic version fix)
+RISK: Very low; if the lock is ever left out of date, the release fails visibly and the fix is `npm install` + commit the lock.
+
+## [?/?] electron-locales-unused (low,build) overlay/package.json:24 — All 55 Chromium locale packs ship in the Windows app (~41 MB on disk, ~10 MB of the installer) for a French-only UI
+EVIDENCE: Measured from the official electron-v33.4.11-win32-x64.zip central directory (HTTP range read): locales/ holds 55 .pak files = 42.2 MB unpacked / 10.9 MB deflated, while fr.pak is 637 KB and en-US.pak 490 KB. The build config (package.json:24-68) has no electronLanguages, so all are packed into the 82 MB installer and the install dir. The UI is French and every date format call passes 'fr-FR' explicitly (settings.js:257,266,335); no code reads app.getLocale()/navigator.language.
+CHANGE: In "build": `"electronLanguages": ["fr", "en-US"],`. Confidence that electron-builder 24.13.3 honours this key on Windows is moderate (it began as a macOS-only option); electron-builder validates its config, so if the key is rejected the release build fails loudly. Then use an afterPack hook instead ("afterPack": "./afterPack.js"; not packaged since `files` is explicit):
+const fs = require('fs'), path = require('path');
+exports.default = async ({ appOutDir, electronPlatformName }) => {
+  if (electronPlatformName !== 'win32') return;
+  const dir = path.join(appOutDir, 'locales');
+  for (const f of fs.readdirSync(dir))
+    if (f !== 'fr.pak' && f !== 'en-US.pak') fs.rmSync(path.join(dir, f));
+};
+Verify dist/win-unpacked/locales holds 2 files.
+BEHAVIOR: visible only on non-French, non-English Windows: Chromium-internal strings (native pickers, context menus) fall back to English | CROSS: none
+RISK: Low. The first update after the change is a larger differential download (archive layout changes).
+
+## [?/?] env-example-missing-vars (low,docs) bot/.env.example:7 — .env.example omits PUBLIC_BASE_URL and DATA_DIR: local/self-hosted bots send TTS through the owner's production server
+EVIDENCE: bot/index.js:577-581 builds the /tts links sent to overlays from PUBLIC_BASE_URL, else FLY_APP_NAME, else RAILWAY_PUBLIC_DOMAIN, else the hard-coded https://memedrop-bot.fly.dev; store.js:16 reads DATA_DIR. Neither is in .env.example, so a local `npm start` (memedrop/README.md « Local development ») or any non-Fly/Railway host makes every overlay fetch TTS from the owner's production bot: local /tts changes can't be tested, another group's TTS texts reach the owner's server and consume its 30 req/min/IP budget (index.js:22-23). .env.example:7 also still says « Railway provides PORT automatically ».
+CHANGE: Replace .env.example:7-8 and append (keep the file's English):
+# HTTP + WebSocket port. PORT, when set, wins (Railway sets it; on Fly.io
+# make fly.toml's internal_port match the port the bot listens on).
+WS_PORT=8765
+...
+# Optional: public base URL of this bot, used for the /tts links sent to
+# overlays. Auto-detected on Fly.io (FLY_APP_NAME) and Railway; anywhere
+# else (local dev, VPS...) set it, or overlays fetch TTS from memedrop-bot.fly.dev.
+# PUBLIC_BASE_URL=http://localhost:8765
+
+# Optional: folder holding store.json (favorites, groups, stats). On Fly.io
+# point it at a mounted volume (e.g. /data) or it is reset on every deploy.
+# DATA_DIR=
+BEHAVIOR: none | CROSS: memedrop/README.md « Local development » (:259-271) could mention PUBLIC_BASE_URL
+RISK: None.
+
+## [?/?] release-md-outdated (low,docs) RELEASE.md:13 — RELEASE.md still describes the manual pre-CI release flow with a never-expiring full-repo PAT
+EVIDENCE: RELEASE.md asks to create a classic PAT with full `repo` scope and « No expiration » (:13-19), build from a personal path C:\Users\tsumu\Downloads\... with $env:GH_TOKEN and the no-op DEFAULT_SERVER (:36-41), publish the draft by hand (:49-53), and says « Tes potes utilisent encore l'ancienne v1.0.0 » (:70-77), obsolete since 1.1.x. It never mentions windows.yml (publishes with GITHUB_TOKEN, no PAT), the Android release (android-latest, versionName to bump in build.gradle.kts:37), nor that overlay.js/overlay.html/styles.css are shared: a change reaches Android on the next push but Windows only after a version bump + Windows release.
+CHANGE: Rewrite RELEASE.md (French) around the workflows. Windows: 1) bump "version" in overlay/package.json; 2) merge to main; 3) Actions → « Windows release » → Run workflow (or `git tag vX.Y.Z && git push origin vX.Y.Z`); 4) friends see it in the settings within 30 min (Télécharger → Installer & redémarrer). Android: automatic on each push to main touching memedrop/android or overlay.js/overlay.html/styles.css → release android-latest; bump versionName in android/app/build.gradle.kts. Warn about the shared-renderer coupling. Keep a local build only as a fallback, with a fine-grained token (Contents read/write on this repo only, with an expiry) instead of a no-expiration classic `repo` PAT; drop the personal path, the DEFAULT_SERVER line and the v1.0.0 section.
+BEHAVIOR: none | CROSS: depends on the final shape of android.yml/windows.yml
+RISK: None.
+
+## [?/?] docs-stale-ui-and-layout (low,docs) README.md:193 — Guide and FRIENDS.md describe UI labels, files and behaviors that no longer exist
+EVIDENCE: memedrop/README.md: :193-195 « AWAITING LINK » / « LINKED », but the pill shows « en attente » / « connecté » (settings.js:405,411); :280 « To interact (close, drag), use the tray icon menu » contradicts :245-246 (drops have their own ✕ and drag); :290-329 layout lists android/app/memedrop-shared.keystore (deleted in b46ec83) and omits .github/workflows/windows.yml and Updater.kt; :12 command list omits /fav, /dropfav, /group, /dropgroup, /stats. FRIENDS.md: :7 « lien fourni par kalel95190 » (it is the releases/latest page), :30 « LINKED » (→ « connecté »), :42 formats omit MP3, :87 « Quit » (menu says « Quitter », main.js:305).
+CHANGE: memedrop/README.md: :193-195 → « en attente » / « connecté »; :280 → « Drops can be dragged and closed with their ✕; the rest of the window stays click-through. »; layout: remove the keystore line, add `.github/workflows/windows.yml # builds + publishes the Windows release` and `Updater.kt # in-app APK update`; :12 → append /fav, /dropfav, /group, /dropgroup, /stats. FRIENDS.md: :7 → « depuis https://github.com/Billalbzn/memedrop/releases/latest (fichier MemeDrop-Setup-x.y.z.exe) »; :30 → « connecté »; :42 → add MP3; :87 → « Quitter »; optionally one line pointing Android users to the main README section.
+BEHAVIOR: none | CROSS: none
+RISK: None.
+

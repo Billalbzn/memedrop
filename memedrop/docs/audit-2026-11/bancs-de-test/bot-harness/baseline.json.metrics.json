@@ -1,0 +1,55 @@
+{
+  "wallMs": 23845,
+  "processWallMs": {
+    "p1": 17390,
+    "p2": 1074,
+    "p3": 2353,
+    "p4": 1665,
+    "p5": 723,
+    "p6": 617
+  },
+  "steps": 383,
+  "upstreamCalls": {
+    "total": 130,
+    "byProcess": {
+      "p1": 130
+    }
+  },
+  "discordApiCounters": {
+    "p1": {
+      "api.channel.send": 8,
+      "api.channels.fetch": 1,
+      "api.interaction.deferReply": 81,
+      "api.interaction.editReply": 81,
+      "api.interaction.reply": 79,
+      "api.members.fetch": 9,
+      "channels.fetch": 9,
+      "client.login": 1,
+      "members.fetch": 29,
+      "users.fetch": 54
+    },
+    "p2": {
+      "api.interaction.deferReply": 6,
+      "api.interaction.editReply": 6,
+      "api.interaction.reply": 6,
+      "api.users.fetch": 7,
+      "client.login": 1,
+      "users.fetch": 13
+    },
+    "p3": {
+      "api.interaction.deferReply": 4,
+      "api.interaction.editReply": 4,
+      "api.interaction.reply": 2,
+      "api.users.fetch": 120,
+      "client.login": 1,
+      "members.fetch": 1,
+      "users.fetch": 120
+    },
+    "p4": {
+      "api.interaction.reply": 3,
+      "client.login": 1
+    },
+    "p5": null,
+    "p6": null
+  }
+}

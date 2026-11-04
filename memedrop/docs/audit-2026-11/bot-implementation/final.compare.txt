@@ -1,0 +1,311 @@
+
+■ p1.001  start bot p1 — fresh DATA_DIR, LINK_SECRET set
+    - discord[0].data.intents[0]: "GuildMessages"
+
+■ p1.025  HTTP GET /tts?text=bbbbbbbbbbbbbb…[221 chars, sha1:2c1048e1]
+    ~ http[0].status: 502  ⟶  200
+    ~ http[0].content-type: "text/plain"  ⟶  "audio/mpeg"
+    ~ http[0].bodyLen: 10  ⟶  240
+    ~ http[0].body: "tts failed"  ⟶  "audio<fr|bbbbbbbbbbbbbbbbbbbbb…[202 chars, sha1:ef3088c5]>"
+    ~ http[0].content-length: (absent)  ⟶  "240"
+    ~ http[0].cache-control: (absent)  ⟶  "public, max-age=86400"
+    ~ upstream: (absent)  ⟶  [{"tl":"fr","q":"bbbbbbbbbbbbbbbbbbbbbbbb…[199 chars, sha1:0b8baf47]"}]
+
+■ p1.026  HTTP GET /tts?text=cinq%20requ%C3%AAtes%20en%20m%C3%AAme%20temps x5 concurrently
+    - upstream[1]: {"tl":"fr","q":"cinq requêtes en même temps"}
+    - upstream[2]: {"tl":"fr","q":"cinq requêtes en même temps"}
+    - upstream[3]: {"tl":"fr","q":"cinq requêtes en même temps"}
+    - upstream[4]: {"tl":"fr","q":"cinq requêtes en même temps"}
+
+■ p1.035  HTTP GET /tts?text=rl-33 [XFF 198.51.100.7, 10.0.0.1]
+    ~ http[0].status: 429  ⟶  200
+    ~ http[0].content-type: "text/plain"  ⟶  "audio/mpeg"
+    ~ http[0].bodyLen: 17  ⟶  46
+    ~ http[0].body: "too many requests"  ⟶  "audio<fr|rl-33>"
+    ~ http[0].content-length: (absent)  ⟶  "46"
+    ~ http[0].cache-control: (absent)  ⟶  "public, max-age=86400"
+    ~ upstream: (absent)  ⟶  [{"tl":"fr","q":"rl-33"}]
+
+■ p1.036  HTTP GET /tts?text=rl-34 [XFF 10.0.0.1, 198.51.100.7]
+    ~ http[0].status: 200  ⟶  429
+    ~ http[0].content-type: "audio/mpeg"  ⟶  "text/plain"
+    ~ http[0].content-length: "46"  ⟶  (absent)
+    ~ http[0].cache-control: "public, max-age=86400"  ⟶  (absent)
+    ~ http[0].bodyLen: 46  ⟶  17
+    ~ http[0].body: "audio<fr|rl-34>"  ⟶  "too many requests"
+    ~ upstream: [{"tl":"fr","q":"rl-34"}]  ⟶  (absent)
+
+■ p1.072  /drop 1999 ms later — by bob
+    ~ ix.bob[1].content: "⏱️ Doucement — encore 0s avant le prochain `/drop`."  ⟶  "⏱️ Doucement — encore 0.1s avant le prochain `/drop`."
+
+■ p1.086  /drop to alice,bob,memebot,alice,dave with image+musique+caption+pluie+tts+effet — by carol (right after the errors)
+    ~ ws.A[0].caption: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\ud83d"  ⟶  "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ~ ws.B[0].caption: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\ud83d"  ⟶  "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ~ upstream: (absent)  ⟶  [{"tl":"fr","q":"salut toi"}]
+
+■ p1.090  /drop target:@alice tts:"tttttttttttttttttttttttt…[250 chars, sha1:db01479b]" — by carol @G1#general
+    ~ upstream: (absent)  ⟶  [{"tl":"fr","q":"tttttttttttttttttttttttt…[200 chars, sha1:14c7c303]"}]
+
+■ p1.092  /drop tts = 199×"a" + 😂 (truncation at 200 splits the emoji) — by carol
+    ~ ix.carol[1].content: "⚠️ Internal error. Try again."  ⟶  "✅ Drop envoyé sur **alice** !"
+    ~ ws: (absent)  ⟶  {"A":[{"type":"drop","dropId":"<DROP@p1.092#1>","tts":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","ttsUrl":"https://memedrop-bot.fly.dev/tts?t…
+    ~ upstream: (absent)  ⟶  [{"tl":"fr","q":"aaaaaaaaaaaaaaaaaaaaaaaa…[199 chars, sha1:4c5da22d]"}]
+
+■ p1.096  /drop target:@alice media:[iphone.mov video/quicktime] tts:"Ça va & toi ?" effet:"shake" — by carol @G1#general
+    ~ upstream: (absent)  ⟶  [{"tl":"fr","q":"Ça va & toi ?"}]
+
+■ p1.122  /dropall tts:"coucou tout le monde" pluie:"🎉" effet:"zoom" — by alice @G1#general
+    ~ upstream: (absent)  ⟶  [{"tl":"fr","q":"coucou tout le monde"}]
+
+■ p1.123  /dropall twice in the same instant — by bob
+    ~ ix.#2 bob[1].content: "💥 Drop envoyé à **2** personnes : **alice**, **bob**"  ⟶  "⏱️ Doucement — encore 15s avant le prochain `/dropall`."
+    - ws.A[1]: {"type":"drop","dropId":"<DROP@p1.123#2>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000004/dance.gif","kind":"gif","mime":"image/gif","name":"dance.gif","size":1048576,"width":320,"height":240},"rain":null,"music":nul…
+    - ws.B[1]: {"type":"drop","dropId":"<DROP@p1.123#2>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000004/dance.gif","kind":"gif","mime":"image/gif","name":"dance.gif","size":1048576,"width":320,"height":240},"rain":null,"music":nul…
+
+■ p1.134  overlay E (erin, linked) reacts to a /dropall drop she never received
+    ~ chan: [{"ch":"G1#general","content":"😂 **erin** a réagi au drop de <@210000000000000003> !"}]  ⟶  (absent)
+
+■ p1.144  advance +15 s (lets the /dropall cooldown expire)
+    ~ ws: {"A":[{"type":"ping"}],"B":[{"type":"ping"}],"E":[{"type":"ping"}],"P":[{"type":"ping"}]}  ⟶  (absent)
+
+■ p1.209  /dropgroup name:"DUO" media:[cat.png image/png] tts:"surprise" — by carol @G1#general
+    ~ upstream: (absent)  ⟶  [{"tl":"fr","q":"surprise"}]
+
+■ p1.218  /stats — by alice @G1#general
+    ~ ix.alice[1].content: "📊 **Tes stats** : 7 drops envoyés · 18 reçus\n\n**🏆 Top droppeurs**\n🥇 **carol** — 13\n🥈 **bob** — 10\n🥉 **alice** — 7\n▫️ **frank** — 1\n\n**🎯 Top victimes**\n🥇 **alice** — 18\n🥈 **bob** — 11\n🥉 **erin** — 2"  ⟶  "📊 **Tes stats** : 7 drops envoyés · 18 reçus\n\n**🏆 Top droppeurs**\n🥇 **carol** — 14\n🥈 **bob** — 8\n🥉 **alice** — 7\n▫️ **frank** — 1\n\n**🎯 Top victimes**\n🥇 **alice** — 18\n🥈 **bob** — 10\n🥉 **erin** — 2"
+
+■ p1.219  /stats — by dave @G1#general
+    ~ ix.dave[1].content: "📊 **Tes stats** : 0 drop envoyé · 0 reçu\n\n**🏆 Top droppeurs**\n🥇 **carol** — 13\n🥈 **bob** — 10\n🥉 **alice** — 7\n▫️ **frank** — 1\n\n**🎯 Top victimes**\n🥇 **alice** — 18\n🥈 **bob** — 11\n🥉 **erin** — 2"  ⟶  "📊 **Tes stats** : 0 drop envoyé · 0 reçu\n\n**🏆 Top droppeurs**\n🥇 **carol** — 14\n🥈 **bob** — 8\n🥉 **alice** — 7\n▫️ **frank** — 1\n\n**🎯 Top victimes**\n🥇 **alice** — 18\n🥈 **bob** — 10\n🥉 **erin** — 2"
+
+■ p1.220  /link with A's extension code — by alice @G2#memes
+    - ws.A[0]: {"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true},{"id":"110000000000000002","name":"Gaming Squad","icon":null,"enabled":tru…
+    + ws.A[+1]: {"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true},{"id":"110000000000000002","name":"Gaming Squad","icon":null,"enabled":tru…
+
+■ p1.227  world: guild G1 updated with the same name (guildUpdate)
+    ~ ws: {"A":[{"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true},{"id":"110000000000000002","name":"Gaming Squad ⚡","icon":"https://c…  ⟶  (absent)
+
+■ p1.265  overlay C2 registers as alice (HMAC token) while C holds the link
+    - ws.C[0]: {"type":"unlinked","reason":"replaced"}
+    - ws.C2[0].links.guilds[1]: {"id":"110000000000000002","name":"Gaming Squad ⚡","icon":"https://cdn.discordapp.com/icons/110000000000000002/a_9a3e0000000000000000000000000002.gif?size=64","enabled":true}
+    - ws.C2[0].links.guildIds[1]: "110000000000000002"
+    + ws.C2[0].links.blocked[+0]: {"id":"210000000000000002","username":"bob"}
+    + ws.C2[0].links.blockedIds[+0]: "210000000000000002"
+    ~ ws.C2[1].code: "<CODE@p1.265#2>"  ⟶  "<CODE@p1.265#1>"
+
+■ p1.266  replaced overlay C sends unblock_user
+    ~ ws: (absent)  ⟶  {"C":[{"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true}],"guildIds":["110000000000000001"],"blocked":[],"blockedIds":[]}}],"…
+
+■ p1.268  /block user:@carol — by alice @G1#general
+    - ws.C2[0].links.guilds[1]: {"id":"110000000000000002","name":"Gaming Squad ⚡","icon":"https://cdn.discordapp.com/icons/110000000000000002/a_9a3e0000000000000000000000000002.gif?size=64","enabled":true}
+    - ws.C2[0].links.guildIds[1]: "110000000000000002"
+    ~ ws.C: (absent)  ⟶  [{"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true}],"guildIds":["110000000000000001"],"blocked":[{"id":"210000000000000003",…
+
+■ p1.269  /link with C's fresh pairing code while C2 holds the link — by alice
+    ~ ix.alice[0].content: "✅ Linked on **Les Potes**. To be reachable from other servers, run `/link` there too — your overlay shows the code."  ⟶  "✅ Added **Les Potes** to your linked sources (1 total)."
+    - ws.C[0]: {"type":"linked","user":{"id":"210000000000000001","username":"alice"},"token":"<TOKEN hmac(alice)>","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":tr…
+    + ws.C[+1]: {"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true}],"guildIds":["110000000000000001"],"blocked":[{"id":"210000000000000003","…
+    ~ ws.C2[0].type: "unlinked"  ⟶  "pairing_code"
+    ~ ws.C2[0].reason: "replaced"  ⟶  (absent)
+    ~ ws.C2[0].code: (absent)  ⟶  "<CODE@p1.269#1>"
+    ~ ws.C2[1].type: "pairing_code"  ⟶  "links_update"
+    ~ ws.C2[1].code: "<CODE@p1.269#2>"  ⟶  (absent)
+    ~ ws.C2[1].links: (absent)  ⟶  {"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true}],"guildIds":["110000000000000001"],"blocked":[{"id":"210000000000000003","username":"carol"}],"blockedIds…
+
+■ p1.274  /link with the extension code shown before /unlink — by alice
+    ~ ix.alice[0].content: "❌ The overlay for that code is no longer connected."  ⟶  "❌ Invalid or expired code. Open the overlay (it shows a fresh code) and try again."
+
+■ p1.275  /link with C's new pairing code — by alice
+    ~ ix.alice[0].content: "✅ Linked on **Les Potes**. To be reachable from other servers, run `/link` there too — your overlay shows the code."  ⟶  "⏱️ Trop de codes invalides — réessaie dans quelques minutes."
+    ~ ws: {"C":[{"type":"linked","user":{"id":"210000000000000001","username":"alice"},"token":"<TOKEN hmac(alice)>","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabl…  ⟶  (absent)
+
+■ p1.289  overlay B sends {"type":"unblock_user","userId":{"x":1}}
+    ~ ws: {"B":[{"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true}],"guildIds":["110000000000000001"],"blocked":[],"blockedIds":[]}}]}  ⟶  (absent)
+
+■ p1.296  advance to the next 30 s heartbeat
+    ~ ws: {"C":[{"type":"ping"}],"D":[{"type":"ping"}],"E":[{"type":"ping"}],"Z":[{"type":"ping"}]}  ⟶  (absent)
+
+■ p1.297  advance +30 s (second heartbeat: Z never answered)
+    ~ ws.Z[0]._closed: 1006  ⟶  (absent)
+    ~ ws.Z[0].type: (absent)  ⟶  "ping"
+
+■ p1.298  /who — by carol @G1#general
+    ~ ix.carol[1].content: "**Drop targets reachable from this server:**\n• <@210000000000000004>\n• <@210000000000000001>"  ⟶  "**Drop targets reachable from this server:**\n• <@210000000000000004>"
+
+■ p1.300  /drop to alice (reaction window probe R1) — by frank
+    ~ ix.frank[1].content: "✅ Drop envoyé sur **alice** !"  ⟶  "❌ Personne n'est atteignable depuis ce serveur. Ils doivent faire `/link` ici aussi."
+    ~ ws: {"C":[{"type":"drop","dropId":"<DROP@p1.300#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"image/png","name":"cat.png","size":48213,"width":640,"height":480},"rain":null,"music":n…  ⟶  (absent)
+
+■ p1.302  /drop to alice (reaction window probe R2) — by frank
+    ~ ix.frank[1].content: "✅ Drop envoyé sur **alice** !"  ⟶  "❌ Personne n'est atteignable depuis ce serveur. Ils doivent faire `/link` ici aussi."
+    ~ ws: {"C":[{"type":"drop","dropId":"<DROP@p1.302#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000002/photo.jpg","kind":"image","mime":"image/jpeg","name":"photo.jpg","size":91234,"width":1024,"height":768},"rain":null,"mu…  ⟶  (absent)
+
+■ p1.303  advance to 14 min after R1
+    ~ ws.C[0]._repeat: 28  ⟶  19
+    ~ ws.D[0]._repeat: 28  ⟶  19
+    ~ ws.E[0]._repeat: 28  ⟶  19
+    ~ ws.Z: (absent)  ⟶  [{"_closed":1006}]
+
+■ p1.304  overlay C reacts to R1 (14 min old)
+    ~ chan: [{"ch":"G1#general","content":"😭 **alice** a réagi au drop de <@210000000000000006> !"}]  ⟶  (absent)
+
+■ p1.305  advance to 21 min after R2
+    ~ ws.C[0]._repeat: 14  ⟶  9
+    ~ ws.D[0]._repeat: 14  ⟶  9
+    ~ ws.E[0]._repeat: 14  ⟶  9
+
+■ p1.308  advance to 1 ms before the 60-minute (clamped from 90) delayed drop
+    ~ ws.C[0]._repeat: 72  ⟶  48
+    ~ ws.D[0]._repeat: 72  ⟶  48
+    ~ ws.E[0]._repeat: 72  ⟶  48
+
+■ p1.309  advance +1 ms (clamped delayed drop due)
+    ~ ws: {"C":[{"type":"drop","dropId":"<DROP@p1.309#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000004/dance.gif","kind":"gif","mime":"image/gif","name":"dance.gif","size":1048576,"width":320,"height":240},"rain":null,"musi…  ⟶  (absent)
+
+■ p1.312  /drop to alice (blocked carol before /unlink + /link) — by carol
+    ~ ix.carol[1].content: "✅ Drop envoyé sur **alice** !"  ⟶  "❌ Personne n'est atteignable depuis ce serveur. Ils doivent faire `/link` ici aussi."
+    ~ ws: {"C":[{"type":"drop","dropId":"<DROP@p1.312#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"image/png","name":"cat.png","size":48213,"width":640,"height":480},"rain":null,"music":n…  ⟶  (absent)
+
+■ p1.313  /drop to alice — by frank
+    ~ ix.frank[1].content: "✅ Drop envoyé sur **alice** !"  ⟶  "❌ Personne n'est atteignable depuis ce serveur. Ils doivent faire `/link` ici aussi."
+    ~ ws: {"C":[{"type":"drop","dropId":"<DROP@p1.313#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"image/png","name":"cat.png","size":48213,"width":640,"height":480},"rain":null,"music":n…  ⟶  (absent)
+
+■ p1.314  overlay C reacts to frank's fresh drop
+    ~ chan: [{"ch":"G1#general","content":"🔥 **alice** a réagi au drop de <@210000000000000006> !"}]  ⟶  (absent)
+
+■ p1.315  /stats — by alice @G1#general
+    ~ ix.alice[1].content: "📊 **Tes stats** : 7 drops envoyés · 24 reçus\n\n**🏆 Top droppeurs**\n🥇 **carol** — 16\n🥈 **bob** — 11\n🥉 **alice** — 7\n▫️ **frank** — 4\n\n**🎯 Top victimes**\n🥇 **alice** — 24\n🥈 **bob** — 11\n🥉 **erin** — 2\n▫️ **dave** — 1"  ⟶  "📊 **Tes stats** : 7 drops envoyés · 19 reçus\n\n**🏆 Top droppeurs**\n🥇 **carol** — 16\n🥈 **bob** — 8\n🥉 **alice** — 7\n▫️ **frank** — 1\n\n**🎯 Top victimes**\n🥇 **alice** — 19\n🥈 **bob** — 10\n🥉 **erin** — 2\n▫️ **dave** — 1"
+
+■ p1.317  read DATA_DIR after the save debounce
+    ~ store[0].json.stats.210000000000000002.sent: 11  ⟶  8
+    ~ store[0].json.stats.210000000000000002.received: 11  ⟶  10
+    ~ store[0].json.stats.210000000000000001.received: 24  ⟶  19
+    ~ store[0].json.stats.210000000000000006.sent: 4  ⟶  1
+
+■ p1.319  send SIGINT to bot p1
+    ~ ws.C[0]._closed: 1005  ⟶  1006
+    ~ ws.D[0]._closed: 1005  ⟶  1006
+    ~ ws.E[0]._closed: 1005  ⟶  1006
+
+■ p1.320  read DATA_DIR after SIGINT
+    ~ store[0].json.stats.210000000000000002.sent: 11  ⟶  8
+    ~ store[0].json.stats.210000000000000002.received: 11  ⟶  10
+    ~ store[0].json.stats.210000000000000001.received: 24  ⟶  19
+    ~ store[0].json.stats.210000000000000006.sent: 4  ⟶  1
+
+■ p2.001  start bot p2 — restart on the same DATA_DIR, FLY_APP_NAME + RAILWAY_PUBLIC_DOMAIN set
+    - discord[0].data.intents[0]: "GuildMessages"
+
+■ p2.008  /stats — by alice @G1#general
+    ~ ix.alice[1].content: "📊 **Tes stats** : 7 drops envoyés · 24 reçus\n\n**🏆 Top droppeurs**\n🥇 **carol** — 16\n🥈 **bob** — 11\n🥉 **alice** — 7\n▫️ **frank** — 4\n\n**🎯 Top victimes**\n🥇 **alice** — 24\n🥈 **bob** — 11\n🥉 **erin** — 2\n▫️ **dave** — 1"  ⟶  "📊 **Tes stats** : 7 drops envoyés · 19 reçus\n\n**🏆 Top droppeurs**\n🥇 **carol** — 16\n🥈 **bob** — 8\n🥉 **alice** — 7\n▫️ **frank** — 1\n\n**🎯 Top victimes**\n🥇 **alice** — 19\n🥈 **bob** — 10\n🥉 **erin** — 2\n▫️ **dave** — 1"
+
+■ p2.011  /drop target:@alice tts:"après le redémarrage" media:[cat.png image/png] — by carol @G2#memes
+    ~ upstream: (absent)  ⟶  [{"tl":"fr","q":"après le redémarrage"}]
+
+■ p2.014  overlay A (linked as alice) registers as bob
+    ~ ws.B[0].type: "unlinked"  ⟶  "pairing_code"
+    ~ ws.B[0].reason: "replaced"  ⟶  (absent)
+    ~ ws.B[0].code: (absent)  ⟶  "<CODE@p2.014#1>"
+    - ws.B[1]: {"type":"pairing_code","code":"<CODE@p2.014#2>"}
+
+■ p2.016  /drop to alice after her socket re-registered as bob — by frank
+    ~ ix.frank[1].content: "✅ Drop envoyé sur **alice** !"  ⟶  "❌ Personne n'est atteignable depuis ce serveur. Ils doivent faire `/link` ici aussi."
+    ~ ws: {"A":[{"type":"drop","dropId":"<DROP@p2.016#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"image/png","name":"cat.png","size":48213,"width":640,"height":480},"rain":null,"music":n…  ⟶  (absent)
+
+■ p2.017  /status — by alice @G1#general
+    ~ ix.alice[0].content: "🟢 Linked on **Les Potes** (2 servers total)."  ⟶  "🔴 No overlay linked. Launch the app and use `/link <code>`."
+
+■ p2.020  /status after overlay A closed — by bob
+    ~ ix.bob[0].content: "🔴 No overlay linked. Launch the app and use `/link <code>`."  ⟶  "🟢 Linked on **Les Potes** (1 server total)."
+
+■ p2.021  send SIGTERM to bot p2
+    ~ ws.B[0]._closed: 1005  ⟶  1006
+
+■ p2.022  read DATA_DIR after SIGTERM
+    ~ store[0].json.stats.210000000000000002.sent: 11  ⟶  8
+    ~ store[0].json.stats.210000000000000002.received: 12  ⟶  11
+    ~ store[0].json.stats.210000000000000001.received: 26  ⟶  20
+    ~ store[0].json.stats.210000000000000006.sent: 5  ⟶  1
+
+■ p3.001  start bot p3 — store.json with favorites only, PUBLIC_BASE_URL with trailing slashes
+    - discord[0].data.intents[0]: "GuildMessages"
+
+■ p3.007  /drop target:@alice tts:"base publique" pluie:"🎈" — by carol @G1#general
+    ~ upstream: (absent)  ⟶  [{"tl":"fr","q":"base publique"}]
+
+■ p3.008  /dropall tts:"à tous" — by carol @G1#general
+    ~ upstream: (absent)  ⟶  [{"tl":"fr","q":"à tous"}]
+
+■ p3.011  /blocklist (60 entries) — by frank
+    ~ ix.frank[1].content: "**Utilisateurs bloqués :**\n• 299999999999999900 (`299999999999999900`)\n• 299999999999999901 (`299999999999999901`)\n• 299999999999999902 (`299999999999999902`)\n• 299999999999999903 (`299999999999999903`)\n• 299999999999999904 (`299999999999999904`)\n• 299999999999999905 (`299999999999999905`)\n•…  ⟶  "**Utilisateurs bloqués :**\n• 299999999999999900 (`299999999999999900`)\n• 299999999999999901 (`299999999999999901`)\n• 299999999999999902 (`299999999999999902`)\n• 299999999999999903 (`299999999999999903`)\n• 299999999999999904 (`299999999999999904`)\n• 299999999999999905 (`299999999999999905`)\n•…
+    ~ ix.frank[1].error: "DiscordAPIError[50035]"  ⟶  (absent)
+
+■ p4.001  start bot p4 — unparsable store.json, LINK_SECRET unset
+    - discord[0].data.intents[0]: "GuildMessages"
+
+■ p4.011  read DATA_DIR after the save debounce
+    + store[0].files[+1]: "store.json.corrupt-1800014484001"
+
+■ p5.001  start bot p5 — malformed HTTP request-target
+    - discord[0].data.intents[0]: "GuildMessages"
+
+■ p5.005  raw HTTP "GET //[ HTTP/1.1"
+    ~ ws: {"A":[{"_closed":1006}]}  ⟶  (absent)
+    ~ http[0].response: "<connection closed without response>"  ⟶  "HTTP/1.1 400 Bad Request"
+    ~ exit: [{"code":1,"signal":null,"unexpected":true}]  ⟶  (absent)
+
+■ p5.006  HTTP GET /health after the malformed request
+    ~ harness: ["aborted: bot p5 is not running"]  ⟶  (absent)
+    ~ http: (absent)  ⟶  [{"req":"GET /health","status":200,"content-type":"text/plain","bodyLen":19,"body":"MemeDrop bot online"}]
+
+■ p6.001  start bot p6 — interaction callbacks rejected by Discord
+    - discord[0].data.intents[0]: "GuildMessages"
+
+■ p6.008  /link code:"<CODE@p6.007#1>" — by bob @G1#general (interaction token already expired)
+    ~ ws.A: [{"_closed":1006}]  ⟶  (absent)
+    - ws.B[2]: {"_closed":1006}
+    ~ exit: [{"code":1,"signal":null,"unexpected":true}]  ⟶  (absent)
+
+■ p6.009  /status after the expired /link — by bob
+    ~ harness: ["aborted: bot p6 is not running"]  ⟶  (absent)
+    ~ ix: (absent)  ⟶  {"bob":[{"m":"reply","content":"🟢 Linked on **Les Potes** (1 server total).","ephemeral":true}]}
+
+■ p5.007  /status — by alice @G1#general
+    step only in B: {"id":"p5.007","do":"/status — by alice @G1#general","t":18084001,"ix":{"alice":[{"m":"reply","content":"🟢 Linked on **Les Potes** (1 server total).","ephemeral":true}]}}
+
+■ p5.008  stop bot p5 with SIGKILL (end of block)
+    step only in B: {"id":"p5.008","do":"stop bot p5 with SIGKILL (end of block)","t":18084001,"ws":{"A":[{"_closed":1006}]},"exit":[{"code":null,"signal":"SIGKILL"}]}
+
+■ p6.010  /status — by alice @G1#general (interaction token already expired)
+    step only in B: {"id":"p6.010","do":"/status — by alice @G1#general (interaction token already expired)","t":21684001,"ix":{"alice":[{"m":"reply","content":"🟢 Linked on **Les Potes** (1 server total).","ephemeral":true,"error":"DiscordAPIError[10062]"}]}}
+
+■ p6.011  /status after the expired /status — by alice
+    step only in B: {"id":"p6.011","do":"/status after the expired /status — by alice","t":21684001,"ix":{"alice":[{"m":"reply","content":"🟢 Linked on **Les Potes** (1 server total).","ephemeral":true}]}}
+
+■ p6.012  stop bot p6 with SIGKILL (end of block)
+    step only in B: {"id":"p6.012","do":"stop bot p6 with SIGKILL (end of block)","t":21684001,"ws":{"A":[{"_closed":1006}],"B":[{"_closed":1006}]},"exit":[{"code":null,"signal":"SIGKILL"}]}
+
+■ summary  process exits / upstream call totals
+    ~ summary.processes.p5.exit.code: 1  ⟶  null
+    ~ summary.processes.p5.exit.signal: null  ⟶  "SIGKILL"
+    ~ summary.processes.p6.exit.code: 1  ⟶  null
+    ~ summary.processes.p6.exit.signal: null  ⟶  "SIGKILL"
+    ~ summary.upstreamCalls.total: 130  ⟶  136
+    ~ summary.upstreamCalls.byProcess.p1: 130  ⟶  133
+    ~ summary.upstreamCalls.byProcess.p2: (absent)  ⟶  1
+    ~ summary.upstreamCalls.byProcess.p3: (absent)  ⟶  2
+    ~ summary.stepCount: 383  ⟶  388
+
+ℹ counters (informational)  Discord API usage (users.fetch = calls, api.* = calls that missed the cache)
+    ~ counters.p1.api.channel.send: 8  ⟶  5
+    ~ counters.p1.api.members.fetch: 9  ⟶  8
+    ~ counters.p1.channels.fetch: 9  ⟶  6
+    ~ counters.p1.members.fetch: 29  ⟶  25
+    ~ counters.p1.users.fetch: 54  ⟶  32
+    ~ counters.p2.api.users.fetch: 7  ⟶  6
+    ~ counters.p2.users.fetch: 13  ⟶  11
+    ~ counters.p3.api.users.fetch: 120  ⟶  20
+    ~ counters.p3.users.fetch: 120  ⟶  20
+    ~ counters.p5: null  ⟶  {"api.interaction.reply":1,"client.login":1}
+    ~ counters.p6: null  ⟶  {"api.interaction.deferReply":3,"api.interaction.editReply":1,"api.interaction.reply":6,"client.login":1}
+
+DIFFERENT: 70 step(s)/section(s) with 156 difference(s).

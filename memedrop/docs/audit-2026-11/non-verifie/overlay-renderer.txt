@@ -1,0 +1,179 @@
+## [?/?] drop-shadow-filter-per-frame (high,perf) overlay/src/overlay.html:57 — filter: drop-shadow on the animated .drop is recomputed every frame (bob + life-bar)
+EVIDENCE: .drop (overlay.html:57-59) has filter: drop-shadow(0 30px 60px ...) drop-shadow(0 6px 12px ...) plus an infinite drop-bob; the life-bar inside also changes every frame. A filter forces a render surface whose content changes each frame, so both Gaussian blurs are recomputed on the CPU every frame under software compositing. Measured (Playwright Chromium, --disable-gpu --disable-gpu-compositing, 1920x1080, one 700x500 image drop, 4 vCPU Xeon 2.1 GHz): 74-94 ms CPU per frame and only 12-13 fps; same drop frozen = 0 ms/s; shadow as box-shadow: 9-12 ms/frame at 60 fps. Today fx-zoom also shows no shadow until ~390 ms (discrete blur->drop-shadow flip, sampled) and fx-glitch drops it for ~720 ms.
+CHANGE: overlay.html .drop: delete the 3 `filter: drop-shadow(...)` lines. .media-box: add
+  /* Ombre peinte une seule fois dans le calque du drop (au lieu d'un filtre
+     recalculé à chaque image du flottement en rendu logiciel). Rayons ~x2
+     pour garder le rendu des anciens drop-shadow. */
+  border-radius: 14px;
+  box-shadow: 0 30px 140px rgba(0,0,0,.55), 0 6px 28px rgba(0,0,0,.4);
+Radii fitted against screenshots of the current rendering (130/26..150/30 all close, 140/28 best). img/video/svg keep their own 14px radius and #000 background, so the silhouette is the same rounded rect; avatar, close button and react bar already carry their own box-shadows. Option if a slightly tighter shadow is acceptable: the literal 60px/12px values cut the remaining per-frame cost further (measured 385 vs 568 ms CPU/s).
+BEHAVIOR: visible: near-identical shadow (mean alpha diff 1.9/255, max 31 next to the avatar); the shadow no longer pops in late during fx-zoom nor disappears during fx-glitch | CROSS: none (overlay.html is copied into the APK by syncWebAssets; on Android it also removes a per-frame GPU blur)
+RISK: Low: pure CSS; the drop layer gets larger bounds (rasterized once). Compare side by side on a real Windows box once.
+
+## [?/?] spotlight-raf-fullscreen-repaint (high,perf) overlay/src/overlay.js:358 — Spotlight rAF loop forces layout and repaints a full-screen gradient every frame
+EVIDENCE: tickSpotlight (overlay.js:358-378) runs every frame while a spotlighted drop is connected (spotlightOnDrop defaults to true on Windows): getBoundingClientRect forces style+layout, then 4 setProperty on #spotlight. drop-bob moves/rotates that rect every frame, so the values always change and the full-screen radial-gradient (overlay.html:404-416) is re-rasterized every frame. Measured with the box-shadow CSS: rAF spotlight 23-26 ms CPU/frame vs 10-12 ms with an event-driven spotlight (spotlight off: 9-11). Prototype checked: hole follows media load (ResizeObserver), drag, __mdDropCtl.move, window resize, switches to the next drop and turns off on removal.
+CHANGE: Replace spotlightRAF/tickSpotlight by:
+let spotlightKey = '';
+const spotlightRO = typeof ResizeObserver === 'function' ? new ResizeObserver(() => updateSpotlight()) : null;
+// Géométrie de mise en page : suit chargement/drag/resize, pas le flottement
+function updateSpotlight() {
+  const anchor = spotlightStack.find(a => a.isConnected);
+  if (!anchor) { spotlightEl.style.opacity = '0'; return; }
+  const drop = anchor.querySelector('.drop'); if (!drop) return;
+  const cx = anchor.offsetLeft, cy = anchor.offsetTop;
+  const rx = drop.offsetWidth / 2 + 70, ry = drop.offsetHeight / 2 + 70;
+  const key = `${cx}|${cy}|${rx}|${ry}`; if (key === spotlightKey) return;
+  spotlightKey = key; /* same 4 setProperty as today */ }
+showSpotlight: unshift; spotlightRO?.observe(drop); updateSpotlight(); opacity '1'.
+hideSpotlight: if (idx < 0) return; splice; spotlightRO?.unobserve(drop); updateSpotlight();
+Add `if (spotlightStack.length) updateSpotlight();` after the drag writes (l.92), at the end of __mdDropCtl.move (l.194) and in a window 'resize' listener. Live disable (l.904-907): `spotlightStack.length = 0; spotlightRO?.disconnect();` instead of cancelAnimationFrame (also stops a stale stack re-lighting an older drop).
+BEHAVIOR: visible (minor): the hole stays on the drop's resting position instead of following the +-6px/0.6deg bob and the entry/exit motion; it still updates on media load, drag, Android move and resize | CROSS: none (Android drag goes through __mdDropCtl.move, covered)
+RISK: Low: ResizeObserver exists since Chromium 64 (WebView >= 80) and is guarded; offset* values equal today's rect when the drop is at rest.
+
+## [?/?] exit-animations-invisible (medium,bug) overlay/src/overlay.html:381 — Exit animations never show: drops and toasts vanish instantly
+EVIDENCE: @keyframes drop-out/drop-close-out (overlay.html:381-386) and audio-out (395-397) only define `to`. When .leaving/.closing replaces the animation list, drop-in (fill forwards) is cancelled, so the implicit 0% keyframe uses the base style: .drop {opacity:0, no transform} (line 60) and .audio-toast {opacity:0}. Sampled computed opacity every frame in Chromium: 0.00 from the very first frame of .leaving, .closing and .audio-toast.leaving; the designed 380 ms fall and 220/280 ms fades are never visible. Also mousedown sets inline animationPlayState='paused' (overlay.js:119) and removeNow (810) clears dragState but not that style, so an exit started mid-drag stays paused (verified).
+CHANGE: overlay.html:
+@keyframes drop-out {
+  from { opacity: 1; transform: translate(-50%, -50%); }
+  to { ...unchanged... }
+}
+@keyframes drop-close-out {
+  from { opacity: 1; transform: translate(-50%, -50%); }
+  to { ...unchanged... }
+}
+@keyframes audio-out {
+  from { opacity: 1; transform: translate(-50%, 0); }
+  to { ...unchanged... }
+}
+overlay.js removeNow, right after `if (dragState?.anchor === anchor) dragState = null;`:
+  wrap.style.animationPlayState = '';   // un drag avait mis les animations en pause
+Verified in the prototype: opacity goes 1 -> 0 over each animation and a drop closed mid-drag animates out.
+BEHAVIOR: bugfix (visible): drops fall/fade out and audio/TTS toasts slide out as the CSS comments describe | CROSS: none (Android shim already drops .leaving/.closing drops from the touch rects)
+RISK: Very low: the start pose jumps at most 6px/0.6deg (bob), more only if closed mid-entry; existing timers (220/400/300 ms) already cover the durations.
+
+## [?/?] spotlight-veil-above-drop (medium,bug) overlay/src/overlay.html:407 — Spotlight veil is painted over the meme and darkens its edges
+EVIDENCE: #spotlight has z-index:1 (overlay.html:407) while #stage, which holds the drops, is z-index:auto, so the veil is painted ON TOP of the meme. Its gradient is transparent only inside 35% of radii (w/2+70, h/2+70), so the meme's edges and corners get darkened. Pixel test in Chromium (700x500 grey image, value 200): spotlight on -> 30px inside the top-left corner = 44 (~78% black), 30px inside the left edge = 101, centre 200. spotlightOnDrop defaults to true on Windows, so every meme is vignetted, contrary to the comment 'un trou transparent centré sur le drop'. With z-index:0 those pixels stay 200 (veil painted before #stage in DOM order).
+CHANGE: overlay.html #spotlight: replace `z-index: 1;` by
+  z-index: 0;   /* sous #stage (ordre du DOM) : le voile entoure le mème sans l'assombrir */
+Rain (z 9999) and audio toasts (z 999) stay above. Before/after screenshots: scratch overlay-r/spot-test.png vs spot-test-z0.png.
+BEHAVIOR: bugfix (visible): the meme is no longer darkened at its edges/corners; the darkening around it is unchanged | CROSS: none
+RISK: Very low (one CSS value); trivially revertible if the vignette was intended.
+
+## [?/?] audiocontext-never-suspended (medium,perf) overlay/src/overlay.js:135 — Shared AudioContext stays running forever after the first pop
+EVIDENCE: popCtx (overlay.js:135-157) is created at the first pop and stays 'running' for the life of the page (only recreated if closed). A running AudioContext keeps the WebAudio render thread ticking even when silent. Measured in headless Chromium after one pop, page otherwise idle: ~14 ms CPU/s and ~230 voluntary context switches/s, indefinitely; after popCtx.suspend(): 0 ms/s and ~2/s. The Windows overlay renderer lives 24/7 and soundOnArrival defaults to true, so this runs from the first drop until the app quits (on Android until the WebView is destroyed after 90 s idle), and keeps an audio output stream open.
+CHANGE: let popIdleTimer = null;
+function playPop(volume) { try {
+  ...create popCtx as today...
+  const ctx = popCtx;
+  clearTimeout(popIdleTimer);
+  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+  ...oscillator/gain exactly as today...
+  // Un AudioContext 'running' fait tourner le thread audio en continu, même
+  // muet : on le met en pause une fois le pop joué.
+  popIdleTimer = setTimeout(() => { popCtx?.suspend().catch(() => {}); }, 1000);
+} catch {} }
+Scheduling at ctx.currentTime while suspended is fine: events start once resume() completes (prototype: context time advanced 0.42 s during a second pop, then back to 'suspended').
+BEHAVIOR: none (the pop may start a few tens of ms later after a resume) | CROSS: none
+RISK: Low: both hosts already allow audio without a gesture (Electron default policy, WebView mediaPlaybackRequiresUserGesture=false), which the current code relies on.
+
+## [?/?] audio-drop-no-deadline-slot-leak (medium,bug) overlay/src/overlay.js:536 — Audio drop that never loads keeps its toast and slot forever
+EVIDENCE: playAudioDrop frees its slot only through 'ended', 'error', play().catch or timeupdate >= 10 s (overlay.js:536-541). A URL that never answers or a stalled connection raises none of them (play() stays pending), so the toast stays and `active` is never decremented. Videos have a 15 s guard (693-695) and images a timer; audio has nothing. Verified with a request that never responds: 6 audio drops -> after 40 s still 6 toasts, active=6, and a later image drop stays in dropQueue forever (MAX_CONCURRENT reached).
+CHANGE: In playAudioDrop, before cleanup(): `let deadline = null;`; in cleanup() after `removed = true;`: `clearTimeout(deadline);`; after the listeners:
+  // Filet de sécurité : lien qui ne répond jamais / réseau coupé -> ni
+  // 'ended' ni 'error' : le toast et le slot restaient bloqués.
+  deadline = setTimeout(cleanup, (AUDIO_HARD_CAP_SECONDS + 15) * 1000);
+Prototype: at 27 s the 6 toasts are gone, active is back to 1 and the queued drop is displayed.
+BEHAVIOR: bugfix: a stuck audio toast disappears after 25 s and its slot is freed | CROSS: none
+RISK: Very low: normal audio drops end at <= 10 s.
+
+## [?/?] media-not-released (medium,perf) overlay/src/overlay.js:807 — Removed media are only paused: a closed video keeps downloading
+EVIDENCE: On removal, videos (overlay.js:807), music (813-816) and audio drops (523) are only paused, and the TTS <audio> (300-305) is never released. A paused element keeps src, decoder, buffers and its HTTP connection until GC, which can be late in a mostly idle renderer. Verified with a throttled local server: a video drop closed 1.5 s after arrival kept downloading the whole file afterwards (464 KB -> 2140 KB, connection still open 6 s later); with src removed + load() the client closed the connection 220 ms after the close. On Android that means mobile data and radio time for every early close, 15 s load timeout or skipped video.
+CHANGE: Add near applyVolume:
+// Libère tout de suite décodeur, tampon et connexion : un élément seulement
+// mis en pause les garde jusqu'au passage du GC.
+function releaseMedia(m) {
+  if (!m) return;
+  try { m.pause(); m.removeAttribute('src'); m.load(); } catch {}
+}
+removeNow: `releaseMedia(musicAudio)` instead of musicAudio.pause(); in its setTimeout right after anchor.remove(): `if (isVideo) releaseMedia(el);` (after the exit animation so the last frame stays visible). playAudioDrop cleanup: releaseMedia(a) instead of a.pause(). speakTTS: `a.addEventListener('ended', () => releaseMedia(a), { once: true });`. Use removeAttribute+load(), not src='' (that fires 'error'). The pause() calls before removeNow (609, 684, 848, 860) then become redundant.
+BEHAVIOR: none | CROSS: none
+RISK: Low: load() without src only fires 'emptied' and a timeupdate at t=0; existing error/ended handlers are guarded by removed flags and the cap checks never trigger at 0.
+
+## [?/?] fitcaption-measures-transformed-width (low,bug) overlay/src/overlay.js:438 — Caption size computed from the transformed width during the entry animation
+EVIDENCE: fitCaption uses mediaEl.getBoundingClientRect().width (overlay.js:438), which includes the .drop entry transform (drop-in starts at scale(.6) rotate(-8deg), fx-zoom at scale(3.2), fx-tornade at scale(.05)). When the media is cached or loads fast (replays, same meme twice, fast CDN) the measure happens mid-animation. Verified with a cached 300x400 image (expected 27px): 19px with no effect, 40px with zoom, 13px with tornade; 200x300 image (expected 18px): 13px, zoom 40px.
+CHANGE: overlay.js:438 -> `const w = mediaEl.offsetWidth;   // largeur de mise en page (hors transform d'entrée)`. Same 0-before-load semantics, so the load/loadedmetadata/rAF retry logic is unchanged. Prototype: 27px/18px in every effect case.
+BEHAVIOR: bugfix (visible): caption size is consistently 9% of the displayed media width whatever the load timing or entry effect | CROSS: none
+RISK: None.
+
+## [?/?] finddropat-order-and-hover-churn (low,bug) overlay/src/overlay.js:40 — Hover/drag picks the bottom drop; hover class toggled on every mousemove
+EVIDENCE: findDropAt (overlay.js:40-51) walks stage.querySelectorAll('.anchor') in DOM order and returns the first hit, i.e. the OLDEST drop, while newer drops paint on top: with two overlapping drops the hovered/dragged one is the bottom one (verified; elementFromPoint gives the top one). The mousemove handler then tests `hit !== hoveredDrop` (line 100), but findDropAt returns a fresh object every call, so it is always true: each mousemove over the same drop removes and re-adds .hover (verified: 20 class mutations for 10 moves). Each call also costs ~200 us median with 6 drops (getBoundingClientRect forces an animation style update).
+CHANGE: function findDropAt(x, y) {
+  // Du plus récent (peint au-dessus) au plus ancien
+  for (let i = stage.children.length - 1; i >= 0; i--) {
+    const anchor = stage.children[i];
+    ...body unchanged...
+  }
+  return null;
+}
+Line 100: `} else if (hit.drop !== hoveredDrop?.drop) {`. Optional: keep per-drop layout rects (anchor.offsetLeft/Top +- drop.offsetWidth/Height / 2, refreshed by the same hooks as the spotlight fix) and test against them: cached lookup measured ~0 us vs ~200 us; the +-6px bob stays inside the 14px margin.
+BEHAVIOR: bugfix (visible): with overlapping drops the visible top drop is the one hovered and dragged | CROSS: none
+RISK: Very low (#stage only contains anchors).
+
+## [?/?] android-shim-interval-always-on (low,perf) android/app/src/main/assets/android-shim.js:88 — Android shim polls drop rects every 120 ms even with no drop on screen
+EVIDENCE: setInterval(reportRects, 120) (android-shim.js:88) starts at page load and runs as long as the overlay WebView exists (OverlayController keeps it 90 s after the last drop, indefinitely while drops keep coming): 8.3 wakeups/s doing querySelectorAll + JSON.stringify with nothing on screen. overlay.js already calls window.memedrop.watchCursor() when the first visual drop appears and unwatchCursor() after the last one is removed (overlay.js:338-348); the shim maps both to noop (lines 18-19). Verified with a mocked MDOverlay: idle ticks 17 per 2 s today vs 0, rects still sent while a drop is shown and an empty list after it leaves.
+CHANGE: Declare `let rectTimer = null;` next to `let settings`, then in window.memedrop:
+    // overlay.js appelle watch/unwatch au 1er drop visuel / après le dernier :
+    // on ne mesure les drops que pendant qu'il y en a à l'écran.
+    watchCursor() { if (!rectTimer) rectTimer = setInterval(reportRects, 120); },
+    unwatchCursor() {
+      reportRects();   // liste vide -> le natif retire les zones tactiles
+      clearInterval(rectTimer);
+      rectTimer = null;
+    },
+and delete the trailing `setInterval(reportRects, 120);`. reportRects is a hoisted function declaration.
+BEHAVIOR: none (only the useless empty-list message at page load disappears; native starts with no handles) | CROSS: none (relies on overlay.js onVisualDropAdded/Removed, unchanged; MDOverlay.rects JSON format unchanged)
+RISK: Low.
+
+## [?/?] forward-true-global-mouse-hook (medium,perf) overlay/main.js:199 — setIgnoreMouseEvents forward:true keeps a global low-level mouse hook that the renderer never uses
+EVIDENCE: main.js:199 and :797 keep the overlay in setIgnoreMouseEvents(true, { forward: true }) permanently. On Windows Electron implements forward with a global WH_MOUSE_LL hook on the browser UI thread and re-posts each WM_MOUSEMOVE to the overlay, which dispatches a DOM mousemove to the renderer (native_window_views_win.cc SetForwardMouseMessages; ~80% sure unchanged in Electron 33). The renderer never uses those events: overlay.js:84-85 returns at once when !inCapture, hover detection uses the polled overlay:cursor IPC, and in capture mode setIgnoreMouseEvents(false) delivers events normally. So every mouse event of the game (1000 Hz gaming mice) transits through Electron 24/7 for nothing.
+CHANGE: main.js:199 -> `overlayWin.setIgnoreMouseEvents(true);` and main.js:797 -> `overlayWin.setIgnoreMouseEvents(true);` (cursor polling unchanged). Update the comments that mention forward:true (overlay.html:213-215, main.js:757-763). Manual check on Windows: hover -> capture -> drag/close/react still work (they rely only on the polled cursor and on normal events while capturing).
+BEHAVIOR: none (renderer logic unchanged; :hover state is refreshed by the real mousemove that triggers exitCapture) | CROSS: overlay/src/overlay.js (no change needed: its DOM mousemove handler is gated on inCapture); outside the renderer files, report here because the renderer contract is what makes it safe
+RISK: Low-medium: Electron-internals premise (~80% confidence) and needs one manual test on Windows.
+
+## [?/?] live-settings-lost-for-videos-and-queue (low,bug) overlay/src/overlay.js:663 — Live settings changes are reverted or ignored for playing videos and queued drops
+EVIDENCE: (a) The video's 'canplay'/'play' handlers (overlay.js:680-681) re-apply the drop's const initialVideoVol (663); 'canplay' fires again after every rebuffer, so a live volume change (880) is silently reverted. (b) videoMaxSec is const (647): rescheduleFor (832-855) re-times the removal, but timeupdate (682-687) and a not-yet-fired loadedmetadata (670-679) still use the old cap, so raising 'durée max vidéo' live never lets a playing video run longer. (c) Payloads waiting in dropQueue keep the settings snapshot from their arrival, so volume/durations/opacity/spotlight changed meanwhile are ignored when they are finally shown.
+CHANGE: (a) video branch: `el._mdVol = settings?.volume ?? 0.75;   // volume courant, suivi en direct` + `const reapplyVol = () => applyVolume(el, el._mdVol);` and use reapplyVol instead of the 4 applyVolume(el, initialVideoVol) calls; onSettingsUpdate: `for (const p of livePlayables) { p._mdVol = settings.volume; applyVolume(p, settings.volume); }`. (b) `let videoMaxSec = ...` and at the top of rescheduleFor: `if (dropMeta.kind === 'video') videoMaxSec = newCapSec;`. (c) first line of the onSettingsUpdate callback: `for (const q of dropQueue) q.settings = { ...q.settings, ...settings };   // la file joue avec les réglages à jour` (Windows sends only changed keys, Android the full set: both merge correctly).
+BEHAVIOR: bugfix: live volume/duration changes stick for playing videos and apply to queued drops | CROSS: none
+RISK: Low.
+
+## [?/?] windows-drop-offscreen (low,bug) overlay/src/overlay.js:575 — On Windows a large meme can spawn partly off-screen with its close button unreachable
+EVIDENCE: chooseSpot keeps the centre within 14-86% x / 20-80% y, but media can be 38vw x 50vh (plus the avatar ~31px above), so a drop can overflow by ~5vw/5vh. clampCenter/__mdDropCtl.fit (overlay.js:177-200) only run on Android, where android-shim.js calls fit every 120 ms (fix 287abbd 'croix accessible'). Verified at 1920x1080 with a 1600x1200 image: Math.random=0 -> media at (-93,-61) and close button at y -63..-45 (off-screen); Math.random~1 -> close button at x 1999..2017.
+CHANGE: In renderDrop, in the video and image branches after mediaBox.appendChild(el):
+  // Taille connue -> drop (croix comprise) entièrement à l'écran, comme sur Android
+  el.addEventListener(isVideo ? 'loadedmetadata' : 'load', () => window.__mdDropCtl.fit(dropKey), { once: true });
+fit() -> move() -> clampCenter() already exist and are idempotent; with the spotlight fix move() also refreshes the spotlight.
+BEHAVIOR: bugfix (visible): a large meme near an edge shifts inward once its size is known (same as the APK) | CROSS: none (Android shim keeps its periodic fit)
+RISK: Low.
+
+## [?/?] shake-not-restarted (low,bug) overlay/src/overlay.js:590 — Second 'shake' drop within 700 ms is cut short or lost
+EVIDENCE: effect 'shake' (overlay.js:590-592) adds body.fx-shake and removes it 700 ms later with an untracked timer. If a second shake drop arrives within 700 ms, classList.add is a no-op (the animation does not restart) and the first timer removes the class early, so the second shake is truncated or lost.
+CHANGE: let shakeTimer = null;   (module level)
+if (effect === 'shake') {
+  document.body.classList.remove('fx-shake');
+  void document.body.offsetWidth;   // relance l'animation si une secousse est en cours
+  document.body.classList.add('fx-shake');
+  clearTimeout(shakeTimer);
+  shakeTimer = setTimeout(() => document.body.classList.remove('fx-shake'), 700);
+}
+BEHAVIOR: bugfix (visible): every shake drop shakes fully | CROSS: none
+RISK: Very low.
+
+## [?/?] rain-unbounded (low,security) overlay/src/overlay.js:400 — Emoji rain bypasses the concurrency/queue limits (spam vector)
+EVIDENCE: MAX_CONCURRENT/MAX_QUEUE only gate media drops (overlay.js:552-555). Rain-only drops (561-566) and the rain of every media drop call renderRain without any bound: 38 elements with will-change (38 composited layers) and 38 timers per rain, alive ~5.3 s. Several friends using /drop pluie (bot cooldown 2 s per sender) or /dropall can stack hundreds of layers on one target's gaming PC or phone, the very spam MAX_QUEUE was added against.
+CHANGE: const MAX_RAINS = 4;   // pluies simultanées max (anti-spam : 38 calques chacune)
+let liveRains = 0;
+In renderRain after the pool check: `if (liveRains >= MAX_RAINS) return;` `liveRains++;` `const batch = []; let end = 0;`; in the loop push each el and `end = Math.max(end, delay + dur);` instead of the per-element setTimeout; after the loop:
+  setTimeout(() => { for (const e of batch) e.remove(); liveRains--; }, end + 100);
+BEHAVIOR: visible only under spam: a 5th simultaneous rain is skipped (the drop itself still shows) | CROSS: none
+RISK: Very low.
+

@@ -1,0 +1,1550 @@
+
+p1.001 [t=0] start bot p1 — fresh DATA_DIR, LINK_SECRET set
+   discord: {"what":"new Client","data":{"intents":["GuildMessages","Guilds"],"partials":[]}}
+   discord: {"what":"login"}
+
+p1.002 [t=0] HTTP GET /health
+   http: {"req":"GET /health","status":200,"content-type":"text/plain","bodyLen":19,"body":"MemeDrop bot online"}
+
+p1.003 [t=0] HTTP GET /
+   http: {"req":"GET /","status":200,"content-type":"text/plain","bodyLen":19,"body":"MemeDrop bot online"}
+
+p1.004 [t=0] HTTP GET /health?probe=1
+   http: {"req":"GET /health?probe=1","status":200,"content-type":"text/plain","bodyLen":19,"body":"MemeDrop bot online"}
+
+p1.005 [t=0] HTTP GET /health/
+   http: {"req":"GET /health/","status":404,"bodyLen":0}
+
+p1.006 [t=0] HTTP GET /nope
+   http: {"req":"GET /nope","status":404,"bodyLen":0}
+
+p1.007 [t=0] HTTP HEAD /health
+   http: {"req":"HEAD /health","status":200,"content-type":"text/plain","bodyLen":0}
+
+p1.008 [t=0] HTTP POST /health
+   http: {"req":"POST /health","status":200,"content-type":"text/plain","bodyLen":19,"body":"MemeDrop bot online"}
+
+p1.009 [t=0] HTTP POST /tts?text=Bonjour
+   http: {"req":"POST /tts?text=Bonjour","status":404,"bodyLen":0}
+
+p1.010 [t=0] HTTP HEAD /tts?text=Bonjour
+   http: {"req":"HEAD /tts?text=Bonjour","status":404,"bodyLen":0}
+
+p1.011 [t=0] HTTP GET /tts
+   http: {"req":"GET /tts","status":400,"content-type":"text/plain","bodyLen":12,"body":"missing text"}
+
+p1.012 [t=0] HTTP GET /tts?text=
+   http: {"req":"GET /tts?text=","status":400,"content-type":"text/plain","bodyLen":12,"body":"missing text"}
+
+p1.013 [t=0] HTTP GET /tts?text=%20%20%20
+   http: {"req":"GET /tts?text=%20%20%20","status":400,"content-type":"text/plain","bodyLen":12,"body":"missing text"}
+
+p1.014 [t=0] HTTP GET /tts?text=Bonjour
+   http: {"req":"GET /tts?text=Bonjour","status":200,"content-type":"audio/mpeg","content-length":"48","cache-control":"public, max-age=86400","bodyLen":48,"body":"audio<fr|Bonjour>"}
+   upstream: {"tl":"fr","q":"Bonjour"}
+
+p1.015 [t=0] HTTP GET /tts?text=Bonjour again (cache)
+   http: {"req":"GET /tts?text=Bonjour","status":200,"content-type":"audio/mpeg","content-length":"48","cache-control":"public, max-age=86400","bodyLen":48,"body":"audio<fr|Bonjour>"}
+
+p1.016 [t=0] HTTP GET /tts?text=%20Bonjour%20
+   http: {"req":"GET /tts?text=%20Bonjour%20","status":200,"content-type":"audio/mpeg","content-length":"48","cache-control":"public, max-age=86400","bodyLen":48,"body":"audio<fr|Bonjour>"}
+
+p1.017 [t=0] HTTP GET /tts?text=Bonjour&lang=en
+   http: {"req":"GET /tts?text=Bonjour&lang=en","status":200,"content-type":"audio/mpeg","content-length":"48","cache-control":"public, max-age=86400","bodyLen":48,"body":"audio<en|Bonjour>"}
+   upstream: {"tl":"en","q":"Bonjour"}
+
+p1.018 [t=0] HTTP GET /tts?text=Bonjour&lang=EN
+   http: {"req":"GET /tts?text=Bonjour&lang=EN","status":200,"content-type":"audio/mpeg","content-length":"48","cache-control":"public, max-age=86400","bodyLen":48,"body":"audio<fr|Bonjour>"}
+
+p1.019 [t=0] HTTP GET /tts?text=Bonjour&lang=pt-BR
+   http: {"req":"GET /tts?text=Bonjour&lang=pt-BR","status":200,"content-type":"audio/mpeg","content-length":"51","cache-control":"public, max-age=86400","bodyLen":51,"body":"audio<pt-BR|Bonjour>"}
+   upstream: {"tl":"pt-BR","q":"Bonjour"}
+
+p1.020 [t=0] HTTP GET /tts?text=Bonjour&lang=pt-br
+   http: {"req":"GET /tts?text=Bonjour&lang=pt-br","status":200,"content-type":"audio/mpeg","content-length":"48","cache-control":"public, max-age=86400","bodyLen":48,"body":"audio<fr|Bonjour>"}
+
+p1.021 [t=0] HTTP GET /tts?text=Bonjour&lang=../x
+   http: {"req":"GET /tts?text=Bonjour&lang=../x","status":200,"content-type":"audio/mpeg","content-length":"48","cache-control":"public, max-age=86400","bodyLen":48,"body":"audio<fr|Bonjour>"}
+
+p1.022 [t=0] HTTP GET /tts?text=aaaaaaaaaaaaaa…[260 chars, sha1:92bf6479]
+   http: {"req":"GET /tts?text=aaaaaaaaaaaaaa…[260 chars, sha1:92bf6479]","status":200,"content-type":"audio/mpeg","content-length":"241","cache-control":"public, max-age=86400","bodyLen":241,"body":"audio<fr|aaaaaaaaaaaaaaaaaaaaa…[203 chars, sha1:fd9db188]>"}
+   upstream: {"tl":"fr","q":"aaaaaaaaaaaaaaaaaaaaaaaa…[200 chars, sha1:e61cfffe]"}
+
+p1.023 [t=0] HTTP GET /tts?text=aaaaaaaaaaaaaa…[210 chars, sha1:7b4d91b8]
+   http: {"req":"GET /tts?text=aaaaaaaaaaaaaa…[210 chars, sha1:7b4d91b8]","status":200,"content-type":"audio/mpeg","content-length":"241","cache-control":"public, max-age=86400","bodyLen":241,"body":"audio<fr|aaaaaaaaaaaaaaaaaaaaa…[203 chars, sha1:fd9db188]>"}
+
+p1.024 [t=0] HTTP GET /tts?text=%C3%87a%20va%20%3F%20%F0%9F%98%82%20%26%20co
+   http: {"req":"GET /tts?text=%C3%87a%20va%20%3F%20%F0%9F%98%82%20%26%20co","status":200,"content-type":"audio/mpeg","content-length":"59","cache-control":"public, max-age=86400","bodyLen":59,"body":"audio<fr|Ça va ? 😂 & co>"}
+   upstream: {"tl":"fr","q":"Ça va ? 😂 & co"}
+
+p1.025 [t=0] HTTP GET /tts?text=bbbbbbbbbbbbbb…[221 chars, sha1:2c1048e1]
+   http: {"req":"GET /tts?text=bbbbbbbbbbbbbb…[221 chars, sha1:2c1048e1]","status":502,"content-type":"text/plain","bodyLen":10,"body":"tts failed"}
+
+p1.026 [t=0] HTTP GET /tts?text=cinq%20requ%C3%AAtes%20en%20m%C3%AAme%20temps x5 concurrently
+   http: {"req":"GET /tts?text=cinq%20requ%C3%AAtes%20en%20m%C3%AAme%20temps","status":200,"xff":"198.51.100.20","content-type":"audio/mpeg","content-length":"70","cache-control":"public, max-age=86400","bodyLen":70,"body":"audio<fr|cinq requêtes en même temps>","count…
+   upstream: {"tl":"fr","q":"cinq requêtes en même temps"}
+   upstream: {"tl":"fr","q":"cinq requêtes en même temps"}
+   upstream: {"tl":"fr","q":"cinq requêtes en même temps"}
+   upstream: {"tl":"fr","q":"cinq requêtes en même temps"}
+   upstream: {"tl":"fr","q":"cinq requêtes en même temps"}
+
+p1.027 [t=0] HTTP GET /tts?text=cinq%20requ%C3%AAtes%20en%20m%C3%AAme%20temps [XFF 198.51.100.20]
+   http: {"req":"GET /tts?text=cinq%20requ%C3%AAtes%20en%20m%C3%AAme%20temps","status":200,"xff":"198.51.100.20","content-type":"audio/mpeg","content-length":"70","cache-control":"public, max-age=86400","bodyLen":70,"body":"audio<fr|cinq requêtes en même temps>"}
+
+p1.028 [t=0] HTTP GET /tts?text=boom%20%5B503%5D
+   http: {"req":"GET /tts?text=boom%20%5B503%5D","status":502,"content-type":"text/plain","bodyLen":10,"body":"tts failed"}
+   upstream: {"tl":"fr","q":"boom [503]"}
+
+p1.029 [t=0] HTTP GET /tts?text=boom [503] again (failure not cached?)
+   http: {"req":"GET /tts?text=boom%20%5B503%5D","status":502,"content-type":"text/plain","bodyLen":10,"body":"tts failed"}
+   upstream: {"tl":"fr","q":"boom [503]"}
+
+p1.030 [t=0] HTTP GET /tts?text=cut%20%5Bneterr%5D
+   http: {"req":"GET /tts?text=cut%20%5Bneterr%5D","status":502,"content-type":"text/plain","bodyLen":10,"body":"tts failed"}
+   upstream: {"tl":"fr","q":"cut [neterr]"}
+
+p1.031 [t=0] 31 distinct uncached /tts texts from 198.51.100.7
+   http: {"req":"GET /tts?text=rl-01","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-01>"}
+   http: {"req":"GET /tts?text=rl-02","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-02>"}
+   http: {"req":"GET /tts?text=rl-03","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-03>"}
+   http: {"req":"GET /tts?text=rl-04","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-04>"}
+   http: {"req":"GET /tts?text=rl-05","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-05>"}
+   http: {"req":"GET /tts?text=rl-06","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-06>"}
+   http: {"req":"GET /tts?text=rl-07","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-07>"}
+   http: {"req":"GET /tts?text=rl-08","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-08>"}
+   http: {"req":"GET /tts?text=rl-09","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-09>"}
+   http: {"req":"GET /tts?text=rl-10","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-10>"}
+   http: {"req":"GET /tts?text=rl-11","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-11>"}
+   http: {"req":"GET /tts?text=rl-12","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-12>"}
+   http: {"req":"GET /tts?text=rl-13","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-13>"}
+   http: {"req":"GET /tts?text=rl-14","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-14>"}
+   http: {"req":"GET /tts?text=rl-15","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-15>"}
+   http: {"req":"GET /tts?text=rl-16","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-16>"}
+   http: {"req":"GET /tts?text=rl-17","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-17>"}
+   http: {"req":"GET /tts?text=rl-18","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-18>"}
+   http: {"req":"GET /tts?text=rl-19","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-19>"}
+   http: {"req":"GET /tts?text=rl-20","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-20>"}
+   http: {"req":"GET /tts?text=rl-21","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-21>"}
+   http: {"req":"GET /tts?text=rl-22","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-22>"}
+   http: {"req":"GET /tts?text=rl-23","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-23>"}
+   http: {"req":"GET /tts?text=rl-24","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-24>"}
+   http: {"req":"GET /tts?text=rl-25","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-25>"}
+   http: {"req":"GET /tts?text=rl-26","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-26>"}
+   http: {"req":"GET /tts?text=rl-27","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-27>"}
+   http: {"req":"GET /tts?text=rl-28","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-28>"}
+   http: {"req":"GET /tts?text=rl-29","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-29>"}
+   http: {"req":"GET /tts?text=rl-30","xff":"198.51.100.7","status":200,"body":"audio<fr|rl-30>"}
+   http: {"req":"GET /tts?text=rl-31","xff":"198.51.100.7","status":429,"body":"too many requests"}
+   upstream: {"tl":"fr","q":"rl-01"}
+   upstream: {"tl":"fr","q":"rl-02"}
+   upstream: {"tl":"fr","q":"rl-03"}
+   upstream: {"tl":"fr","q":"rl-04"}
+   upstream: {"tl":"fr","q":"rl-05"}
+   upstream: {"tl":"fr","q":"rl-06"}
+   upstream: {"tl":"fr","q":"rl-07"}
+   upstream: {"tl":"fr","q":"rl-08"}
+   upstream: {"tl":"fr","q":"rl-09"}
+   upstream: {"tl":"fr","q":"rl-10"}
+   upstream: {"tl":"fr","q":"rl-11"}
+   upstream: {"tl":"fr","q":"rl-12"}
+   upstream: {"tl":"fr","q":"rl-13"}
+   upstream: {"tl":"fr","q":"rl-14"}
+   upstream: {"tl":"fr","q":"rl-15"}
+   upstream: {"tl":"fr","q":"rl-16"}
+   upstream: {"tl":"fr","q":"rl-17"}
+   upstream: {"tl":"fr","q":"rl-18"}
+   upstream: {"tl":"fr","q":"rl-19"}
+   upstream: {"tl":"fr","q":"rl-20"}
+   upstream: {"tl":"fr","q":"rl-21"}
+   upstream: {"tl":"fr","q":"rl-22"}
+   upstream: {"tl":"fr","q":"rl-23"}
+   upstream: {"tl":"fr","q":"rl-24"}
+   upstream: {"tl":"fr","q":"rl-25"}
+   upstream: {"tl":"fr","q":"rl-26"}
+   upstream: {"tl":"fr","q":"rl-27"}
+   upstream: {"tl":"fr","q":"rl-28"}
+   upstream: {"tl":"fr","q":"rl-29"}
+   upstream: {"tl":"fr","q":"rl-30"}
+
+p1.032 [t=0] HTTP GET cached text rl-01 from the rate-limited IP
+   http: {"req":"GET /tts?text=rl-01","status":200,"xff":"198.51.100.7","content-type":"audio/mpeg","content-length":"46","cache-control":"public, max-age=86400","bodyLen":46,"body":"audio<fr|rl-01>"}
+
+p1.033 [t=0] HTTP GET /tts?text=rl-32 [XFF 198.51.100.7]
+   http: {"req":"GET /tts?text=rl-32","status":429,"xff":"198.51.100.7","content-type":"text/plain","bodyLen":17,"body":"too many requests"}
+
+p1.034 [t=0] HTTP GET /tts?text=other-ip [XFF 198.51.100.8]
+   http: {"req":"GET /tts?text=other-ip","status":200,"xff":"198.51.100.8","content-type":"audio/mpeg","content-length":"49","cache-control":"public, max-age=86400","bodyLen":49,"body":"audio<fr|other-ip>"}
+   upstream: {"tl":"fr","q":"other-ip"}
+
+p1.035 [t=0] HTTP GET /tts?text=rl-33 [XFF 198.51.100.7, 10.0.0.1]
+   http: {"req":"GET /tts?text=rl-33","status":429,"xff":"198.51.100.7, 10.0.0.1","content-type":"text/plain","bodyLen":17,"body":"too many requests"}
+
+p1.036 [t=0] HTTP GET /tts?text=rl-34 [XFF 10.0.0.1, 198.51.100.7]
+   http: {"req":"GET /tts?text=rl-34","status":200,"xff":"10.0.0.1, 198.51.100.7","content-type":"audio/mpeg","content-length":"46","cache-control":"public, max-age=86400","bodyLen":46,"body":"audio<fr|rl-34>"}
+   upstream: {"tl":"fr","q":"rl-34"}
+
+p1.037 [t=0] 31 uncached /tts texts, each with a different spoofed X-Forwarded-For
+   http: {"req":"GET /tts?text=spoof-01","xff":"203.0.113.1","status":200,"body":"audio<fr|spoof-01>"}
+   http: {"req":"GET /tts?text=spoof-02","xff":"203.0.113.2","status":200,"body":"audio<fr|spoof-02>"}
+   http: {"req":"GET /tts?text=spoof-03","xff":"203.0.113.3","status":200,"body":"audio<fr|spoof-03>"}
+   http: {"req":"GET /tts?text=spoof-04","xff":"203.0.113.4","status":200,"body":"audio<fr|spoof-04>"}
+   http: {"req":"GET /tts?text=spoof-05","xff":"203.0.113.5","status":200,"body":"audio<fr|spoof-05>"}
+   http: {"req":"GET /tts?text=spoof-06","xff":"203.0.113.6","status":200,"body":"audio<fr|spoof-06>"}
+   http: {"req":"GET /tts?text=spoof-07","xff":"203.0.113.7","status":200,"body":"audio<fr|spoof-07>"}
+   http: {"req":"GET /tts?text=spoof-08","xff":"203.0.113.8","status":200,"body":"audio<fr|spoof-08>"}
+   http: {"req":"GET /tts?text=spoof-09","xff":"203.0.113.9","status":200,"body":"audio<fr|spoof-09>"}
+   http: {"req":"GET /tts?text=spoof-10","xff":"203.0.113.10","status":200,"body":"audio<fr|spoof-10>"}
+   http: {"req":"GET /tts?text=spoof-11","xff":"203.0.113.11","status":200,"body":"audio<fr|spoof-11>"}
+   http: {"req":"GET /tts?text=spoof-12","xff":"203.0.113.12","status":200,"body":"audio<fr|spoof-12>"}
+   http: {"req":"GET /tts?text=spoof-13","xff":"203.0.113.13","status":200,"body":"audio<fr|spoof-13>"}
+   http: {"req":"GET /tts?text=spoof-14","xff":"203.0.113.14","status":200,"body":"audio<fr|spoof-14>"}
+   http: {"req":"GET /tts?text=spoof-15","xff":"203.0.113.15","status":200,"body":"audio<fr|spoof-15>"}
+   http: {"req":"GET /tts?text=spoof-16","xff":"203.0.113.16","status":200,"body":"audio<fr|spoof-16>"}
+   http: {"req":"GET /tts?text=spoof-17","xff":"203.0.113.17","status":200,"body":"audio<fr|spoof-17>"}
+   http: {"req":"GET /tts?text=spoof-18","xff":"203.0.113.18","status":200,"body":"audio<fr|spoof-18>"}
+   http: {"req":"GET /tts?text=spoof-19","xff":"203.0.113.19","status":200,"body":"audio<fr|spoof-19>"}
+   http: {"req":"GET /tts?text=spoof-20","xff":"203.0.113.20","status":200,"body":"audio<fr|spoof-20>"}
+   http: {"req":"GET /tts?text=spoof-21","xff":"203.0.113.21","status":200,"body":"audio<fr|spoof-21>"}
+   http: {"req":"GET /tts?text=spoof-22","xff":"203.0.113.22","status":200,"body":"audio<fr|spoof-22>"}
+   http: {"req":"GET /tts?text=spoof-23","xff":"203.0.113.23","status":200,"body":"audio<fr|spoof-23>"}
+   http: {"req":"GET /tts?text=spoof-24","xff":"203.0.113.24","status":200,"body":"audio<fr|spoof-24>"}
+   http: {"req":"GET /tts?text=spoof-25","xff":"203.0.113.25","status":200,"body":"audio<fr|spoof-25>"}
+   http: {"req":"GET /tts?text=spoof-26","xff":"203.0.113.26","status":200,"body":"audio<fr|spoof-26>"}
+   http: {"req":"GET /tts?text=spoof-27","xff":"203.0.113.27","status":200,"body":"audio<fr|spoof-27>"}
+   http: {"req":"GET /tts?text=spoof-28","xff":"203.0.113.28","status":200,"body":"audio<fr|spoof-28>"}
+   http: {"req":"GET /tts?text=spoof-29","xff":"203.0.113.29","status":200,"body":"audio<fr|spoof-29>"}
+   http: {"req":"GET /tts?text=spoof-30","xff":"203.0.113.30","status":200,"body":"audio<fr|spoof-30>"}
+   http: {"req":"GET /tts?text=spoof-31","xff":"203.0.113.31","status":200,"body":"audio<fr|spoof-31>"}
+   upstream: {"tl":"fr","q":"spoof-01"}
+   upstream: {"tl":"fr","q":"spoof-02"}
+   upstream: {"tl":"fr","q":"spoof-03"}
+   upstream: {"tl":"fr","q":"spoof-04"}
+   upstream: {"tl":"fr","q":"spoof-05"}
+   upstream: {"tl":"fr","q":"spoof-06"}
+   upstream: {"tl":"fr","q":"spoof-07"}
+   upstream: {"tl":"fr","q":"spoof-08"}
+   upstream: {"tl":"fr","q":"spoof-09"}
+   upstream: {"tl":"fr","q":"spoof-10"}
+   upstream: {"tl":"fr","q":"spoof-11"}
+   upstream: {"tl":"fr","q":"spoof-12"}
+   upstream: {"tl":"fr","q":"spoof-13"}
+   upstream: {"tl":"fr","q":"spoof-14"}
+   upstream: {"tl":"fr","q":"spoof-15"}
+   upstream: {"tl":"fr","q":"spoof-16"}
+   upstream: {"tl":"fr","q":"spoof-17"}
+   upstream: {"tl":"fr","q":"spoof-18"}
+   upstream: {"tl":"fr","q":"spoof-19"}
+   upstream: {"tl":"fr","q":"spoof-20"}
+   upstream: {"tl":"fr","q":"spoof-21"}
+   upstream: {"tl":"fr","q":"spoof-22"}
+   upstream: {"tl":"fr","q":"spoof-23"}
+   upstream: {"tl":"fr","q":"spoof-24"}
+   upstream: {"tl":"fr","q":"spoof-25"}
+   upstream: {"tl":"fr","q":"spoof-26"}
+   upstream: {"tl":"fr","q":"spoof-27"}
+   upstream: {"tl":"fr","q":"spoof-28"}
+   upstream: {"tl":"fr","q":"spoof-29"}
+   upstream: {"tl":"fr","q":"spoof-30"}
+   upstream: {"tl":"fr","q":"spoof-31"}
+
+p1.038 [t=0→60000] advance +60000 ms (exactly one rate-limit window)
+
+p1.039 [t=60000] HTTP GET /tts?text=rl-35 [XFF 198.51.100.7]
+   http: {"req":"GET /tts?text=rl-35","status":429,"xff":"198.51.100.7","content-type":"text/plain","bodyLen":17,"body":"too many requests"}
+
+p1.040 [t=60000→60001] advance +1 ms (window elapsed)
+
+p1.041 [t=60001] HTTP GET /tts?text=rl-36 [XFF 198.51.100.7]
+   http: {"req":"GET /tts?text=rl-36","status":200,"xff":"198.51.100.7","content-type":"audio/mpeg","content-length":"46","cache-control":"public, max-age=86400","bodyLen":46,"body":"audio<fr|rl-36>"}
+   upstream: {"tl":"fr","q":"rl-36"}
+
+p1.042 [t=60001] fill the cache with 50 new texts lru-00..lru-49 (3 client IPs)
+   http: {"req":"GET /tts?text=lru-00","xff":"192.0.2.1","status":200,"body":"audio<fr|lru-00>"}
+   http: {"req":"GET /tts?text=lru-01","xff":"192.0.2.1","status":200,"body":"audio<fr|lru-01>"}
+   http: {"req":"GET /tts?text=lru-02","xff":"192.0.2.1","status":200,"body":"audio<fr|lru-02>"}
+   http: {"req":"GET /tts?text=lru-03","xff":"192.0.2.1","status":200,"body":"audio<fr|lru-03>"}
+   http: {"req":"GET /tts?text=lru-04","xff":"192.0.2.1","status":200,"body":"audio<fr|lru-04>"}
+   http: {"req":"GET /tts?text=lru-05","xff":"192.0.2.1","status":200,"body":"audio<fr|lru-05>"}
+   http: {"req":"GET /tts?text=lru-06","xff":"192.0.2.1","status":200,"body":"audio<fr|lru-06>"}
+   http: {"req":"GET /tts?text=lru-07","xff":"192.0.2.1","status":200,"body":"audio<fr|lru-07>"}
+   http: {"req":"GET /tts?text=lru-08","xff":"192.0.2.1","status":200,"body":"audio<fr|lru-08>"}
+   http: {"req":"GET /tts?text=lru-09","xff":"192.0.2.1","status":200,"body":"audio<fr|lru-09>"}
+   http: {"req":"GET /tts?text=lru-10","xff":"192.0.2.1","status":200,"body":"audio<fr|lru-10>"}
+   http: {"req":"GET /tts?text=lru-11","xff":"192.0.2.1","status":200,"body":"audio<fr|lru-11>"}
+   http: {"req":"GET /tts?text=lru-12","xff":"192.0.2.1","status":200,"body":"audio<fr|lru-12>"}
+   http: {"req":"GET /tts?text=lru-13","xff":"192.0.2.1","status":200,"body":"audio<fr|lru-13>"}
+   http: {"req":"GET /tts?text=lru-14","xff":"192.0.2.1","status":200,"body":"audio<fr|lru-14>"}
+   http: {"req":"GET /tts?text=lru-15","xff":"192.0.2.1","status":200,"body":"audio<fr|lru-15>"}
+   http: {"req":"GET /tts?text=lru-16","xff":"192.0.2.1","status":200,"body":"audio<fr|lru-16>"}
+   http: {"req":"GET /tts?text=lru-17","xff":"192.0.2.1","status":200,"body":"audio<fr|lru-17>"}
+   http: {"req":"GET /tts?text=lru-18","xff":"192.0.2.1","status":200,"body":"audio<fr|lru-18>"}
+   http: {"req":"GET /tts?text=lru-19","xff":"192.0.2.1","status":200,"body":"audio<fr|lru-19>"}
+   http: {"req":"GET /tts?text=lru-20","xff":"192.0.2.2","status":200,"body":"audio<fr|lru-20>"}
+   http: {"req":"GET /tts?text=lru-21","xff":"192.0.2.2","status":200,"body":"audio<fr|lru-21>"}
+   http: {"req":"GET /tts?text=lru-22","xff":"192.0.2.2","status":200,"body":"audio<fr|lru-22>"}
+   http: {"req":"GET /tts?text=lru-23","xff":"192.0.2.2","status":200,"body":"audio<fr|lru-23>"}
+   http: {"req":"GET /tts?text=lru-24","xff":"192.0.2.2","status":200,"body":"audio<fr|lru-24>"}
+   http: {"req":"GET /tts?text=lru-25","xff":"192.0.2.2","status":200,"body":"audio<fr|lru-25>"}
+   http: {"req":"GET /tts?text=lru-26","xff":"192.0.2.2","status":200,"body":"audio<fr|lru-26>"}
+   http: {"req":"GET /tts?text=lru-27","xff":"192.0.2.2","status":200,"body":"audio<fr|lru-27>"}
+   http: {"req":"GET /tts?text=lru-28","xff":"192.0.2.2","status":200,"body":"audio<fr|lru-28>"}
+   http: {"req":"GET /tts?text=lru-29","xff":"192.0.2.2","status":200,"body":"audio<fr|lru-29>"}
+   http: {"req":"GET /tts?text=lru-30","xff":"192.0.2.2","status":200,"body":"audio<fr|lru-30>"}
+   http: {"req":"GET /tts?text=lru-31","xff":"192.0.2.2","status":200,"body":"audio<fr|lru-31>"}
+   http: {"req":"GET /tts?text=lru-32","xff":"192.0.2.2","status":200,"body":"audio<fr|lru-32>"}
+   http: {"req":"GET /tts?text=lru-33","xff":"192.0.2.2","status":200,"body":"audio<fr|lru-33>"}
+   http: {"req":"GET /tts?text=lru-34","xff":"192.0.2.2","status":200,"body":"audio<fr|lru-34>"}
+   http: {"req":"GET /tts?text=lru-35","xff":"192.0.2.2","status":200,"body":"audio<fr|lru-35>"}
+   http: {"req":"GET /tts?text=lru-36","xff":"192.0.2.2","status":200,"body":"audio<fr|lru-36>"}
+   http: {"req":"GET /tts?text=lru-37","xff":"192.0.2.2","status":200,"body":"audio<fr|lru-37>"}
+   http: {"req":"GET /tts?text=lru-38","xff":"192.0.2.2","status":200,"body":"audio<fr|lru-38>"}
+   http: {"req":"GET /tts?text=lru-39","xff":"192.0.2.2","status":200,"body":"audio<fr|lru-39>"}
+   http: {"req":"GET /tts?text=lru-40","xff":"192.0.2.3","status":200,"body":"audio<fr|lru-40>"}
+   http: {"req":"GET /tts?text=lru-41","xff":"192.0.2.3","status":200,"body":"audio<fr|lru-41>"}
+   http: {"req":"GET /tts?text=lru-42","xff":"192.0.2.3","status":200,"body":"audio<fr|lru-42>"}
+   http: {"req":"GET /tts?text=lru-43","xff":"192.0.2.3","status":200,"body":"audio<fr|lru-43>"}
+   http: {"req":"GET /tts?text=lru-44","xff":"192.0.2.3","status":200,"body":"audio<fr|lru-44>"}
+   http: {"req":"GET /tts?text=lru-45","xff":"192.0.2.3","status":200,"body":"audio<fr|lru-45>"}
+   http: {"req":"GET /tts?text=lru-46","xff":"192.0.2.3","status":200,"body":"audio<fr|lru-46>"}
+   http: {"req":"GET /tts?text=lru-47","xff":"192.0.2.3","status":200,"body":"audio<fr|lru-47>"}
+   http: {"req":"GET /tts?text=lru-48","xff":"192.0.2.3","status":200,"body":"audio<fr|lru-48>"}
+   http: {"req":"GET /tts?text=lru-49","xff":"192.0.2.3","status":200,"body":"audio<fr|lru-49>"}
+   upstream: {"tl":"fr","q":"lru-00"}
+   upstream: {"tl":"fr","q":"lru-01"}
+   upstream: {"tl":"fr","q":"lru-02"}
+   upstream: {"tl":"fr","q":"lru-03"}
+   upstream: {"tl":"fr","q":"lru-04"}
+   upstream: {"tl":"fr","q":"lru-05"}
+   upstream: {"tl":"fr","q":"lru-06"}
+   upstream: {"tl":"fr","q":"lru-07"}
+   upstream: {"tl":"fr","q":"lru-08"}
+   upstream: {"tl":"fr","q":"lru-09"}
+   upstream: {"tl":"fr","q":"lru-10"}
+   upstream: {"tl":"fr","q":"lru-11"}
+   upstream: {"tl":"fr","q":"lru-12"}
+   upstream: {"tl":"fr","q":"lru-13"}
+   upstream: {"tl":"fr","q":"lru-14"}
+   upstream: {"tl":"fr","q":"lru-15"}
+   upstream: {"tl":"fr","q":"lru-16"}
+   upstream: {"tl":"fr","q":"lru-17"}
+   upstream: {"tl":"fr","q":"lru-18"}
+   upstream: {"tl":"fr","q":"lru-19"}
+   upstream: {"tl":"fr","q":"lru-20"}
+   upstream: {"tl":"fr","q":"lru-21"}
+   upstream: {"tl":"fr","q":"lru-22"}
+   upstream: {"tl":"fr","q":"lru-23"}
+   upstream: {"tl":"fr","q":"lru-24"}
+   upstream: {"tl":"fr","q":"lru-25"}
+   upstream: {"tl":"fr","q":"lru-26"}
+   upstream: {"tl":"fr","q":"lru-27"}
+   upstream: {"tl":"fr","q":"lru-28"}
+   upstream: {"tl":"fr","q":"lru-29"}
+   upstream: {"tl":"fr","q":"lru-30"}
+   upstream: {"tl":"fr","q":"lru-31"}
+   upstream: {"tl":"fr","q":"lru-32"}
+   upstream: {"tl":"fr","q":"lru-33"}
+   upstream: {"tl":"fr","q":"lru-34"}
+   upstream: {"tl":"fr","q":"lru-35"}
+   upstream: {"tl":"fr","q":"lru-36"}
+   upstream: {"tl":"fr","q":"lru-37"}
+   upstream: {"tl":"fr","q":"lru-38"}
+   upstream: {"tl":"fr","q":"lru-39"}
+   upstream: {"tl":"fr","q":"lru-40"}
+   upstream: {"tl":"fr","q":"lru-41"}
+   upstream: {"tl":"fr","q":"lru-42"}
+   upstream: {"tl":"fr","q":"lru-43"}
+   upstream: {"tl":"fr","q":"lru-44"}
+   upstream: {"tl":"fr","q":"lru-45"}
+   upstream: {"tl":"fr","q":"lru-46"}
+   upstream: {"tl":"fr","q":"lru-47"}
+   upstream: {"tl":"fr","q":"lru-48"}
+   upstream: {"tl":"fr","q":"lru-49"}
+
+p1.043 [t=60001] HTTP GET lru-00 (touch: most recently used)
+   http: {"req":"GET /tts?text=lru-00","status":200,"xff":"192.0.2.9","content-type":"audio/mpeg","content-length":"47","cache-control":"public, max-age=86400","bodyLen":47,"body":"audio<fr|lru-00>"}
+
+p1.044 [t=60001] HTTP GET lru-50 (51st entry: evicts one)
+   http: {"req":"GET /tts?text=lru-50","status":200,"xff":"192.0.2.9","content-type":"audio/mpeg","content-length":"47","cache-control":"public, max-age=86400","bodyLen":47,"body":"audio<fr|lru-50>"}
+   upstream: {"tl":"fr","q":"lru-50"}
+
+p1.045 [t=60001] HTTP GET lru-00 (still cached?)
+   http: {"req":"GET /tts?text=lru-00","status":200,"xff":"192.0.2.9","content-type":"audio/mpeg","content-length":"47","cache-control":"public, max-age=86400","bodyLen":47,"body":"audio<fr|lru-00>"}
+
+p1.046 [t=60001] HTTP GET lru-01 (evicted?)
+   http: {"req":"GET /tts?text=lru-01","status":200,"xff":"192.0.2.9","content-type":"audio/mpeg","content-length":"47","cache-control":"public, max-age=86400","bodyLen":47,"body":"audio<fr|lru-01>"}
+   upstream: {"tl":"fr","q":"lru-01"}
+
+p1.047 [t=60001] HTTP GET Bonjour (old entry, evicted?)
+   http: {"req":"GET /tts?text=Bonjour","status":200,"xff":"192.0.2.9","content-type":"audio/mpeg","content-length":"48","cache-control":"public, max-age=86400","bodyLen":48,"body":"audio<fr|Bonjour>"}
+   upstream: {"tl":"fr","q":"Bonjour"}
+
+p1.048 [t=60001] overlay A connects
+   ws.A: {"type":"pairing_code","code":"<CODE@p1.048#1>"}
+
+p1.049 [t=60001] /link code:"ABC123" — by alice @G1#general
+   ix.alice: {"m":"reply","content":"❌ Invalid or expired code. Open the overlay (it shows a fresh code) and try again.","ephemeral":true}
+
+p1.050 [t=60001] /link code:"<UNISSUED_CODE>" — by alice @G1#general
+   ix.alice: {"m":"reply","content":"❌ Invalid or expired code. Open the overlay (it shows a fresh code) and try again.","ephemeral":true}
+
+p1.051 [t=60001] /link code:"<CODE@p1.048#1>" — by alice @G1#general
+   ix.alice: {"m":"reply","content":"✅ Linked on **Les Potes**. To be reachable from other servers, run `/link` there too — your overlay shows the code.","ephemeral":true}
+   ws.A: {"type":"linked","user":{"id":"210000000000000001","username":"alice"},"token":"<TOKEN hmac(alice)>","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n00000000000000…
+   ws.A: {"type":"pairing_code","code":"<CODE@p1.051#1>"}
+
+p1.052 [t=60001] /link with the code A already consumed — by bob
+   ix.bob: {"m":"reply","content":"❌ Invalid or expired code. Open the overlay (it shows a fresh code) and try again.","ephemeral":true}
+
+p1.053 [t=60001] /link with alice's extension code — by bob
+   ix.bob: {"m":"reply","content":"❌ This code belongs to another user.","ephemeral":true}
+
+p1.054 [t=60001] /status — by alice @G1#general
+   ix.alice: {"m":"reply","content":"🟢 Linked on **Les Potes** (1 server total).","ephemeral":true}
+
+p1.055 [t=60001] /status — by alice @G2#memes
+   ix.alice: {"m":"reply","content":"🟡 You have an overlay, but not linked on **Gaming Squad**. Run `/link <code>` here too.","ephemeral":true}
+
+p1.056 [t=60001] /status — by bob @G1#general
+   ix.bob: {"m":"reply","content":"🔴 No overlay linked. Launch the app and use `/link <code>`.","ephemeral":true}
+
+p1.057 [t=60001] /who — by alice @G1#general
+   ix.alice: {"m":"deferReply","ephemeral":true}
+   ix.alice: {"m":"editReply","content":"**Drop targets reachable from this server:**\n• <@210000000000000001>"}
+
+p1.058 [t=60001] overlay B connects
+   ws.B: {"type":"pairing_code","code":"<CODE@p1.058#1>"}
+
+p1.059 [t=60001] /link code:"<CODE@p1.058#1>" — by bob @G1#general
+   ix.bob: {"m":"reply","content":"✅ Linked on **Les Potes**. To be reachable from other servers, run `/link` there too — your overlay shows the code.","ephemeral":true}
+   ws.B: {"type":"linked","user":{"id":"210000000000000002","username":"bob"},"token":"<TOKEN hmac(bob)>","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n000000000000000000…
+   ws.B: {"type":"pairing_code","code":"<CODE@p1.059#1>"}
+
+p1.060 [t=60001] /who — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"**Drop targets reachable from this server:**\n• <@210000000000000001>\n• <@210000000000000002>"}
+
+p1.061 [t=60001] /who — by carol @G2#memes
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"No drop targets in this server right now. 😴"}
+
+p1.062 [t=60001] overlay F connects
+   ws.F: {"type":"pairing_code","code":"<CODE@p1.062#1>"}
+
+p1.063 [t=60001] overlay F sends {"type":"register","identity":{"userId":"210000000000000006","username":"frank","scope":"guild","guildIds":["110000000000000001"],"token":"<TOKEN hmac(frank)>","blockedIds":[]}}
+   ws.F: {"type":"linked","user":{"id":"210000000000000006","username":"frank"},"token":"<TOKEN hmac(frank)>","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n00000000000000…
+   ws.F: {"type":"pairing_code","code":"<CODE@p1.063#1>"}
+
+p1.064 [t=60001] overlay E connects
+   ws.E: {"type":"pairing_code","code":"<CODE@p1.064#1>"}
+
+p1.065 [t=60001] overlay E sends {"type":"register","identity":{"userId":"210000000000000005","username":"erin","scope":"guild","guildIds":["110000000000000001","110000000000000009"],"token":"<TOKEN hmac(erin)>"}}
+   ws.E: {"type":"linked","user":{"id":"210000000000000005","username":"erin"},"token":"<TOKEN hmac(erin)>","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000…
+   ws.E: {"type":"pairing_code","code":"<CODE@p1.065#1>"}
+
+p1.066 [t=60001] /who — by carol @G1#general (frank: member never seen; erin: not a member)
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"**Drop targets reachable from this server:**\n• <@210000000000000001>\n• <@210000000000000002>\n• <@210000000000000006>"}
+
+p1.067 [t=60001] /drop target:@alice media:[cat.png image/png] caption:"lol" — by bob @G1#general
+   ix.bob: {"m":"deferReply","ephemeral":true}
+   ix.bob: {"m":"editReply","content":"✅ Drop envoyé sur **alice** !"}
+   ws.A: {"type":"drop","dropId":"<DROP@p1.067#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"image/png","name":"cat.png","size":48213,"width":640,"…
+
+p1.068 [t=60001] /drop again immediately — by bob
+   ix.bob: {"m":"deferReply","ephemeral":true}
+   ix.bob: {"m":"editReply","content":"⏱️ Doucement — encore 2s avant le prochain `/drop`."}
+
+p1.069 [t=60001→60501] advance virtual clock +500 ms
+
+p1.070 [t=60501] /drop 500 ms later — by bob
+   ix.bob: {"m":"deferReply","ephemeral":true}
+   ix.bob: {"m":"editReply","content":"⏱️ Doucement — encore 1.5s avant le prochain `/drop`."}
+
+p1.071 [t=60501→62000] advance virtual clock +1499 ms
+
+p1.072 [t=62000] /drop 1999 ms later — by bob
+   ix.bob: {"m":"deferReply","ephemeral":true}
+   ix.bob: {"m":"editReply","content":"⏱️ Doucement — encore 0s avant le prochain `/drop`."}
+
+p1.073 [t=62000→62001] advance virtual clock +1 ms
+
+p1.074 [t=62001] /drop exactly 2000 ms later (gif, effet glitch) — by bob
+   ix.bob: {"m":"deferReply","ephemeral":true}
+   ix.bob: {"m":"editReply","content":"✅ Drop envoyé sur **alice** !"}
+   ws.A: {"type":"drop","dropId":"<DROP@p1.074#1>","tts":null,"ttsUrl":null,"effect":"glitch","media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000004/dance.gif","kind":"gif","mime":"image/gif","name":"dance.gif","size":1048576,"widt…
+
+p1.075 [t=62001] /drop target:@alice media:[notes.txt text/plain; charset=utf-8] — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"❌ Unsupported type: `text/plain; charset=utf-8`. Use PNG / JPG / GIF / WEBP / MP4 / WEBM / MP3."}
+
+p1.076 [t=62001] /drop target:@alice media:[mystery.bin null] — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"❌ Unsupported type: `unknown`. Use PNG / JPG / GIF / WEBP / MP4 / WEBM / MP3."}
+
+p1.077 [t=62001] /drop target:@alice media:[huge.png image/png] — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"❌ File too large (30.0 MB). Limit is 25 MB."}
+
+p1.078 [t=62001] /drop target:@alice — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"❌ Mets au moins un média (`media`), un emoji (`pluie`) ou un texte (`tts`)."}
+
+p1.079 [t=62001] /drop target:@alice pluie:"pas d emoji" — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"❌ Mets au moins un média (`media`), un emoji (`pluie`) ou un texte (`tts`)."}
+
+p1.080 [t=62001] /drop target:@alice tts:"   " — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"❌ Mets au moins un média (`media`), un emoji (`pluie`) ou un texte (`tts`)."}
+
+p1.081 [t=62001] /drop target:@alice media:[clip.mp4 video/mp4] musique:[song.mp3 audio/mpeg] — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"❌ L'option `musique` ne fonctionne qu'avec une image ou un GIF (pas une vidéo)."}
+
+p1.082 [t=62001] /drop target:@alice pluie:"🔥" musique:[song.mp3 audio/mpeg] — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"❌ L'option `musique` nécessite un média (image ou GIF)."}
+
+p1.083 [t=62001] /drop target:@alice media:[cat.png image/png] musique:[cat.png image/png] — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"❌ Le fichier `musique` doit être un audio (MP3) ou une vidéo (MP4/WEBM — seul le son est joué). Type reçu : `image/png`."}
+
+p1.084 [t=62001] /drop target:@alice media:[cat.png image/png] musique:[long.mp3 audio/mpeg] — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"❌ Fichier audio trop lourd (26.0 MB). Limite : 25 MB."}
+
+p1.085 [t=62001] /drop target:@memebot media:[cat.png image/png] — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"🤖 Aucune cible valide (bots et doublons filtrés)."}
+
+p1.086 [t=62001] /drop to alice,bob,memebot,alice,dave with image+musique+caption+pluie+tts+effet — by carol (right after the errors)
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"✅ Drop envoyé sur **alice**, **bob**.\n⚠️ Pas atteignables depuis ce serveur : **dave**"}
+   ws.A: {"type":"drop","dropId":"<DROP@p1.086#1>","tts":"salut toi","ttsUrl":"https://memedrop-bot.fly.dev/tts?text=salut%20toi","effect":"tornade","media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mi…
+   ws.B: {"type":"drop","dropId":"<DROP@p1.086#1>","tts":"salut toi","ttsUrl":"https://memedrop-bot.fly.dev/tts?text=salut%20toi","effect":"tornade","media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mi…
+
+p1.087 [t=62001→64001] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.088 [t=64001] /drop target:@alice pluie:"👍🏽👨‍👩‍👧😂😂🎉🚀🌈" — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"✅ Drop envoyé sur **alice** !"}
+   ws.A: {"type":"drop","dropId":"<DROP@p1.088#1>","tts":null,"ttsUrl":null,"effect":null,"media":null,"rain":["👍","👨","👩","👧","😂"],"music":null,"caption":null,"from":{"id":"210000000000000003","username":"carol","avatar":"https://cdn.discordapp.com/avatars/210000…
+
+p1.089 [t=64001→66001] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.090 [t=66001] /drop target:@alice tts:"tttttttttttttttttttttttt…[250 chars, sha1:db01479b]" — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"✅ Drop envoyé sur **alice** !"}
+   ws.A: {"type":"drop","dropId":"<DROP@p1.090#1>","tts":"tttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt","ttsUrl":…
+
+p1.091 [t=66001→68001] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.092 [t=68001] /drop tts = 199×"a" + 😂 (truncation at 200 splits the emoji) — by carol
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"⚠️ Internal error. Try again."}
+
+p1.093 [t=68001→70001] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.094 [t=70001] /drop target:@alice media:[clip.mp4 video/mp4] effet:"nope" — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"✅ Drop envoyé sur **alice** !"}
+   ws.A: {"type":"drop","dropId":"<DROP@p1.094#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000005/clip.mp4","kind":"video","mime":"video/mp4","name":"clip.mp4","size":5242880,"width":1…
+
+p1.095 [t=70001→72001] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.096 [t=72001] /drop target:@alice media:[iphone.mov video/quicktime] tts:"Ça va & toi ?" effet:"shake" — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"✅ Drop envoyé sur **alice** !"}
+   ws.A: {"type":"drop","dropId":"<DROP@p1.096#1>","tts":"Ça va & toi ?","ttsUrl":"https://memedrop-bot.fly.dev/tts?text=%C3%87a%20va%20%26%20toi%20%3F","effect":"shake","media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000006/iphone…
+
+p1.097 [t=72001→74001] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.098 [t=74001] /drop target:@alice media:[song.mp3 audio/mpeg] effet:"zoom" — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"✅ Drop envoyé sur **alice** !"}
+   ws.A: {"type":"drop","dropId":"<DROP@p1.098#1>","tts":null,"ttsUrl":null,"effect":"zoom","media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000007/song.mp3","kind":"audio","mime":"audio/mpeg","name":"song.mp3","size":3145728,"width…
+
+p1.099 [t=74001→76001] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.100 [t=76001] /drop target:@alice media:[photo.jpg image/jpeg] musique:[track.webm video/webm] — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"✅ Drop envoyé sur **alice** ! 🎵"}
+   ws.A: {"type":"drop","dropId":"<DROP@p1.100#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000002/photo.jpg","kind":"image","mime":"image/jpeg","name":"photo.jpg","size":91234,"width":…
+
+p1.101 [t=76001] /drop on herself — by alice
+   ix.alice: {"m":"deferReply","ephemeral":true}
+   ix.alice: {"m":"editReply","content":"✅ Drop envoyé sur **alice** !"}
+   ws.A: {"type":"drop","dropId":"<DROP@p1.101#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000003/sticker.webp","kind":"image","mime":"image/webp","name":"sticker.webp","size":20480,"w…
+
+p1.102 [t=76001] /drop from G2 where alice is not linked — by bob
+   ix.bob: {"m":"deferReply","ephemeral":true}
+   ix.bob: {"m":"editReply","content":"❌ Personne n'est atteignable depuis ce serveur. Ils doivent faire `/link` ici aussi."}
+
+p1.103 [t=76001→78001] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.104 [t=78001] /drop to erin (linked on G1 but not a member) — by frank
+   ix.frank: {"m":"deferReply","ephemeral":true}
+   ix.frank: {"m":"editReply","content":"✅ Drop envoyé sur **erin** !"}
+   ws.E: {"type":"drop","dropId":"<DROP@p1.104#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"image/png","name":"cat.png","size":48213,"width":640,"…
+
+p1.105 [t=78001] /drop from #old-memes — by bob
+   ix.bob: {"m":"deferReply","ephemeral":true}
+   ix.bob: {"m":"editReply","content":"✅ Drop envoyé sur **alice** !"}
+   ws.A: {"type":"drop","dropId":"<DROP@p1.105#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000002/photo.jpg","kind":"image","mime":"image/jpeg","name":"photo.jpg","size":91234,"width":…
+
+p1.106 [t=78001→80001] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.107 [t=80001] /drop target:@alice target2:@frank media:[cat.png image/png] caption:"surprise" delai:1 — by bob @G1#general
+   ix.bob: {"m":"deferReply","ephemeral":true}
+   ix.bob: {"m":"editReply","content":"⏳ Drop programmé dans **1 min** pour **alice**, **frank**. 😈"}
+
+p1.108 [t=80001] /drop right after scheduling — by bob
+   ix.bob: {"m":"deferReply","ephemeral":true}
+   ix.bob: {"m":"editReply","content":"⏱️ Doucement — encore 2s avant le prochain `/drop`."}
+
+p1.109 [t=80001→82001] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.110 [t=82001] /drop target:@alice media:[dance.gif image/gif] delai:90 — by bob @G1#general
+   ix.bob: {"m":"deferReply","ephemeral":true}
+   ix.bob: {"m":"editReply","content":"⏳ Drop programmé dans **60 min** pour **alice**. 😈"}
+
+p1.111 [t=82001→84001] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.112 [t=84001] /drop target:@alice media:[cat.png image/png] delai:0 — by bob @G1#general
+   ix.bob: {"m":"deferReply","ephemeral":true}
+   ix.bob: {"m":"editReply","content":"✅ Drop envoyé sur **alice** !"}
+   ws.A: {"type":"drop","dropId":"<DROP@p1.112#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"image/png","name":"cat.png","size":48213,"width":640,"…
+
+p1.113 [t=84001] overlay F (frank) disconnects before the delayed drop fires
+   ws.F: {"_closed":1005}
+
+p1.114 [t=84001→140000] advance to 1 ms before the 1-minute delayed drop
+   ws.A: {"_repeat":2,"type":"ping"}
+   ws.B: {"_repeat":2,"type":"ping"}
+   ws.E: {"_repeat":2,"type":"ping"}
+
+p1.115 [t=140000→140001] advance +1 ms (delayed drop due)
+   ws.A: {"type":"drop","dropId":"<DROP@p1.115#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"image/png","name":"cat.png","size":48213,"width":640,"…
+
+p1.116 [t=140001] /dropall media:[cat.png image/png] caption:"pour tous" — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"💥 Drop envoyé à **2** personnes : **alice**, **bob**"}
+   ws.A: {"type":"drop","dropId":"<DROP@p1.116#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"image/png","name":"cat.png","size":48213,"width":640,"…
+   ws.B: {"type":"drop","dropId":"<DROP@p1.116#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"image/png","name":"cat.png","size":48213,"width":640,"…
+
+p1.117 [t=140001] /dropall again immediately — by carol
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"⏱️ Doucement — encore 15s avant le prochain `/dropall`."}
+
+p1.118 [t=140001→145001] advance virtual clock +5000 ms
+
+p1.119 [t=145001] /dropall 5 s later from G2 — by carol
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"⏱️ Doucement — encore 10s avant le prochain `/dropall`."}
+
+p1.120 [t=145001] /dropall from G2 where nobody is linked — by alice
+   ix.alice: {"m":"deferReply","ephemeral":true}
+   ix.alice: {"m":"editReply","content":"Personne n'est atteignable sur ce serveur pour l'instant. 😴"}
+
+p1.121 [t=145001] /dropall without media/pluie/tts — by alice
+   ix.alice: {"m":"deferReply","ephemeral":true}
+   ix.alice: {"m":"editReply","content":"❌ Mets au moins un média (`media`), un emoji (`pluie`) ou un texte (`tts`)."}
+
+p1.122 [t=145001] /dropall tts:"coucou tout le monde" pluie:"🎉" effet:"zoom" — by alice @G1#general
+   ix.alice: {"m":"deferReply","ephemeral":true}
+   ix.alice: {"m":"editReply","content":"💥 Drop envoyé à **2** personnes : **alice**, **bob**"}
+   ws.A: {"type":"drop","dropId":"<DROP@p1.122#1>","tts":"coucou tout le monde","ttsUrl":"https://memedrop-bot.fly.dev/tts?text=coucou%20tout%20le%20monde","effect":"zoom","media":null,"rain":["🎉"],"music":null,"caption":null,"from":{"id":"210000000000000001","usernam…
+   ws.B: {"type":"drop","dropId":"<DROP@p1.122#1>","tts":"coucou tout le monde","ttsUrl":"https://memedrop-bot.fly.dev/tts?text=coucou%20tout%20le%20monde","effect":"zoom","media":null,"rain":["🎉"],"music":null,"caption":null,"from":{"id":"210000000000000001","usernam…
+
+p1.123 [t=145001] /dropall twice in the same instant — by bob
+   ix.#1 bob: {"m":"deferReply","ephemeral":true}
+   ix.#1 bob: {"m":"editReply","content":"💥 Drop envoyé à **2** personnes : **alice**, **bob**"}
+   ix.#2 bob: {"m":"deferReply","ephemeral":true}
+   ix.#2 bob: {"m":"editReply","content":"💥 Drop envoyé à **2** personnes : **alice**, **bob**"}
+   ws.A: {"type":"drop","dropId":"<DROP@p1.123#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"image/png","name":"cat.png","size":48213,"width":640,"…
+   ws.A: {"type":"drop","dropId":"<DROP@p1.123#2>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000004/dance.gif","kind":"gif","mime":"image/gif","name":"dance.gif","size":1048576,"width":3…
+   ws.B: {"type":"drop","dropId":"<DROP@p1.123#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"image/png","name":"cat.png","size":48213,"width":640,"…
+   ws.B: {"type":"drop","dropId":"<DROP@p1.123#2>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000004/dance.gif","kind":"gif","mime":"image/gif","name":"dance.gif","size":1048576,"width":3…
+
+p1.124 [t=145001] overlay A sends {"type":"react","dropId":"<DROP@p1.067#1>","emoji":"😂"}
+   chan: {"ch":"G1#general","content":"😂 **alice** a réagi au drop de <@210000000000000002> !"}
+
+p1.125 [t=145001] overlay A reacts 🔥 to the same drop again
+
+p1.126 [t=145001] overlay B sends {"type":"react","dropId":"<DROP@p1.086#1>","emoji":"💀"}
+   chan: {"ch":"G1#general","content":"💀 **bob** a réagi au drop de <@210000000000000003> !"}
+
+p1.127 [t=145001] overlay A sends {"type":"react","dropId":"<DROP@p1.086#1>","emoji":"👍"}
+
+p1.128 [t=145001] overlay A sends {"type":"react","dropId":"<DROP@p1.086#1>","emoji":"🖕"}
+   chan: {"ch":"G1#general","content":"🖕 **alice** a réagi au drop de <@210000000000000003> !"}
+
+p1.129 [t=145001] overlay A reacts to its own self-drop
+
+p1.130 [t=145001] overlay A sends {"type":"react","dropId":"deadbeefdeadbeef","emoji":"😂"}
+
+p1.131 [t=145001] overlay A sends {"type":"react","dropId":"<DROP@p1.116#1>","emoji":42}
+
+p1.132 [t=145001] overlay A sends {"type":"react","dropId":"<DROP@p1.116#1>","emoji":"🔥"}
+   chan: {"ch":"G1#general","content":"🔥 **alice** a réagi au drop de <@210000000000000003> !"}
+
+p1.133 [t=145001] overlay A reacts to the delayed drop
+   chan: {"ch":"G1#general","content":"💀 **alice** a réagi au drop de <@210000000000000002> !"}
+
+p1.134 [t=145001] overlay E (erin, linked) reacts to a /dropall drop she never received
+   chan: {"ch":"G1#general","content":"😂 **erin** a réagi au drop de <@210000000000000003> !"}
+
+p1.135 [t=145001] overlay P connects (stays unlinked)
+   ws.P: {"type":"pairing_code","code":"<CODE@p1.135#1>"}
+
+p1.136 [t=145001] unlinked overlay P reacts
+
+p1.137 [t=145001] world: channel #old-memes is deleted
+
+p1.138 [t=145001] overlay A reacts to the drop sent from the deleted channel
+
+p1.139 [t=145001] /block user:@bob — by alice @G1#general
+   ix.alice: {"m":"reply","content":"🔇 **bob** ne pourra plus t'envoyer de drops.","ephemeral":true}
+   ws.A: {"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true}],"guildIds":["110000000000000001"]…
+
+p1.140 [t=145001→147001] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.141 [t=147001] /drop to alice who blocked bob — by bob
+   ix.bob: {"m":"deferReply","ephemeral":true}
+   ix.bob: {"m":"editReply","content":"❌ Personne n'est atteignable depuis ce serveur. Ils doivent faire `/link` ici aussi."}
+
+p1.142 [t=147001] /drop again immediately (was the cooldown consumed?) — by bob
+   ix.bob: {"m":"deferReply","ephemeral":true}
+   ix.bob: {"m":"editReply","content":"⏱️ Doucement — encore 2s avant le prochain `/drop`."}
+
+p1.143 [t=147001] /who — by bob @G1#general
+   ix.bob: {"m":"deferReply","ephemeral":true}
+   ix.bob: {"m":"editReply","content":"**Drop targets reachable from this server:**\n• <@210000000000000002>"}
+
+p1.144 [t=147001→162001] advance +15 s (lets the /dropall cooldown expire)
+   ws.A: {"type":"ping"}
+   ws.B: {"type":"ping"}
+   ws.E: {"type":"ping"}
+   ws.P: {"type":"ping"}
+
+p1.145 [t=162001] /dropall with musique after alice blocked bob — by bob
+   ix.bob: {"m":"deferReply","ephemeral":true}
+   ix.bob: {"m":"editReply","content":"💥 Drop envoyé à **1** personne : **bob** 🎵"}
+   ws.B: {"type":"drop","dropId":"<DROP@p1.145#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"image/png","name":"cat.png","size":48213,"width":640,"…
+
+p1.146 [t=162001] /blocklist — by alice @G1#general
+   ix.alice: {"m":"deferReply","ephemeral":true}
+   ix.alice: {"m":"editReply","content":"**Utilisateurs bloqués :**\n• bob (`210000000000000002`)"}
+
+p1.147 [t=162001] /block user:@alice — by alice @G1#general
+   ix.alice: {"m":"reply","content":"🤔 Tu ne peux pas te bloquer toi-même.","ephemeral":true}
+
+p1.148 [t=162001] /block user:@bob — by carol @G1#general
+   ix.carol: {"m":"reply","content":"❌ Lance ton overlay et fais `/link <code>` avant de bloquer quelqu'un.","ephemeral":true}
+
+p1.149 [t=162001] /block user:@ghost — by alice @G1#general
+   ix.alice: {"m":"reply","content":"🔇 **ghost** ne pourra plus t'envoyer de drops.","ephemeral":true}
+   ws.A: {"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true}],"guildIds":["110000000000000001"]…
+
+p1.150 [t=162001] /blocklist — by alice @G1#general
+   ix.alice: {"m":"deferReply","ephemeral":true}
+   ix.alice: {"m":"editReply","content":"**Utilisateurs bloqués :**\n• bob (`210000000000000002`)\n• ghost (`210000000000000007`)"}
+
+p1.151 [t=162001] overlay A sends {"type":"unblock_user","userId":"210000000000000002"}
+   ws.A: {"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true}],"guildIds":["110000000000000001"]…
+
+p1.152 [t=162001] overlay A sends {"type":"unblock_user","userId":""}
+
+p1.153 [t=162001] unlinked overlay P sends unblock_user
+
+p1.154 [t=162001] /unblock user:@bob — by alice @G1#general
+   ix.alice: {"m":"reply","content":"**bob** n'est pas bloqué.","ephemeral":true}
+
+p1.155 [t=162001] /unblock user:@ghost — by alice @G1#general
+   ix.alice: {"m":"reply","content":"🔊 **ghost** peut à nouveau t'envoyer des drops.","ephemeral":true}
+   ws.A: {"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true}],"guildIds":["110000000000000001"]…
+
+p1.156 [t=162001] /unblock user:@bob — by carol @G1#general
+   ix.carol: {"m":"reply","content":"**bob** n'est pas bloqué.","ephemeral":true}
+
+p1.157 [t=162001] /blocklist — by alice @G1#general
+   ix.alice: {"m":"deferReply","ephemeral":true}
+   ix.alice: {"m":"editReply","content":"Tu n'as bloqué personne. 🕊️"}
+
+p1.158 [t=162001] /block @bob again — by alice
+   ix.alice: {"m":"reply","content":"🔇 **bob** ne pourra plus t'envoyer de drops.","ephemeral":true}
+   ws.A: {"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true}],"guildIds":["110000000000000001"]…
+
+p1.159 [t=162001] /fav list — by alice @G1#general
+   ix.alice: {"m":"reply","content":"Tu n'as aucun favori. Ajoute-en avec `/fav add`.","ephemeral":true}
+
+p1.160 [t=162001] /fav add name:"Tomato" media:[dance.gif image/gif] caption:"splat" — by alice @G1#general
+   ix.alice: {"m":"reply","content":"⭐ Favori **Tomato** enregistré ! Utilise `/dropfav Tomato` pour le renvoyer.\n⚠️ Les liens Discord expirent après ~24h : si le drop ne s'affiche plus, refais `/fav add Tomato`.","ephemeral":true}
+
+p1.161 [t=162001] /fav add name:"tomato" media:[cat.png image/png] — by alice @G1#general
+   ix.alice: {"m":"reply","content":"⭐ Favori **tomato** enregistré ! Utilise `/dropfav tomato` pour le renvoyer.\n⚠️ Les liens Discord expirent après ~24h : si le drop ne s'affiche plus, refais `/fav add tomato`.","ephemeral":true}
+
+p1.162 [t=162001] /fav add name:"   " media:[cat.png image/png] — by alice @G1#general
+   ix.alice: {"m":"reply","content":"❌ Nom invalide.","ephemeral":true}
+
+p1.163 [t=162001] /fav add name:"doc" media:[notes.txt text/plain; charset=utf-8] — by alice @G1#general
+   ix.alice: {"m":"reply","content":"❌ Unsupported type: `text/plain; charset=utf-8`. Use PNG / JPG / GIF / WEBP / MP4 / WEBM / MP3.","ephemeral":true}
+
+p1.164 [t=162001] /fav add name:"f2" media:[cat.png image/png] — by alice @G1#general
+   ix.alice: {"m":"reply","content":"⭐ Favori **f2** enregistré ! Utilise `/dropfav f2` pour le renvoyer.\n⚠️ Les liens Discord expirent après ~24h : si le drop ne s'affiche plus, refais `/fav add f2`.","ephemeral":true}
+
+p1.165 [t=162001] /fav add name:"f3" media:[clip.mp4 video/mp4] caption:"cccccccccccccccccccccccc…[90 chars, sha1:154a9332]" — by alice @G1#general
+   ix.alice: {"m":"reply","content":"⭐ Favori **f3** enregistré ! Utilise `/dropfav f3` pour le renvoyer.\n⚠️ Les liens Discord expirent après ~24h : si le drop ne s'affiche plus, refais `/fav add f3`.","ephemeral":true}
+
+p1.166 [t=162001] /fav add name:"f4" media:[song.mp3 audio/mpeg] — by alice @G1#general
+   ix.alice: {"m":"reply","content":"⭐ Favori **f4** enregistré ! Utilise `/dropfav f4` pour le renvoyer.\n⚠️ Les liens Discord expirent après ~24h : si le drop ne s'affiche plus, refais `/fav add f4`.","ephemeral":true}
+
+p1.167 [t=162001] /fav add name:"f5" media:[dance.gif image/gif] — by alice @G1#general
+   ix.alice: {"m":"reply","content":"⭐ Favori **f5** enregistré ! Utilise `/dropfav f5` pour le renvoyer.\n⚠️ Les liens Discord expirent après ~24h : si le drop ne s'affiche plus, refais `/fav add f5`.","ephemeral":true}
+
+p1.168 [t=162001] /fav add name:"f6" media:[photo.jpg image/jpeg] — by alice @G1#general
+   ix.alice: {"m":"reply","content":"⭐ Favori **f6** enregistré ! Utilise `/dropfav f6` pour le renvoyer.\n⚠️ Les liens Discord expirent après ~24h : si le drop ne s'affiche plus, refais `/fav add f6`.","ephemeral":true}
+
+p1.169 [t=162001] /fav add name:"f7" media:[sticker.webp image/webp] — by alice @G1#general
+   ix.alice: {"m":"reply","content":"⭐ Favori **f7** enregistré ! Utilise `/dropfav f7` pour le renvoyer.\n⚠️ Les liens Discord expirent après ~24h : si le drop ne s'affiche plus, refais `/fav add f7`.","ephemeral":true}
+
+p1.170 [t=162001] /fav add name:"f8" media:[iphone.mov video/quicktime] — by alice @G1#general
+   ix.alice: {"m":"reply","content":"⭐ Favori **f8** enregistré ! Utilise `/dropfav f8` pour le renvoyer.\n⚠️ Les liens Discord expirent après ~24h : si le drop ne s'affiche plus, refais `/fav add f8`.","ephemeral":true}
+
+p1.171 [t=162001] /fav add name:"f9" media:[cat.png image/png] — by alice @G1#general
+   ix.alice: {"m":"reply","content":"⭐ Favori **f9** enregistré ! Utilise `/dropfav f9` pour le renvoyer.\n⚠️ Les liens Discord expirent après ~24h : si le drop ne s'affiche plus, refais `/fav add f9`.","ephemeral":true}
+
+p1.172 [t=162001] /fav add name:"f10" media:[cat.png image/png] — by alice @G1#general
+   ix.alice: {"m":"reply","content":"⭐ Favori **f10** enregistré ! Utilise `/dropfav f10` pour le renvoyer.\n⚠️ Les liens Discord expirent après ~24h : si le drop ne s'affiche plus, refais `/fav add f10`.","ephemeral":true}
+
+p1.173 [t=162001] /fav add name:"f11" media:[cat.png image/png] — by alice @G1#general
+   ix.alice: {"m":"reply","content":"❌ Limite de 10 favoris atteinte. Supprime-en un avec `/fav remove`.","ephemeral":true}
+
+p1.174 [t=162001] /fav add name:"TOMATO" media:[dance.gif image/gif] caption:"at the limit" — by alice @G1#general
+   ix.alice: {"m":"reply","content":"⭐ Favori **TOMATO** enregistré ! Utilise `/dropfav TOMATO` pour le renvoyer.\n⚠️ Les liens Discord expirent après ~24h : si le drop ne s'affiche plus, refais `/fav add TOMATO`.","ephemeral":true}
+
+p1.175 [t=162001] /fav list — by alice @G1#general
+   ix.alice: {"m":"reply","content":"**Tes favoris :**\n• **TOMATO** (gif) — _at the limit_\n• **f2** (image)\n• **f3** (video) — _cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc_\n• **f4** (audio)\n• **f5** (gif)\n• **f6** (image)\n• **f7*…
+
+p1.176 [t=162001] /fav remove name:"F2" — by alice @G1#general
+   ix.alice: {"m":"reply","content":"🗑️ Favori **F2** supprimé.","ephemeral":true}
+
+p1.177 [t=162001] /fav remove name:"nope" — by alice @G1#general
+   ix.alice: {"m":"reply","content":"❌ Aucun favori nommé **nope**.","ephemeral":true}
+
+p1.178 [t=162001] /fav list — by bob @G1#general
+   ix.bob: {"m":"reply","content":"Tu n'as aucun favori. Ajoute-en avec `/fav add`.","ephemeral":true}
+
+p1.179 [t=162001→164001] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.180 [t=164001] /dropfav name:"tomato" target:@bob pluie:"🍅" effet:"zoom" — by alice @G1#general
+   ix.alice: {"m":"deferReply","ephemeral":true}
+   ix.alice: {"m":"editReply","content":"✅ Drop envoyé sur **bob** !"}
+   ws.B: {"type":"drop","dropId":"<DROP@p1.180#1>","tts":null,"ttsUrl":null,"effect":"zoom","media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000004/dance.gif","kind":"gif","mime":"image/gif","name":"TOMATO","size":1048576,"width":nu…
+
+p1.181 [t=164001] /dropfav right after — by alice
+   ix.alice: {"m":"deferReply","ephemeral":true}
+   ix.alice: {"m":"editReply","content":"⏱️ Doucement — encore 2s avant le prochain `/drop`."}
+
+p1.182 [t=164001→166001] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.183 [t=166001] /dropfav name:"nope" target:@bob — by alice @G1#general
+   ix.alice: {"m":"deferReply","ephemeral":true}
+   ix.alice: {"m":"editReply","content":"❌ Aucun favori nommé **nope**. Vois `/fav list`."}
+
+p1.184 [t=166001] /dropfav name:"f3" target:@memebot — by alice @G1#general
+   ix.alice: {"m":"deferReply","ephemeral":true}
+   ix.alice: {"m":"editReply","content":"🤖 Aucune cible valide (bots et doublons filtrés)."}
+
+p1.185 [t=166001] /dropfav name:"F3" target:@bob target2:@erin target3:@dave — by alice @G1#general
+   ix.alice: {"m":"deferReply","ephemeral":true}
+   ix.alice: {"m":"editReply","content":"✅ Drop envoyé sur **bob**, **erin**.\n⚠️ Pas atteignables depuis ce serveur : **dave**"}
+   ws.B: {"type":"drop","dropId":"<DROP@p1.185#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000005/clip.mp4","kind":"video","mime":"video/mp4","name":"f3","size":5242880,"width":null,"h…
+   ws.E: {"type":"drop","dropId":"<DROP@p1.185#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000005/clip.mp4","kind":"video","mime":"video/mp4","name":"f3","size":5242880,"width":null,"h…
+
+p1.186 [t=166001→168001] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.187 [t=168001] /drop right after /dropfav cooldown expired — by alice
+   ix.alice: {"m":"deferReply","ephemeral":true}
+   ix.alice: {"m":"editReply","content":"✅ Drop envoyé sur **bob** !"}
+   ws.B: {"type":"drop","dropId":"<DROP@p1.187#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"image/png","name":"cat.png","size":48213,"width":640,"…
+
+p1.188 [t=168001] /group list — by carol @G1#general
+   ix.carol: {"m":"reply","content":"Tu n'as aucun groupe. Crée-en un avec `/group set`.","ephemeral":true}
+
+p1.189 [t=168001] /group set name:"Squad" target:@alice target2:@bob target3:@memebot target4:@bob — by carol @G1#general
+   ix.carol: {"m":"reply","content":"📁 Groupe **Squad** enregistré avec 2 membres. Utilise `/dropgroup Squad` pour leur envoyer un mème.","ephemeral":true}
+
+p1.190 [t=168001] /group set name:"squad" target:@frank — by carol @G1#general
+   ix.carol: {"m":"reply","content":"📁 Groupe **squad** enregistré avec 1 membre. Utilise `/dropgroup squad` pour leur envoyer un mème.","ephemeral":true}
+
+p1.191 [t=168001] /group set name:"  " target:@bob — by carol @G1#general
+   ix.carol: {"m":"reply","content":"❌ Nom invalide.","ephemeral":true}
+
+p1.192 [t=168001] /group set name:"bots" target:@memebot — by carol @G1#general
+   ix.carol: {"m":"reply","content":"🤖 Aucun membre valide (bots et doublons filtrés).","ephemeral":true}
+
+p1.193 [t=168001] /group set name:"ghosts" target:@ghost — by carol @G1#general
+   ix.carol: {"m":"reply","content":"📁 Groupe **ghosts** enregistré avec 1 membre. Utilise `/dropgroup ghosts` pour leur envoyer un mème.","ephemeral":true}
+
+p1.194 [t=168001] /group set name:"duo" target:@bob target2:@alice — by carol @G1#general
+   ix.carol: {"m":"reply","content":"📁 Groupe **duo** enregistré avec 2 membres. Utilise `/dropgroup duo` pour leur envoyer un mème.","ephemeral":true}
+
+p1.195 [t=168001] /group set name:"g1" target:@alice — by carol @G1#general
+   ix.carol: {"m":"reply","content":"📁 Groupe **g1** enregistré avec 1 membre. Utilise `/dropgroup g1` pour leur envoyer un mème.","ephemeral":true}
+
+p1.196 [t=168001] /group set name:"g2" target:@alice — by carol @G1#general
+   ix.carol: {"m":"reply","content":"📁 Groupe **g2** enregistré avec 1 membre. Utilise `/dropgroup g2` pour leur envoyer un mème.","ephemeral":true}
+
+p1.197 [t=168001] /group set name:"g3" target:@alice — by carol @G1#general
+   ix.carol: {"m":"reply","content":"📁 Groupe **g3** enregistré avec 1 membre. Utilise `/dropgroup g3` pour leur envoyer un mème.","ephemeral":true}
+
+p1.198 [t=168001] /group set name:"g4" target:@alice — by carol @G1#general
+   ix.carol: {"m":"reply","content":"📁 Groupe **g4** enregistré avec 1 membre. Utilise `/dropgroup g4` pour leur envoyer un mème.","ephemeral":true}
+
+p1.199 [t=168001] /group set name:"g5" target:@alice — by carol @G1#general
+   ix.carol: {"m":"reply","content":"📁 Groupe **g5** enregistré avec 1 membre. Utilise `/dropgroup g5` pour leur envoyer un mème.","ephemeral":true}
+
+p1.200 [t=168001] /group set name:"g6" target:@alice — by carol @G1#general
+   ix.carol: {"m":"reply","content":"📁 Groupe **g6** enregistré avec 1 membre. Utilise `/dropgroup g6` pour leur envoyer un mème.","ephemeral":true}
+
+p1.201 [t=168001] /group set name:"g7" target:@alice — by carol @G1#general
+   ix.carol: {"m":"reply","content":"📁 Groupe **g7** enregistré avec 1 membre. Utilise `/dropgroup g7` pour leur envoyer un mème.","ephemeral":true}
+
+p1.202 [t=168001] /group set name:"g8" target:@bob — by carol @G1#general
+   ix.carol: {"m":"reply","content":"❌ Limite de 10 groupes atteinte. Supprime-en un avec `/group delete`.","ephemeral":true}
+
+p1.203 [t=168001] /group set name:"G1" target:@bob — by carol @G1#general
+   ix.carol: {"m":"reply","content":"📁 Groupe **G1** enregistré avec 1 membre. Utilise `/dropgroup G1` pour leur envoyer un mème.","ephemeral":true}
+
+p1.204 [t=168001] /group list — by carol @G1#general
+   ix.carol: {"m":"reply","content":"**Tes groupes :**\n• **squad** — <@210000000000000006>\n• **ghosts** — <@210000000000000007>\n• **duo** — <@210000000000000002>, <@210000000000000001>\n• **g2** — <@210000000000000001>\n• **g3** — <@210000000000000001>\n• **g4** — <@210…
+
+p1.205 [t=168001] /group delete name:"SQUAD" — by carol @G1#general
+   ix.carol: {"m":"reply","content":"🗑️ Groupe **squad** supprimé.","ephemeral":true}
+
+p1.206 [t=168001] /group delete name:"nope" — by carol @G1#general
+   ix.carol: {"m":"reply","content":"❌ Aucun groupe nommé **nope**.","ephemeral":true}
+
+p1.207 [t=168001] /group list — by alice @G1#general
+   ix.alice: {"m":"reply","content":"Tu n'as aucun groupe. Crée-en un avec `/group set`.","ephemeral":true}
+
+p1.208 [t=168001→170001] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.209 [t=170001] /dropgroup name:"DUO" media:[cat.png image/png] tts:"surprise" — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"✅ Drop envoyé sur **bob**, **alice** !"}
+   ws.A: {"type":"drop","dropId":"<DROP@p1.209#1>","tts":"surprise","ttsUrl":"https://memedrop-bot.fly.dev/tts?text=surprise","effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"imag…
+   ws.B: {"type":"drop","dropId":"<DROP@p1.209#1>","tts":"surprise","ttsUrl":"https://memedrop-bot.fly.dev/tts?text=surprise","effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"imag…
+
+p1.210 [t=170001] /dropgroup right after — by carol
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"⏱️ Doucement — encore 2s avant le prochain `/drop`."}
+
+p1.211 [t=170001→172001] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.212 [t=172001] /dropgroup name:"nope" media:[cat.png image/png] — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"❌ Aucun groupe nommé **nope**. Vois `/group list`."}
+
+p1.213 [t=172001] /dropgroup name:"g1" media:[notes.txt text/plain; charset=utf-8] — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"❌ Unsupported type: `text/plain; charset=utf-8`. Use PNG / JPG / GIF / WEBP / MP4 / WEBM / MP3."}
+
+p1.214 [t=172001] /dropgroup name:"ghosts" media:[cat.png image/png] — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"❌ Personne n'est atteignable depuis ce serveur. Ils doivent faire `/link` ici aussi."}
+
+p1.215 [t=172001→174001] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.216 [t=174001] /dropgroup name:"G1" pluie:"💀" musique:[song.mp3 audio/mpeg] — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"❌ L'option `musique` nécessite un média (image ou GIF)."}
+
+p1.217 [t=174001] /dropgroup name:"G1" media:[dance.gif image/gif] musique:[song.mp3 audio/mpeg] effet:"tornade" — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"✅ Drop envoyé sur **bob** ! 🎵"}
+   ws.B: {"type":"drop","dropId":"<DROP@p1.217#1>","tts":null,"ttsUrl":null,"effect":"tornade","media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000004/dance.gif","kind":"gif","mime":"image/gif","name":"dance.gif","size":1048576,"wid…
+
+p1.218 [t=174001] /stats — by alice @G1#general
+   ix.alice: {"m":"deferReply","ephemeral":true}
+   ix.alice: {"m":"editReply","content":"📊 **Tes stats** : 7 drops envoyés · 18 reçus\n\n**🏆 Top droppeurs**\n🥇 **carol** — 13\n🥈 **bob** — 10\n🥉 **alice** — 7\n▫️ **frank** — 1\n\n**🎯 Top victimes**\n🥇 **alice** — 18\n🥈 **bob** — 11\n🥉 **erin** — 2"}
+
+p1.219 [t=174001] /stats — by dave @G1#general
+   ix.dave: {"m":"deferReply","ephemeral":true}
+   ix.dave: {"m":"editReply","content":"📊 **Tes stats** : 0 drop envoyé · 0 reçu\n\n**🏆 Top droppeurs**\n🥇 **carol** — 13\n🥈 **bob** — 10\n🥉 **alice** — 7\n▫️ **frank** — 1\n\n**🎯 Top victimes**\n🥇 **alice** — 18\n🥈 **bob** — 11\n🥉 **erin** — 2"}
+
+p1.220 [t=174001] /link with A's extension code — by alice @G2#memes
+   ix.alice: {"m":"reply","content":"✅ Added **Gaming Squad** to your linked sources (2 total).","ephemeral":true}
+   ws.A: {"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true},{"id":"110000000000000002","name":…
+   ws.A: {"type":"pairing_code","code":"<CODE@p1.220#1>"}
+
+p1.221 [t=174001] /link with the same (rotated) extension code again — by alice @G2#memes
+   ix.alice: {"m":"reply","content":"❌ Invalid or expired code. Check the code in your overlay app and try again.","ephemeral":true}
+
+p1.222 [t=174001] /status — by alice @G2#memes
+   ix.alice: {"m":"reply","content":"🟢 Linked on **Gaming Squad** (2 servers total).","ephemeral":true}
+
+p1.223 [t=174001→176001] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.224 [t=176001] /drop to alice from G2 now that she linked there — by carol
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"✅ Drop envoyé sur **alice** !"}
+   ws.A: {"type":"drop","dropId":"<DROP@p1.224#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"image/png","name":"cat.png","size":48213,"width":640,"…
+
+p1.225 [t=176001] /who — by carol @G2#memes
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"**Drop targets reachable from this server:**\n• <@210000000000000001>"}
+
+p1.226 [t=176001] world: guild G2 renamed + animated icon (guildUpdate)
+   ws.A: {"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true},{"id":"110000000000000002","name":…
+
+p1.227 [t=176001] world: guild G1 updated with the same name (guildUpdate)
+   ws.A: {"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true},{"id":"110000000000000002","name":…
+   ws.B: {"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true}],"guildIds":["110000000000000001"]…
+   ws.E: {"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true}],"guildIds":["110000000000000001",…
+
+p1.228 [t=176001] overlay A sends {"type":"unlink_guild","guildId":"110000000000000002"}
+   ws.A: {"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true}],"guildIds":["110000000000000001"]…
+
+p1.229 [t=176001] overlay A sends {"type":"unlink_guild","guildId":"999"}
+   ws.A: {"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true}],"guildIds":["110000000000000001"]…
+
+p1.230 [t=176001] overlay A sends {"type":"unlink_guild"}
+
+p1.231 [t=176001] unlinked overlay P sends unlink_guild
+
+p1.232 [t=176001] overlay E sends {"type":"unlink_guild","guildId":"110000000000000009"}
+   ws.E: {"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true}],"guildIds":["110000000000000001"]…
+
+p1.233 [t=176001] overlay E unlinks its last guild
+   ws.E: {"type":"unlinked","reason":"no_guilds_left"}
+   ws.E: {"type":"pairing_code","code":"<CODE@p1.233#1>"}
+
+p1.234 [t=176001] /who — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"**Drop targets reachable from this server:**\n• <@210000000000000001>\n• <@210000000000000002>"}
+
+p1.235 [t=176001] overlay D connects
+   ws.D: {"type":"pairing_code","code":"<CODE@p1.235#1>"}
+
+p1.236 [t=176001] overlay D sends {"type":"register","identity":{"userId":"210000000000000004","username":"dave","scope":"global","token":"<TOKEN hmac(dave)>"}}
+   ws.D: {"type":"linked","user":{"id":"210000000000000004","username":"dave"},"token":"<TOKEN hmac(dave)>","links":{"scope":"global","guilds":[],"guildIds":[],"blocked":[],"blockedIds":[]}}
+   ws.D: {"type":"pairing_code","code":"<CODE@p1.236#1>"}
+
+p1.237 [t=176001] /status — by dave @G1#general
+   ix.dave: {"m":"reply","content":"🟢 Overlay linked (legacy global mode — reachable from any server).","ephemeral":true}
+
+p1.238 [t=176001] /link with D's extension code (global link) — by dave
+   ix.dave: {"m":"reply","content":"✅ Your overlay is in legacy global mode — already reachable from every server.","ephemeral":true}
+
+p1.239 [t=176001→178001] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.240 [t=178001] /drop to dave (global link) from G2 — by carol
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"✅ Drop envoyé sur **dave** !"}
+   ws.D: {"type":"drop","dropId":"<DROP@p1.240#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"image/png","name":"cat.png","size":48213,"width":640,"…
+
+p1.241 [t=178001] /who — by carol @G2#memes
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"No drop targets in this server right now. 😴"}
+
+p1.242 [t=178001] overlay D sends {"type":"unlink_guild","guildId":"110000000000000001"}
+
+p1.243 [t=178001] overlay X connects
+   ws.X: {"type":"pairing_code","code":"<CODE@p1.243#1>"}
+
+p1.244 [t=178001] overlay X sends {"type":"register"}
+   ws.X: {"type":"register_failed"}
+
+p1.245 [t=178001] overlay X sends {"type":"register","identity":"garbage"}
+   ws.X: {"type":"register_failed"}
+
+p1.246 [t=178001] overlay X registers as bob with a forged token
+   ws.X: {"type":"register_failed"}
+
+p1.247 [t=178001] overlay X registers as bob without a token
+   ws.X: {"type":"register_failed"}
+
+p1.248 [t=178001] overlay X registers as bob (valid token) with no guild
+   ws.X: {"type":"register_failed"}
+
+p1.249 [t=178001] /link with X's pairing code after its failed registers — by carol
+   ix.carol: {"m":"reply","content":"✅ Linked on **Les Potes**. To be reachable from other servers, run `/link` there too — your overlay shows the code.","ephemeral":true}
+   ws.X: {"type":"linked","user":{"id":"210000000000000003","username":"carol"},"token":"<TOKEN hmac(carol)>","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n00000000000000…
+   ws.X: {"type":"pairing_code","code":"<CODE@p1.249#1>"}
+
+p1.250 [t=178001] /unlink — by carol @G1#general
+   ix.carol: {"m":"reply","content":"✅ Unlinked from every server. Your overlay shows a new pairing code.","ephemeral":true}
+   ws.X: {"type":"unlinked","reason":"user"}
+   ws.X: {"type":"pairing_code","code":"<CODE@p1.250#1>"}
+
+p1.251 [t=178001] overlay X disconnects
+   ws.X: {"_closed":1005}
+
+p1.252 [t=178001] overlay P (unlinked) disconnects
+   ws.P: {"_closed":1005}
+
+p1.253 [t=178001] /link with P's code after P disconnected — by carol
+   ix.carol: {"m":"reply","content":"❌ Invalid or expired code. Open the overlay (it shows a fresh code) and try again.","ephemeral":true}
+
+p1.254 [t=178001] overlay A (alice) disconnects
+   ws.A: {"_closed":1005}
+
+p1.255 [t=178001] /status — by alice @G1#general
+   ix.alice: {"m":"reply","content":"🔴 No overlay linked. Launch the app and use `/link <code>`.","ephemeral":true}
+
+p1.256 [t=178001] /link with A's last extension code after A disconnected — by alice
+   ix.alice: {"m":"reply","content":"❌ Invalid or expired code. Open the overlay (it shows a fresh code) and try again.","ephemeral":true}
+
+p1.257 [t=178001→180001] advance +2000 ms (lets a /drop cooldown expire)
+   ws.B: {"type":"ping"}
+   ws.D: {"type":"ping"}
+   ws.E: {"type":"ping"}
+
+p1.258 [t=180001] /drop to alice while her overlay is gone — by carol
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"❌ Personne n'est atteignable depuis ce serveur. Ils doivent faire `/link` ici aussi."}
+
+p1.259 [t=180001] overlay C connects (alice reconnects)
+   ws.C: {"type":"pairing_code","code":"<CODE@p1.259#1>"}
+
+p1.260 [t=180001] overlay C registers as alice with the token from her /link
+   ws.C: {"type":"linked","user":{"id":"210000000000000001","username":"alice"},"token":"<TOKEN hmac(alice)>","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n00000000000000…
+   ws.C: {"type":"pairing_code","code":"<CODE@p1.260#1>"}
+
+p1.261 [t=180001] overlay C sends the same register again (already linked, other username)
+   ws.C: {"type":"linked","user":{"id":"210000000000000001","username":"Alice!"},"token":"<TOKEN hmac(alice)>","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000…
+   ws.C: {"type":"pairing_code","code":"<CODE@p1.261#1>"}
+
+p1.262 [t=180001] /status — by alice @G1#general
+   ix.alice: {"m":"reply","content":"🟢 Linked on **Les Potes** (1 server total).","ephemeral":true}
+
+p1.263 [t=180001] /blocklist — by alice @G1#general
+   ix.alice: {"m":"deferReply","ephemeral":true}
+   ix.alice: {"m":"editReply","content":"**Utilisateurs bloqués :**\n• bob (`210000000000000002`)"}
+
+p1.264 [t=180001] overlay C2 connects (alice on a second PC)
+   ws.C2: {"type":"pairing_code","code":"<CODE@p1.264#1>"}
+
+p1.265 [t=180001] overlay C2 registers as alice (HMAC token) while C holds the link
+   ws.C: {"type":"unlinked","reason":"replaced"}
+   ws.C: {"type":"pairing_code","code":"<CODE@p1.265#1>"}
+   ws.C2: {"type":"linked","user":{"id":"210000000000000001","username":"alice"},"token":"<TOKEN hmac(alice)>","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n00000000000000…
+   ws.C2: {"type":"pairing_code","code":"<CODE@p1.265#2>"}
+
+p1.266 [t=180001] replaced overlay C sends unblock_user
+
+p1.267 [t=180001] replaced overlay C reacts
+
+p1.268 [t=180001] /block user:@carol — by alice @G1#general
+   ix.alice: {"m":"reply","content":"🔇 **carol** ne pourra plus t'envoyer de drops.","ephemeral":true}
+   ws.C2: {"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true},{"id":"110000000000000002","name":…
+
+p1.269 [t=180001] /link with C's fresh pairing code while C2 holds the link — by alice
+   ix.alice: {"m":"reply","content":"✅ Linked on **Les Potes**. To be reachable from other servers, run `/link` there too — your overlay shows the code.","ephemeral":true}
+   ws.C: {"type":"linked","user":{"id":"210000000000000001","username":"alice"},"token":"<TOKEN hmac(alice)>","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n00000000000000…
+   ws.C: {"type":"pairing_code","code":"<CODE@p1.269#1>"}
+   ws.C2: {"type":"unlinked","reason":"replaced"}
+   ws.C2: {"type":"pairing_code","code":"<CODE@p1.269#2>"}
+
+p1.270 [t=180001] /blocklist — by alice @G1#general
+   ix.alice: {"m":"deferReply","ephemeral":true}
+   ix.alice: {"m":"editReply","content":"**Utilisateurs bloqués :**\n• carol (`210000000000000003`)"}
+
+p1.271 [t=180001] overlay C2 disconnects
+   ws.C2: {"_closed":1005}
+
+p1.272 [t=180001] /unlink — by alice @G1#general
+   ix.alice: {"m":"reply","content":"✅ Unlinked from every server. Your overlay shows a new pairing code.","ephemeral":true}
+   ws.C: {"type":"unlinked","reason":"user"}
+   ws.C: {"type":"pairing_code","code":"<CODE@p1.272#1>"}
+
+p1.273 [t=180001] /unlink again — by alice
+   ix.alice: {"m":"reply","content":"You have no linked overlay.","ephemeral":true}
+
+p1.274 [t=180001] /link with the extension code shown before /unlink — by alice
+   ix.alice: {"m":"reply","content":"❌ The overlay for that code is no longer connected.","ephemeral":true}
+
+p1.275 [t=180001] /link with C's new pairing code — by alice
+   ix.alice: {"m":"reply","content":"✅ Linked on **Les Potes**. To be reachable from other servers, run `/link` there too — your overlay shows the code.","ephemeral":true}
+   ws.C: {"type":"linked","user":{"id":"210000000000000001","username":"alice"},"token":"<TOKEN hmac(alice)>","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n00000000000000…
+   ws.C: {"type":"pairing_code","code":"<CODE@p1.275#1>"}
+
+p1.276 [t=180001] /drop target:@bob media:[cat.png image/png] — by alice @DM
+   ix.alice: {"m":"reply","content":"❌ Les commandes MemeDrop s'utilisent sur un serveur, pas en message privé.","ephemeral":true}
+
+p1.277 [t=180001] /status — by alice @DM
+   ix.alice: {"m":"reply","content":"❌ Les commandes MemeDrop s'utilisent sur un serveur, pas en message privé.","ephemeral":true}
+
+p1.278 [t=180001] button interaction (not a slash command) — by alice
+
+p1.279 [t=180001] /ping — by alice @G1#general
+
+p1.280 [t=180001] overlay B sends not json
+
+p1.281 [t=180001] overlay B sends {
+
+p1.282 [t=180001] overlay B sends null
+
+p1.283 [t=180001] overlay B sends 42
+
+p1.284 [t=180001] overlay B sends "str"
+
+p1.285 [t=180001] overlay B sends []
+
+p1.286 [t=180001] overlay B sends {"type":"unknown"}
+
+p1.287 [t=180001] overlay B sends {"type":"react"}
+
+p1.288 [t=180001] overlay B sends {"type":"pong"}
+
+p1.289 [t=180001] overlay B sends {"type":"unblock_user","userId":{"x":1}}
+   ws.B: {"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true}],"guildIds":["110000000000000001"]…
+
+p1.290 [t=180001] overlay B sends a binary frame containing unblock_user JSON
+   ws.B: {"type":"links_update","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n0000000000000000000000000001.png?size=64","enabled":true}],"guildIds":["110000000000000001"]…
+
+p1.291 [t=180001] overlay B sends a 65536-byte message
+
+p1.292 [t=180001] /status — by bob @G1#general
+   ix.bob: {"m":"reply","content":"🟢 Linked on **Les Potes** (1 server total).","ephemeral":true}
+
+p1.293 [t=180001] overlay B sends a 65537-byte message
+   ws.B: {"_closed":1009}
+
+p1.294 [t=180001] /status — by bob @G1#general
+   ix.bob: {"m":"reply","content":"🔴 No overlay linked. Launch the app and use `/link <code>`.","ephemeral":true}
+
+p1.295 [t=180001] overlay Z connects (does not answer pings)
+   ws.Z: {"type":"pairing_code","code":"<CODE@p1.295#1>"}
+
+p1.296 [t=180001→210000] advance to the next 30 s heartbeat
+   ws.C: {"type":"ping"}
+   ws.D: {"type":"ping"}
+   ws.E: {"type":"ping"}
+   ws.Z: {"type":"ping"}
+
+p1.297 [t=210000→240000] advance +30 s (second heartbeat: Z never answered)
+   ws.C: {"type":"ping"}
+   ws.D: {"type":"ping"}
+   ws.E: {"type":"ping"}
+   ws.Z: {"_closed":1006}
+
+p1.298 [t=240000] /who — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"**Drop targets reachable from this server:**\n• <@210000000000000004>\n• <@210000000000000001>"}
+
+p1.299 [t=240000→242000] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.300 [t=242000] /drop to alice (reaction window probe R1) — by frank
+   ix.frank: {"m":"deferReply","ephemeral":true}
+   ix.frank: {"m":"editReply","content":"✅ Drop envoyé sur **alice** !"}
+   ws.C: {"type":"drop","dropId":"<DROP@p1.300#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"image/png","name":"cat.png","size":48213,"width":640,"…
+
+p1.301 [t=242000→244000] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.302 [t=244000] /drop to alice (reaction window probe R2) — by frank
+   ix.frank: {"m":"deferReply","ephemeral":true}
+   ix.frank: {"m":"editReply","content":"✅ Drop envoyé sur **alice** !"}
+   ws.C: {"type":"drop","dropId":"<DROP@p1.302#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000002/photo.jpg","kind":"image","mime":"image/jpeg","name":"photo.jpg","size":91234,"width":…
+
+p1.303 [t=244000→1082000] advance to 14 min after R1
+   ws.C: {"_repeat":28,"type":"ping"}
+   ws.D: {"_repeat":28,"type":"ping"}
+   ws.E: {"_repeat":28,"type":"ping"}
+
+p1.304 [t=1082000] overlay C reacts to R1 (14 min old)
+   chan: {"ch":"G1#general","content":"😭 **alice** a réagi au drop de <@210000000000000006> !"}
+
+p1.305 [t=1082000→1504000] advance to 21 min after R2
+   ws.C: {"_repeat":14,"type":"ping"}
+   ws.D: {"_repeat":14,"type":"ping"}
+   ws.E: {"_repeat":14,"type":"ping"}
+
+p1.306 [t=1504000] overlay C reacts to R2 (21 min old)
+
+p1.307 [t=1504000] overlay C (alice) reacts to the /dropgroup drop she got > 15 min ago
+
+p1.308 [t=1504000→3682000] advance to 1 ms before the 60-minute (clamped from 90) delayed drop
+   ws.C: {"_repeat":72,"type":"ping"}
+   ws.D: {"_repeat":72,"type":"ping"}
+   ws.E: {"_repeat":72,"type":"ping"}
+
+p1.309 [t=3682000→3682001] advance +1 ms (clamped delayed drop due)
+   ws.C: {"type":"drop","dropId":"<DROP@p1.309#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000004/dance.gif","kind":"gif","mime":"image/gif","name":"dance.gif","size":1048576,"width":3…
+
+p1.310 [t=3682001→3684001] advance +2000 ms (lets a /drop cooldown expire)
+
+p1.311 [t=3684001] /drop to carol (no overlay) — by bob
+   ix.bob: {"m":"deferReply","ephemeral":true}
+   ix.bob: {"m":"editReply","content":"❌ Personne n'est atteignable depuis ce serveur. Ils doivent faire `/link` ici aussi."}
+
+p1.312 [t=3684001] /drop to alice (blocked carol before /unlink + /link) — by carol
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"✅ Drop envoyé sur **alice** !"}
+   ws.C: {"type":"drop","dropId":"<DROP@p1.312#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"image/png","name":"cat.png","size":48213,"width":640,"…
+
+p1.313 [t=3684001] /drop to alice — by frank
+   ix.frank: {"m":"deferReply","ephemeral":true}
+   ix.frank: {"m":"editReply","content":"✅ Drop envoyé sur **alice** !"}
+   ws.C: {"type":"drop","dropId":"<DROP@p1.313#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"image/png","name":"cat.png","size":48213,"width":640,"…
+
+p1.314 [t=3684001] overlay C reacts to frank's fresh drop
+   chan: {"ch":"G1#general","content":"🔥 **alice** a réagi au drop de <@210000000000000006> !"}
+
+p1.315 [t=3684001] /stats — by alice @G1#general
+   ix.alice: {"m":"deferReply","ephemeral":true}
+   ix.alice: {"m":"editReply","content":"📊 **Tes stats** : 7 drops envoyés · 24 reçus\n\n**🏆 Top droppeurs**\n🥇 **carol** — 16\n🥈 **bob** — 11\n🥉 **alice** — 7\n▫️ **frank** — 4\n\n**🎯 Top victimes**\n🥇 **alice** — 24\n🥈 **bob** — 11\n🥉 **erin** — 2\n▫️ **dave** —…
+
+p1.316 [t=3684001] wait 1000 ms of real time (store save debounce)
+
+p1.317 [t=3684001] read DATA_DIR after the save debounce
+   store: {"files":["store.json"],"json":{"favorites":{"210000000000000001":[{"name":"TOMATO","url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000004/dance.gif","mime":"image/gif","kind":"gif","size":1048576,"caption":"at the limit","savedAt"…
+
+p1.318 [t=3684001] /fav add name:"last-minute" media:[cat.png image/png] caption:"saved right before shutdown" — by alice @G1#general
+   ix.alice: {"m":"reply","content":"⭐ Favori **last-minute** enregistré ! Utilise `/dropfav last-minute` pour le renvoyer.\n⚠️ Les liens Discord expirent après ~24h : si le drop ne s'affiche plus, refais `/fav add last-minute`.","ephemeral":true}
+
+p1.319 [t=3684001] send SIGINT to bot p1
+   ws.C: {"_closed":1005}
+   ws.D: {"_closed":1005}
+   ws.E: {"_closed":1005}
+   discord: {"what":"destroy"}
+   exit: {"code":0,"signal":null}
+
+p1.320 [t=3684001] read DATA_DIR after SIGINT
+   store: {"files":["store.json"],"json":{"favorites":{"210000000000000001":[{"name":"TOMATO","url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000004/dance.gif","mime":"image/gif","kind":"gif","size":1048576,"caption":"at the limit","savedAt"…
+
+p2.001 [t=7284001] start bot p2 — restart on the same DATA_DIR, FLY_APP_NAME + RAILWAY_PUBLIC_DOMAIN set
+   discord: {"what":"new Client","data":{"intents":["GuildMessages","Guilds"],"partials":[]}}
+   discord: {"what":"login"}
+
+p2.002 [t=7284001] overlay A connects
+   ws.A: {"type":"pairing_code","code":"<CODE@p2.002#1>"}
+
+p2.003 [t=7284001] overlay A registers as alice (blocked: bob, ghost) after the restart
+   ws.A: {"type":"linked","user":{"id":"210000000000000001","username":"alice"},"token":"<TOKEN hmac(alice)>","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n00000000000000…
+   ws.A: {"type":"pairing_code","code":"<CODE@p2.003#1>"}
+
+p2.004 [t=7284001] overlay B connects
+   ws.B: {"type":"pairing_code","code":"<CODE@p2.004#1>"}
+
+p2.005 [t=7284001] overlay B sends {"type":"register","identity":{"userId":"210000000000000002","username":"bob","scope":"guild","guildIds":["110000000000000001"],"token":"<TOKEN hmac(bob)>"}}
+   ws.B: {"type":"linked","user":{"id":"210000000000000002","username":"bob"},"token":"<TOKEN hmac(bob)>","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n000000000000000000…
+   ws.B: {"type":"pairing_code","code":"<CODE@p2.005#1>"}
+
+p2.006 [t=7284001] /fav list — by alice @G1#general
+   ix.alice: {"m":"reply","content":"**Tes favoris :**\n• **TOMATO** (gif) — _at the limit_\n• **f3** (video) — _cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc_\n• **f4** (audio)\n• **f5** (gif)\n• **f6** (image)\n• **f7** (image)\n• **f8*…
+
+p2.007 [t=7284001] /group list — by carol @G1#general
+   ix.carol: {"m":"reply","content":"**Tes groupes :**\n• **ghosts** — <@210000000000000007>\n• **duo** — <@210000000000000002>, <@210000000000000001>\n• **g2** — <@210000000000000001>\n• **g3** — <@210000000000000001>\n• **g4** — <@210000000000000001>\n• **g5** — <@210000…
+
+p2.008 [t=7284001] /stats — by alice @G1#general
+   ix.alice: {"m":"deferReply","ephemeral":true}
+   ix.alice: {"m":"editReply","content":"📊 **Tes stats** : 7 drops envoyés · 24 reçus\n\n**🏆 Top droppeurs**\n🥇 **carol** — 16\n🥈 **bob** — 11\n🥉 **alice** — 7\n▫️ **frank** — 4\n\n**🎯 Top victimes**\n🥇 **alice** — 24\n🥈 **bob** — 11\n🥉 **erin** — 2\n▫️ **dave** —…
+
+p2.009 [t=7284001] /dropgroup name:"ghosts" media:[cat.png image/png] — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"❌ Aucun membre du groupe **ghosts** n'est joignable (utilisateurs introuvables)."}
+
+p2.010 [t=7284001] /dropfav name:"last-minute" target:@bob — by alice @G1#general
+   ix.alice: {"m":"deferReply","ephemeral":true}
+   ix.alice: {"m":"editReply","content":"✅ Drop envoyé sur **bob** !"}
+   ws.B: {"type":"drop","dropId":"<DROP@p2.010#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"image/png","name":"last-minute","size":48213,"width":n…
+
+p2.011 [t=7284001] /drop target:@alice tts:"après le redémarrage" media:[cat.png image/png] — by carol @G2#memes
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"✅ Drop envoyé sur **alice** !"}
+   ws.A: {"type":"drop","dropId":"<DROP@p2.011#1>","tts":"après le redémarrage","ttsUrl":"https://memedrop-test.fly.dev/tts?text=apr%C3%A8s%20le%20red%C3%A9marrage","effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/6000000000000000…
+
+p2.012 [t=7284001] /blocklist — by alice @G1#general
+   ix.alice: {"m":"deferReply","ephemeral":true}
+   ix.alice: {"m":"editReply","content":"**Utilisateurs bloqués :**\n• bob (`210000000000000002`)\n• 210000000000000007 (`210000000000000007`)"}
+
+p2.013 [t=7284001] /group delete name:"g2" — by carol @G1#general
+   ix.carol: {"m":"reply","content":"🗑️ Groupe **g2** supprimé.","ephemeral":true}
+
+p2.014 [t=7284001] overlay A (linked as alice) registers as bob
+   ws.A: {"type":"linked","user":{"id":"210000000000000002","username":"bob"},"token":"<TOKEN hmac(bob)>","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n000000000000000000…
+   ws.A: {"type":"pairing_code","code":"<CODE@p2.014#1>"}
+   ws.B: {"type":"unlinked","reason":"replaced"}
+   ws.B: {"type":"pairing_code","code":"<CODE@p2.014#2>"}
+
+p2.015 [t=7284001→7286001] advance +2000 ms (lets a /drop cooldown expire)
+
+p2.016 [t=7286001] /drop to alice after her socket re-registered as bob — by frank
+   ix.frank: {"m":"deferReply","ephemeral":true}
+   ix.frank: {"m":"editReply","content":"✅ Drop envoyé sur **alice** !"}
+   ws.A: {"type":"drop","dropId":"<DROP@p2.016#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","kind":"image","mime":"image/png","name":"cat.png","size":48213,"width":640,"…
+
+p2.017 [t=7286001] /status — by alice @G1#general
+   ix.alice: {"m":"reply","content":"🟢 Linked on **Les Potes** (2 servers total).","ephemeral":true}
+
+p2.018 [t=7286001] overlay A disconnects
+   ws.A: {"_closed":1005}
+
+p2.019 [t=7286001] /status after overlay A closed — by alice
+   ix.alice: {"m":"reply","content":"🔴 No overlay linked. Launch the app and use `/link <code>`.","ephemeral":true}
+
+p2.020 [t=7286001] /status after overlay A closed — by bob
+   ix.bob: {"m":"reply","content":"🔴 No overlay linked. Launch the app and use `/link <code>`.","ephemeral":true}
+
+p2.021 [t=7286001] send SIGTERM to bot p2
+   ws.B: {"_closed":1005}
+   discord: {"what":"destroy"}
+   exit: {"code":0,"signal":null}
+
+p2.022 [t=7286001] read DATA_DIR after SIGTERM
+   store: {"files":["store.json"],"json":{"favorites":{"210000000000000001":[{"name":"TOMATO","url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000004/dance.gif","mime":"image/gif","kind":"gif","size":1048576,"caption":"at the limit","savedAt"…
+
+p3.001 [t=10884001] start bot p3 — store.json with favorites only, PUBLIC_BASE_URL with trailing slashes
+   discord: {"what":"new Client","data":{"intents":["GuildMessages","Guilds"],"partials":[]}}
+   discord: {"what":"login"}
+
+p3.002 [t=10884001] /fav list — by alice @G1#general
+   ix.alice: {"m":"reply","content":"**Tes favoris :**\n• **Vieux** (image)","ephemeral":true}
+
+p3.003 [t=10884001] /group list — by carol @G1#general
+   ix.carol: {"m":"reply","content":"Tu n'as aucun groupe. Crée-en un avec `/group set`.","ephemeral":true}
+
+p3.004 [t=10884001] /stats — by alice @G1#general
+   ix.alice: {"m":"deferReply","ephemeral":true}
+   ix.alice: {"m":"editReply","content":"📊 **Tes stats** : 0 drop envoyé · 0 reçu\n\n**🏆 Top droppeurs**\n_personne pour l'instant_\n\n**🎯 Top victimes**\n_personne pour l'instant_"}
+
+p3.005 [t=10884001] overlay A connects
+   ws.A: {"type":"pairing_code","code":"<CODE@p3.005#1>"}
+
+p3.006 [t=10884001] overlay A sends {"type":"register","identity":{"userId":"210000000000000001","username":"alice","scope":"guild","guildIds":["110000000000000001"],"token":"<TOKEN hmac(alice)>"}}
+   ws.A: {"type":"linked","user":{"id":"210000000000000001","username":"alice"},"token":"<TOKEN hmac(alice)>","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n00000000000000…
+   ws.A: {"type":"pairing_code","code":"<CODE@p3.006#1>"}
+
+p3.007 [t=10884001] /drop target:@alice tts:"base publique" pluie:"🎈" — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"✅ Drop envoyé sur **alice** !"}
+   ws.A: {"type":"drop","dropId":"<DROP@p3.007#1>","tts":"base publique","ttsUrl":"https://memedrop.example.test/tts?text=base%20publique","effect":null,"media":null,"rain":["🎈"],"music":null,"caption":null,"from":{"id":"210000000000000003","username":"carol","avatar"…
+
+p3.008 [t=10884001] /dropall tts:"à tous" — by carol @G1#general
+   ix.carol: {"m":"deferReply","ephemeral":true}
+   ix.carol: {"m":"editReply","content":"💥 Drop envoyé à **1** personne : **alice**"}
+   ws.A: {"type":"drop","dropId":"<DROP@p3.008#1>","tts":"à tous","ttsUrl":"https://memedrop.example.test/tts?text=%C3%A0%20tous","effect":null,"media":null,"rain":null,"music":null,"caption":null,"from":{"id":"210000000000000003","username":"carol","avatar":"https://c…
+
+p3.009 [t=10884001] overlay F connects
+   ws.F: {"type":"pairing_code","code":"<CODE@p3.009#1>"}
+
+p3.010 [t=10884001] overlay F registers as frank with 60 blocked ids unknown to Discord
+   ws.F: {"type":"linked","user":{"id":"210000000000000006","username":"frank"},"token":"<TOKEN hmac(frank)>","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n00000000000000…
+   ws.F: {"type":"pairing_code","code":"<CODE@p3.010#1>"}
+
+p3.011 [t=10884001] /blocklist (60 entries) — by frank
+   ix.frank: {"m":"deferReply","ephemeral":true}
+   ix.frank: {"m":"editReply","content":"**Utilisateurs bloqués :**\n• 299999999999999900 (`299999999999999900`)\n• 299999999999999901 (`299999999999999901`)\n• 299999999999999902 (`299999999999999902`)\n• 299999999999999903 (`299999999999999903`)\n• 299999999999999904 (`2…
+
+p3.012 [t=10884001] wait 1000 ms of real time (store save debounce)
+
+p3.013 [t=10884001] read DATA_DIR after the save debounce
+   store: {"files":["store.json"],"json":{"favorites":{"210000000000000001":[{"name":"Vieux","url":"https://cdn.discordapp.com/attachments/1/2/old.png","mime":"image/png","kind":"image","size":1234,"caption":null,"savedAt":"T+-86400000"}]},"groups":{},"stats":{"21000000…
+
+p3.014 [t=10884001] stop bot p3 with SIGKILL (end of block)
+   ws.A: {"_closed":1006}
+   ws.F: {"_closed":1006}
+   exit: {"code":null,"signal":"SIGKILL"}
+
+p4.001 [t=14484001] start bot p4 — unparsable store.json, LINK_SECRET unset
+   discord: {"what":"new Client","data":{"intents":["GuildMessages","Guilds"],"partials":[]}}
+   discord: {"what":"login"}
+
+p4.002 [t=14484001] /fav list — by alice @G1#general
+   ix.alice: {"m":"reply","content":"Tu n'as aucun favori. Ajoute-en avec `/fav add`.","ephemeral":true}
+
+p4.003 [t=14484001] overlay A connects
+   ws.A: {"type":"pairing_code","code":"<CODE@p4.003#1>"}
+
+p4.004 [t=14484001] overlay A registers with the HMAC token of the configured secret
+   ws.A: {"type":"register_failed"}
+
+p4.005 [t=14484001] /link code:"<CODE@p4.003#1>" — by alice @G1#general
+   ix.alice: {"m":"reply","content":"✅ Linked on **Les Potes**. To be reachable from other servers, run `/link` there too — your overlay shows the code.","ephemeral":true}
+   ws.A: {"type":"linked","user":{"id":"210000000000000001","username":"alice"},"token":"<TOKEN@p4.005#1>","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n00000000000000000…
+   ws.A: {"type":"pairing_code","code":"<CODE@p4.005#1>"}
+
+p4.006 [t=14484001] overlay A disconnects
+   ws.A: {"_closed":1005}
+
+p4.007 [t=14484001] overlay A2 connects
+   ws.A2: {"type":"pairing_code","code":"<CODE@p4.007#1>"}
+
+p4.008 [t=14484001] overlay A2 registers with the token this process issued
+   ws.A2: {"type":"linked","user":{"id":"210000000000000001","username":"alice"},"token":"<TOKEN@p4.005#1>","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n00000000000000000…
+   ws.A2: {"type":"pairing_code","code":"<CODE@p4.008#1>"}
+
+p4.009 [t=14484001] /fav add name:"neuf" media:[cat.png image/png] — by alice @G1#general
+   ix.alice: {"m":"reply","content":"⭐ Favori **neuf** enregistré ! Utilise `/dropfav neuf` pour le renvoyer.\n⚠️ Les liens Discord expirent après ~24h : si le drop ne s'affiche plus, refais `/fav add neuf`.","ephemeral":true}
+
+p4.010 [t=14484001] wait 1000 ms of real time (store save debounce)
+
+p4.011 [t=14484001] read DATA_DIR after the save debounce
+   store: {"files":["store.json"],"json":{"favorites":{"210000000000000001":[{"name":"neuf","url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000001/cat.png","mime":"image/png","kind":"image","size":48213,"caption":null,"savedAt":"T+14484001"}…
+
+p4.012 [t=14484001] stop bot p4 with SIGKILL (end of block)
+   ws.A2: {"_closed":1006}
+   exit: {"code":null,"signal":"SIGKILL"}
+
+p5.001 [t=18084001] start bot p5 — malformed HTTP request-target
+   discord: {"what":"new Client","data":{"intents":["GuildMessages","Guilds"],"partials":[]}}
+   discord: {"what":"login"}
+
+p5.002 [t=18084001] overlay A connects
+   ws.A: {"type":"pairing_code","code":"<CODE@p5.002#1>"}
+
+p5.003 [t=18084001] overlay A sends {"type":"register","identity":{"userId":"210000000000000001","username":"alice","scope":"guild","guildIds":["110000000000000001"],"token":"<TOKEN hmac(alice)>"}}
+   ws.A: {"type":"linked","user":{"id":"210000000000000001","username":"alice"},"token":"<TOKEN hmac(alice)>","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n00000000000000…
+   ws.A: {"type":"pairing_code","code":"<CODE@p5.003#1>"}
+
+p5.004 [t=18084001] raw HTTP "GET * HTTP/1.1"
+   http: {"raw":"GET * HTTP/1.1","response":"HTTP/1.1 404 Not Found"}
+
+p5.005 [t=18084001] raw HTTP "GET //[ HTTP/1.1"
+   ws.A: {"_closed":1006}
+   http: {"raw":"GET //[ HTTP/1.1","response":"<connection closed without response>"}
+   exit: {"code":1,"signal":null,"unexpected":true}
+
+p5.006 [t=18084001] HTTP GET /health after the malformed request
+   harness: aborted: bot p5 is not running
+
+p6.001 [t=21684001] start bot p6 — interaction callbacks rejected by Discord
+   discord: {"what":"new Client","data":{"intents":["GuildMessages","Guilds"],"partials":[]}}
+   discord: {"what":"login"}
+
+p6.002 [t=21684001] overlay A connects
+   ws.A: {"type":"pairing_code","code":"<CODE@p6.002#1>"}
+
+p6.003 [t=21684001] overlay A sends {"type":"register","identity":{"userId":"210000000000000001","username":"alice","scope":"guild","guildIds":["110000000000000001"],"token":"<TOKEN hmac(alice)>"}}
+   ws.A: {"type":"linked","user":{"id":"210000000000000001","username":"alice"},"token":"<TOKEN hmac(alice)>","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n00000000000000…
+   ws.A: {"type":"pairing_code","code":"<CODE@p6.003#1>"}
+
+p6.004 [t=21684001] /drop target:@alice media:[cat.png image/png] — by frank @G1#general (interaction token already expired)
+   ix.frank: {"m":"deferReply","ephemeral":true,"error":"DiscordAPIError[10062]"}
+   ix.frank: {"m":"reply","content":"⚠️ Internal error. Try again.","ephemeral":true,"error":"DiscordAPIError[10062]"}
+
+p6.005 [t=21684001] /drop right after the expired one — by frank
+   ix.frank: {"m":"deferReply","ephemeral":true}
+   ix.frank: {"m":"editReply","content":"✅ Drop envoyé sur **alice** !"}
+   ws.A: {"type":"drop","dropId":"<DROP@p6.005#1>","tts":null,"ttsUrl":null,"effect":null,"media":{"url":"https://cdn.discordapp.com/attachments/310000000000000001/600000000000000004/dance.gif","kind":"gif","mime":"image/gif","name":"dance.gif","size":1048576,"width":3…
+
+p6.006 [t=21684001] /who — by carol @G1#general (interaction token already expired)
+   ix.carol: {"m":"deferReply","ephemeral":true,"error":"DiscordAPIError[10062]"}
+   ix.carol: {"m":"reply","content":"⚠️ Internal error. Try again.","ephemeral":true,"error":"DiscordAPIError[10062]"}
+
+p6.007 [t=21684001] overlay B connects
+   ws.B: {"type":"pairing_code","code":"<CODE@p6.007#1>"}
+
+p6.008 [t=21684001] /link code:"<CODE@p6.007#1>" — by bob @G1#general (interaction token already expired)
+   ix.bob: {"m":"reply","content":"✅ Linked on **Les Potes**. To be reachable from other servers, run `/link` there too — your overlay shows the code.","ephemeral":true,"error":"DiscordAPIError[10062]"}
+   ws.A: {"_closed":1006}
+   ws.B: {"type":"linked","user":{"id":"210000000000000002","username":"bob"},"token":"<TOKEN hmac(bob)>","links":{"scope":"guild","guilds":[{"id":"110000000000000001","name":"Les Potes","icon":"https://cdn.discordapp.com/icons/110000000000000001/1c0n000000000000000000…
+   ws.B: {"type":"pairing_code","code":"<CODE@p6.008#1>"}
+   ws.B: {"_closed":1006}
+   exit: {"code":1,"signal":null,"unexpected":true}
+
+p6.009 [t=21684001] /status after the expired /link — by bob
+   harness: aborted: bot p6 is not running

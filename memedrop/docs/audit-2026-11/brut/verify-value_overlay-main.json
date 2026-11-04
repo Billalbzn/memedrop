@@ -1,0 +1,154 @@
+{
+ "verdicts": [
+  {
+   "id": "overlay-main#1-forward-mouse-hook-24-7",
+   "verdict": "accept",
+   "reason": "Verified. :199 and :797 are the only ignore=true calls and both pass forward:true, so the hook is installed at startup and again after every capture. Electron's Windows code (native_window_views_win.cc, SetForwardMouseMessages/MouseHookProc, stable for many majors) runs a WH_MOUSE_LL hook on the browser UI thread and PostMessages WM_MOUSEMOVE for every move inside the client rect. Nothing consumes those messages: overlay.js mousemove returns when !inCapture (:84-85), mousedown/mouseup need hoveredDrop/dragState, and hover comes from the 16 ms poll. It also matters because the same thread does synchronous fsync'd store writes (atomically busy-retries up to 100 ms on EPERM). A stall there delays every mouse event on the PC. Click-through is unchanged: both variants set WS_EX_TRANSPARENT.",
+   "amended_change": ""
+  },
+  {
+   "id": "overlay-main#2-electron-33-eol",
+   "verdict": "modify",
+   "reason": "Premise verified: lock 33.4.11, the caret stays on 33.x, EOL since 36.0 (Apr 2025), and the overlay decodes attacker-chosen media with zero clicks. Worth doing, but not as a blind edit in this batch. The registry is unreachable here, nothing can be built or QA'd, and a 10+ major jump touches the fragile Windows paths (transparent click-through window, tray, login items). CI runs `npm install`, so an untested bump would reach every friend through auto-update.",
+   "amended_change": "No code change in this batch. Make it a separate PR that the owner builds and tests on Windows before tagging:\n- overlay/package.json: electron to the newest supported major (exact version), electron-builder 24 -> 26.x, electron-updater to the latest 6.x; regenerate package-lock.json where the registry is reachable.\n- Read the breaking-change notes for the APIs main.js uses: transparent + focusable:false, setIgnoreMouseEvents, setAlwaysOnTop('screen-saver'), Tray/Menu, globalShortcut, setLoginItemSettings, contextBridge. Also read electron-builder's 25/26 config changes; no signing options are used here.\n- Smoke test: click-through, hover/drag/close, reactions, tray toggle, --hidden autostart, NSIS and portable builds, auto-update from 1.5.1.\n- Optional: .github/dependabot.yml (npm, directory /memedrop/overlay, weekly, grouping electron*) so the next EOL shows up as a PR."
+  },
+  {
+   "id": "overlay-main#3-store-disk-io-per-access",
+   "verdict": "accept",
+   "reason": "Verified for conf 10.2.0 / atomically 1.7.0 (high confidence):\n- get() goes through the `store` getter: readFileSync + JSON.parse of the whole file.\n- set() re-reads the file, then calls atomically.writeFileSync: temp file, write, fsync, rename, synchronous busy-retry of up to 100 ms on EPERM/EBUSY, then throw.\nThe counts are right: recordHistory get+set, isMuted 2 gets and currentDropSettings 8 gets, all before the 'drop' IPC. :853 and settings.js:234 keep reading while idle, and settings:set writes once per key. The facade is correct: `diskStore.store = x` writes without re-reading, and the only caller that mutates a returned object (links_update) calls set() afterwards. The reorder is the real robustness win: today a failed write throws inside the ws handler, loses the drop and shows Electron's error box over the game. The idle saving is small; the per-drop latency and the error path justify the change.",
+   "amended_change": ""
+  },
+  {
+   "id": "overlay-main#4-ws-handshake-no-timeout",
+   "verdict": "accept",
+   "reason": "Verified. `new WebSocket(url)` gets no options. ws 8.21 sets no handshake timeout by default and maxPayload defaults to 100 MiB. The heartbeat is only armed on 'open' or on a message. A stalled TLS handshake or upgrade (sleep or Wi-Fi change mid-connect, a proxy holding the request) leaves no outstanding data, so TCP never errors and the UI stays on 'connexion…'. With handshakeTimeout, ws aborts the request and emits 'error' then 'close', which the existing close handler turns into a reconnect. 1 MiB is far above any bot message. The jitter and reset-on-first-message are harmless: the bot sends pairing_code right after connecting (bot/index.js:340 at HEAD).",
+   "amended_change": ""
+  },
+  {
+   "id": "overlay-main#5-ipc-privileged-unrestricted",
+   "verdict": "modify",
+   "reason": "Real problem. No handler checks event.sender, both windows share the preload, and the overlay is the renderer that decodes untrusted media. A compromised overlay can rewrite serverUrl (the token is sent on reconnect), overwrite linkIdentity/dropHistory, or open URLs. But the per-key range table duplicates the slider ranges in settings.html:275-325 and would silently drop settings the day a slider is widened. Range checks add little once only the settings window can write. A sender guard plus a key allowlist closes the same paths with less code and nothing to keep in sync.",
+   "amended_change": "```js\n// Seule la fenêtre de réglages peut modifier l'état : l'overlay décode des médias non fiables.\nconst fromSettings = (e) => !!settingsWin && !settingsWin.isDestroyed() && e.sender.id === settingsWin.webContents.id;\nconst SETTINGS_KEYS = new Set(['serverUrl','volume','musicVolume','opacity','duration','videoDuration','soundOnArrival','spotlightOnDrop','autostart','overlayDisplayId','paused','theme','quietHours','avoidZone']);\n```\n- settings:set `(e, raw)`: `if (!fromSettings(e) || !raw || typeof raw !== 'object') return false; const patch = Object.fromEntries(Object.entries(raw).filter(([k, v]) => SETTINGS_KEYS.has(k) && v !== undefined));` The rest of the body stays as is.\n- `if (!fromSettings(e)) return false;` at the top of connection:reconnect, connection:unlink-guild, connection:unblock-user, mute:set, history:clear, history:replay, update:check/download/install, test-drop and open-external.\n- open-external: `try { const u = new URL(String(url)); if (u.protocol === 'https:') shell.openExternal(u.href); } catch {}`.\n- drop:react: `(_e, arg) => { const { dropId, emoji } = arg || {}; …`.\n- Read-only handlers stay open to both windows (overlay.js:916 calls getSettings)."
+  },
+  {
+   "id": "overlay-main#6-no-navigation-window-permission-guards",
+   "verdict": "accept",
+   "reason": "Verified: there is no will-navigate, setWindowOpenHandler or permission handler, so Electron's defaults apply.\n- A dropped file or link navigates the window, and the preload runs again on the new page.\n- A middle-click on #open-discord opens a second window, because settings.js only prevents 'click', not 'auxclick'.\n- Every permission request is granted automatically.\nClosing settings only hides the window (:251-256), so a navigated page stays broken until restart. will-navigate is not emitted for loadFile/reload or hash links. The copy button keeps working because clipboard-sanitized-write is allowed. Small, standard hardening.",
+   "amended_change": ""
+  },
+  {
+   "id": "overlay-main#7-overlay-renderer-crash-unhandled",
+   "verdict": "accept",
+   "reason": "Verified: overlayWin has no render-process-gone or did-finish-load handler. The worst case is real: if the renderer crashes (OOM, or a decoder crash on a bad media file) while a drop is hovered or dragged, the full-screen topmost window keeps setIgnoreMouseEvents(false) and swallows every click on that display until restart. Otherwise the 16 ms poll and the top guard run forever and later drops go nowhere. A reload capped at 3 per minute is the standard pattern. Optional hardening: return early if app.isQuitting before reloading.",
+   "amended_change": ""
+  },
+  {
+   "id": "overlay-main#8-overlay-shown-while-idle",
+   "verdict": "reject",
+   "reason": "The premise is unmeasured, and the proposal says so itself. Whether an always-visible transparent topmost window costs independent flip/VRR depends on GPU/MPO support and the game's present mode. The change is medium-risk Windows window juggling: first-drop latency, stale-frame flashes, z-order and focus with exclusive-fullscreen games, new tray semantics. None of it can be QA'd here. It belongs in a PresentMon experiment by the owner, not in a blind change.",
+   "amended_change": ""
+  },
+  {
+   "id": "overlay-main#9-top-guard-leak-and-noop",
+   "verdict": "modify",
+   "reason": "Leak verified: 'stage-empty' is only sent from releaseSlot() (overlay.js:223-227), and rain-only/TTS-only drops return at overlay.js:561-566 without taking a slot. The 2 s interval started at :351 therefore runs until a later media drop ends. Its cost is tiny (one wakeup every 2 s, one GetWindowLong), and the guard still acts if another process clears WS_EX_TOPMOST, as the evidence notes, so deleting it is not justified. Apply the one-line fix only.",
+   "amended_change": "main.js:351 -> `if (payload.media) startTopGuard(); enforceTop();`. Leave startTopGuard/stopTopGuard, 'stage-empty' and the blur handler as they are. A stalled audio-only drop can still hold its slot and the guard (playAudioDrop has no load timeout); that fix belongs in overlay.js."
+  },
+  {
+   "id": "overlay-main#10-global-devtools-shortcuts",
+   "verdict": "accept",
+   "reason": "Verified: both globalShortcut.register calls run unconditionally in packaged builds. RegisterHotKey takes the combos away from every other app (including AltGr = Ctrl+Alt) and pops a detached DevTools when pressed. They are redundant: the tray item at :298-303 opens the overlay DevTools, and Electron's default menu keeps Ctrl+Shift+I in the settings window (autoHideMenuBar only hides the bar). Gating on !app.isPackaged keeps them for dev.",
+   "amended_change": ""
+  },
+  {
+   "id": "overlay-main#11-autostart-portable-and-dev",
+   "verdict": "accept",
+   "reason": "Verified: :633 and :823 pass no `path`, so the Run value points to process.execPath. For the portable target that is the %TEMP% extraction; electron-builder exposes the real exe as PORTABLE_EXECUTABLE_FILE. In dev it is bare electron.exe, written under the AUMID that :812 sets in dev too, i.e. the same value name as the installed app. The helper is small and correct. See missed item m2: its launch-time call should also leave a Task Manager disable alone.",
+   "amended_change": ""
+  },
+  {
+   "id": "overlay-main#12-config-corruption-crash-loop",
+   "verdict": "accept",
+   "reason": "Verified: conf 10 defaults clearInvalidConfig to false and its constructor reads the file, so a config.json that is not valid JSON throws at main.js:22 on every launch (Electron error box, no tray). One option fixes it, at the cost of one re-link. Subsumed if store-disk-io-per-access lands, since its snippet sets the option.",
+   "amended_change": ""
+  },
+  {
+   "id": "overlay-main#13-drop-payload-unvalidated",
+   "verdict": "modify",
+   "reason": "Cheap hardening with a concrete enough threat. The overlay is a file:// page, so a hostile or MITM'd server (ws:// is accepted) can make it load file:// URLs. That likely includes UNC hosts, which makes Windows try SMB/NTLM to the attacker's host. But 'ignore the message unless every URL is http(s)' breaks forward compatibility: if a future bot sent data: TTS audio, old overlays would drop whole drops. The history caps add little once maxPayload is bounded, and the bot already caps the fields.",
+   "amended_change": "```js\n// URLs fournies par le serveur : http(s) ou data: seulement (jamais file:// ni chemin UNC).\nconst safeUrl = (u) => (typeof u === 'string' && /^(https?:|data:)/i.test(u) ? u : null);\n```\nIn the 'drop' case, before recording or showing:\n- `if (msg.media && !safeUrl(msg.media.url)) msg.media = null;`\n- `if (msg.music && !safeUrl(msg.music.url)) msg.music = null;`\n- `if (msg.ttsUrl != null) msg.ttsUrl = safeUrl(msg.ttsUrl);`\n- `if (msg.from && typeof msg.from === 'object' && msg.from.avatar != null) msg.from.avatar = safeUrl(msg.from.avatar);`\nSanitize field by field and never drop the message. No history caps."
+  },
+  {
+   "id": "overlay-main#14-hidden-settings-renderer-kept-alive",
+   "verdict": "modify",
+   "reason": "Real: after the first open, the settings renderer lives hidden for the app's lifetime, with its 30 s IPC poll and 60 s history rebuild.\n- (a) is close to zero value: main-process timers are never throttled and the overlay already has backgroundThrottling:false. Removing the switches only re-throttles that hidden page, so skip it.\n- (b) frees a whole renderer, but closing on every hide makes each reopen a cold load and needs a beforeunload flush in settings.js.\nReleasing the window after it has stayed hidden a few minutes gets the memory back, needs no settings.js change and keeps quick reopens instant.",
+   "amended_change": "```js\n// Réglages masqués depuis 5 min : on détruit la fenêtre pour libérer son\n// renderer ; createSettingsWindow() la recrée à la demande.\nconst SETTINGS_RELEASE_MS = 5 * 60_000;\nlet settingsReleaseTimer = null;\n```\n- createSettingsWindow, reuse branch: `clearTimeout(settingsReleaseTimer); settingsReleaseTimer = null;` before show()/focus().\n- After creating: `const win = settingsWin; win.on('closed', () => { if (settingsWin === win) settingsWin = null; });`\n- In the existing 'close' handler, after `settingsWin.hide();`: `clearTimeout(settingsReleaseTimer); settingsReleaseTimer = setTimeout(() => { settingsReleaseTimer = null; if (!win.isDestroyed() && !win.isVisible()) win.destroy(); }, SETTINGS_RELEASE_MS);`\n- Leave the two appendSwitch lines alone.\ndestroy() runs long after the 150 ms debounce has flushed, so settings.js is unchanged. Only visible effect: after 5+ min hidden, the window reopens with a cold load at its default position."
+  },
+  {
+   "id": "overlay-main#15-broadcasts-to-overlay",
+   "verdict": "accept",
+   "reason": "Verified: overlay.js subscribes only to drop, settings-update and overlay:cursor. The four getAllWindows loops push connection-state, history-update and update-state to it for nothing; history-update carries the full 20-entry history on every drop, queued just before 'drop'. The perf gain is small, but it also removes duplicated code at no risk. sendToSettings already handles a null or destroyed settingsWin.",
+   "amended_change": ""
+  },
+  {
+   "id": "overlay-main#16-cursor-poll-while-capturing",
+   "verdict": "reject",
+   "reason": "Micro-optimization. The extra IPC only happens while the cursor hovers or drags a meme, a few seconds per drop. getBounds is a cheap GetWindowRect plus DIP conversion. Caching the bounds adds an invalidation path (resolution or DPI changes from games) that can break hit-testing, for no measurable gain.",
+   "amended_change": ""
+  },
+  {
+   "id": "overlay-main#17-misplaced-paintwheninitiallyhidden",
+   "verdict": "accept",
+   "reason": "Verified: Electron reads paintWhenInitiallyHidden only from the top-level BrowserWindow options, so inside webPreferences it is ignored. Moving it to the top level would stop 'ready-to-show', which is the only place the overlay is shown (:206). mute:get and getMute have no caller in settings.js, overlay.js or the Android assets. Zero-risk deletions that remove a trap.",
+   "amended_change": ""
+  },
+  {
+   "id": "overlay-main#18-default-server-env-runtime-only",
+   "verdict": "modify",
+   "reason": "Verified: :8-9 runs inside the packaged app and electron-builder inlines nothing. So README §2.1 ('build-time env var'), RELEASE.md:40 and the DEFAULT_SERVER env in windows.yml have no effect; a forker following the README ships the original bot as the default server. Option 2 adds build plumbing to three commands. Option 1 plus doc fixes is enough.",
+   "amended_change": "- main.js:8-9: `const DEFAULT_SERVER = (!app.isPackaged && process.env.DEFAULT_SERVER) || 'wss://memedrop-bot.fly.dev';`, with the comment `// Surcharge par variable d'environnement en dev (npm start) seulement : l'app packagée ne la lit pas.`\n- README.md §2.1: replace the env-var steps with 'edit DEFAULT_SERVER in overlay/main.js before building'.\n- Delete RELEASE.md:40 and the `DEFAULT_SERVER:` env line of the build step in ../.github/workflows/windows.yml (both are no-ops)."
+  },
+  {
+   "id": "overlay-main#19-electron-store-dependency-weight",
+   "verdict": "reject",
+   "reason": "Once store-disk-io-per-access lands, electron-store costs nothing at runtime. What remains is a one-time require (tens of ms at login) and about 1-2 MB in app.asar inside an ~80 MB installer. Replacing it means owning atomic persistence on Windows (rename EPERM under antivirus, fsync, corrupt-file recovery), which atomically handles today. More risk than gain.",
+   "amended_change": ""
+  },
+  {
+   "id": "overlay-main#20-strip-unused-chromium-locales",
+   "verdict": "accept",
+   "reason": "electron-builder 24 supports `electronLanguages` and deletes the other locales/*.pak when packing for Windows. Only Chromium-internal strings use those files: MemeDrop's UI is its own French HTML, and Intl uses icudtl.dat. One line of config saves several MB installed and extracted (the portable build re-extracts at every launch). The visible effect is limited to systems in neither French nor English, for example the time picker and validation text falling back to en-US. Check dist/win-unpacked/locales after the CI build.",
+   "amended_change": ""
+  }
+ ],
+ "missed": [
+  {
+   "id": "overlay-main#m1-relink-token-sent-to-any-server",
+   "file": "overlay/main.js",
+   "line": 426,
+   "category": "security",
+   "severity": "low",
+   "title": "The re-link token is sent to whatever server URL the user types",
+   "evidence": "On every 'open' (:425-426), main sends {type:'register', identity} to store.get('serverUrl'), and identity carries `token`. settings:set (:626-639) accepts any ws(s):// URL from the settings field and reconnects at once. linkIdentity is never cleared or tied to the server that issued it. The token is HMAC-SHA256(LINK_SECRET, userId) (bot/index.js tokenFor, HEAD:211-213) and never expires. So pointing MemeDrop at another bot (a friend's self-hosted one, a mistyped host) gives its operator a permanent credential to register as the user on the real bot: receive their drops, unlink their servers, lift their blocks. The other bot cannot use the identity itself (different secret, so register_failed wipes it), so sending it gains nothing.",
+   "proposed_change": "In settings:set, after the serverUrl validation and before the writes and connectWS():\n```js\n// Le jeton de re-link ne vaut que pour le bot qui l'a émis : on ne le\n// rejoue jamais vers un autre hôte (il y serait refusé de toute façon).\nif ('serverUrl' in patch) {\n  const host = (u) => { try { return new URL(u).host.toLowerCase(); } catch { return null; } };\n  if (host(patch.serverUrl) !== host(store.get('serverUrl'))) store.set('linkIdentity', null);\n}\n```\nThe startup Railway->Fly migration (:58) does not go through settings:set, so it keeps the identity, which is correct (same bot, same secret).",
+   "behavior_change": "bugfix (security): switching to a server on another host needs one /link there (already true in practice, since another bot answers register_failed). Same-host edits (path, trailing slash) keep the link.",
+   "cross_component": "none (no wire change: with no identity the overlay just doesn't send register)",
+   "risk": "Low. A user alternating between two hostnames of the same bot (shared LINK_SECRET) re-links once.",
+   "value": "Stops leaking a permanent credential to whatever server is configured. Also closes the serverUrl leg of ipc-privileged-unrestricted even if a renderer is compromised."
+  },
+  {
+   "id": "overlay-main#m2-autostart-reenables-after-task-manager-disable",
+   "file": "overlay/main.js",
+   "line": 823,
+   "category": "bug",
+   "severity": "low",
+   "title": "Every launch re-enables autostart that the user disabled in Task Manager",
+   "evidence": "whenReady (:823-827) calls app.setLoginItemSettings({ openAtLogin: !!store.get('autostart'), … }) on every launch, and autostart defaults to true (:32). On Windows the `enabled` option of this API defaults to true. With openAtLogin:true, Electron then deletes the app's value under HKCU\\…\\Explorer\\StartupApproved\\Run, which is where Task Manager's Startup tab and Settings > Apps > Startup record 'disabled'. So a friend who turns MemeDrop off there and later opens it by hand gets it back at the next login, every time. Confidence: high on the documented default, medium on the exact registry handling.",
+   "proposed_change": "Only for the launch-time reconcile; keep the in-app toggle at :633 unconditional, since it is an explicit user action:\n```js\n// Désactivé par l'utilisateur dans le Gestionnaire des tâches : on respecte ce choix.\nconst li = app.getLoginItemSettings({ args: ['--hidden'] });   // + path si portable\nconst disabledInOs = li.openAtLogin && !li.executableWillLaunchAtLogin;\nif (!(store.get('autostart') && disabledInOs)) {\n  app.setLoginItemSettings({ openAtLogin: !!store.get('autostart'), openAsHidden: true, args: ['--hidden'] });\n}\n```\nIf syncLoginItem() from autostart-portable-and-dev is adopted, put this check inside it behind a `fromLaunch` flag and pass the same `path`.",
+   "behavior_change": "bugfix: a startup entry disabled in Task Manager or Windows Settings stays disabled; toggling autostart in MemeDrop's settings still (re-)enables it",
+   "cross_component": "none",
+   "risk": "Low. Relies on the Windows fields openAtLogin and executableWillLaunchAtLogin returned by getLoginItemSettings. Test: disable the entry in Task Manager, relaunch MemeDrop by hand, check it stays disabled.",
+   "value": "MemeDrop stops overriding an OS-level choice on friends' PCs at every manual launch."
+  }
+ ]
+}

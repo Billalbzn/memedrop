@@ -1,0 +1,118 @@
+{
+ "verdicts": [
+  {
+   "id": "android-native#1-okhttp-server-close-zombie",
+   "verdict": "accept",
+   "reason": "Confirmed. The listener (l.128-141) has no onClosing. In OkHttp 4.12, RealWebSocket.onReadClose() calls only onClosing() unless the client has already queued its own close. loopReader() exits once receivedCloseCode != -1, and cancel() only cancels the call, which closes the socket. With no reader or writer running, neither onClosed nor onFailure ever fires, so heartbeatRunnable (l.46) cannot recover. OkHttp does not reply to a close by itself: its own tests send messages after a server close. I am about 85-90% sure; I could not reach the OkHttp sources from here. Calling close(1000, null) from onClosing is allowed (close() is @Synchronized and onClosing runs outside the lock). It ends in onClosed or onFailure and frees the socket, and the existing `webSocket === ws` check turns that late callback into a no-op. The new heartbeat body is correct in every state where nothing reads the socket. The bot in the working tree already calls ws.terminate() at shutdown, which fixes APKs already installed. This APK change is still needed for any other close frame: the new bot's maxPayload 1009 close, proxies, or future code.",
+   "amended_change": ""
+  },
+  {
+   "id": "android-native#2-ci-publishes-branch-builds",
+   "verdict": "modify",
+   "reason": "Confirmed. android.yml l.6-12 filters only on paths, and the publish step (l.77-86) has no condition. versionCode = GITHUB_RUN_NUMBER is shared by all branches, and Updater.kt:58 offers any higher code. So every branch push that touches android/ or overlay/src replaces android-latest. Branch runs and main runs are in different concurrency groups, so they can even race. The `if:` is the right fix. It must ship in the same push as (or before) any Android or overlay change pushed to the audit branch, because GitHub runs the workflow file from the pushed commit. Drop the optional --clobber variant: gh deletes each existing asset before uploading again, so the 404 window remains, and the tag and notes would keep pointing at the old commit.",
+   "amended_change": "In .github/workflows/android.yml, under `- name: Publish to the android-latest release`, add `if: github.ref == 'refs/heads/main'` at the same indentation as `env:`. Keep the delete + create body unchanged and do not add the --clobber variant. Branch pushes still build the APK and upload the MemeDrop-apk artifact."
+  },
+  {
+   "id": "android-native#3-renderer-gone-kills-app",
+   "verdict": "accept",
+   "reason": "Confirmed. Neither WebViewClient (OverlayController l.96-103, MainActivity l.39-48) overrides onRenderProcessGone. Per the API 26 docs, returning false crashes or kills the whole app process, which takes down the foreground service and its socket. Both WebViews share one renderer, so both must return true. removeView + destroy() inside the callback is the documented recovery pattern. destroy() is idempotent, and the next drop creates a new WebView. finish() avoids a recreate loop, and the later onStop/onDestroy calls on the dead WebView are allowed. RenderProcessGoneDetail is API 26, the same as minSdk, so no version check is needed. This matters most because the settings WebView stays alive in the background, where the renderer can be killed for memory while the user is gaming.",
+   "amended_change": ""
+  },
+  {
+   "id": "android-native#4-no-restart-after-self-update",
+   "verdict": "accept",
+   "reason": "Confirmed. BootReceiver returns for anything but BOOT_COMPLETED, and the manifest filter (l.43-45) lists only that action. Installing an update kills the process and stops its services with no sticky restart. So if the user leaves the installer with 'OK', the app stays offline until a reboot or the next launch. ACTION_MY_PACKAGE_REPLACED is a protected broadcast delivered only to the updated package. It is an explicit exemption from the Android 12+ ban on starting a foreground service from the background, and specialUse is not among the types Android 15 restricts. The autostart check is the same as at boot, and the change compiles by inspection.",
+   "amended_change": ""
+  },
+  {
+   "id": "android-native#5-app-heartbeat-radio-cost",
+   "verdict": "reject",
+   "reason": "The cost premise holds at HEAD (bot ping every 30 s, pong at l.242), but I reject the change for four reasons. (1) It is not a bug fix, and it visibly slows detection of a dead link: up to about 4 min on the bot side and 5 min on the APK side, with drops silently lost in between. (2) It depends on unknown idle timeouts in the Fly proxy and carrier NATs. A 120 s silent gap exceeds the common 55-100 s proxy idle limits; if Fly's limit is shorter, every phone would reconnect (TLS + register) after each idle period, which costs more than the pings. (3) The bot half conflicts with the bot change in progress, which already moved the loop to 45 s ('< 75 s : délai codé en dur dans les overlays/APK installés'). The proposed 30 s tick math (Math.round(heartbeatSec/30), hbEvery*30) no longer matches. (4) It cannot be field-tested here. This is an owner decision to make with measurements, not part of this audit.",
+   "amended_change": ""
+  },
+  {
+   "id": "android-native#6-drops-rendered-while-locked",
+   "verdict": "reject",
+   "reason": "This is a product change, not a clear bug fix. Audio and TTS drops are meant to be heard, and today they play while the phone is locked (Windows also plays drops on a locked PC). Holding them until unlock changes the app's core behavior. The performance gain is mostly a deferral: held drops are fully rendered at unlock, and only those beyond 3 or older than 10 min are skipped. So the per-drop WebView and network cost is not avoided, and since drops are rare the absolute saving is small. The 'history only' alternative would silently drop every meme received while locked. Leave this to the owner.",
+   "amended_change": ""
+  },
+  {
+   "id": "android-native#7-settings-activity-background-work",
+   "verdict": "accept",
+   "reason": "Confirmed. The listener is added in onCreate (l.52) and removed only in onDestroy (l.64). After Home or moveTaskToBack (l.162, 168), the foreground service keeps the stopped activity alive. Every Hub.changed() and every 30 s poll from app.js:413 then runs getState (3 binder calls plus settings and history parsing) and a full DOM rebuild with avatar <img>s, unseen, for days. Using onStart/onStop rather than onPause/onResume keeps updates flowing while the screen is visible in multi-window. pushState in onResume refreshes the screen on return, and no update is lost because the activity always starts before posted Hub runnables run. WebView.onPause/onResume affect only this instance, whereas pauseTimers would also freeze the overlay WebView. Current WebView builds mark the page hidden on onPause; if a build does not, the poll simply keeps running as it does today. The listener removal is idempotent with #3 and onDestroy.",
+   "amended_change": ""
+  },
+  {
+   "id": "android-native#8-overlay-webview-lingers-90s",
+   "verdict": "accept",
+   "reason": "Confirmed. idleRemove fires 90 s after the last show() (l.37-38, 73-74). overlay.js calls stageEmpty only from releaseSlot when active reaches 0 (l.223-226, 331-334), and the shim maps it to a no-op (l.21). Edge cases are covered:\n- The 2 s lastShowAt guard handles a release racing a drop that was just pushed.\n- Queued drops cannot leave active at 0, because each release drains the queue.\n- The 20 s grace covers the longest TTS (MAX_TTS_CHARS = 200, about 15 s) and emoji rain (at most 5.3 s).\n- TTS-only and rain-only drops take no slot and keep the 90 s fallback.\n- The owner check also discards stale rects from a destroyed WebView.\nOnly the Android shim changes; overlay.js is untouched. One trade-off: a drop arriving 20-90 s after the previous one ends now pays for re-creating the WebView (about 0.1-0.5 s).",
+   "amended_change": ""
+  },
+  {
+   "id": "android-native#9-reconnect-stalls-in-deep-sleep",
+   "verdict": "modify",
+   "reason": "Confirmed: Handler timers use uptimeMillis and stop during deep sleep, the service holds no wakelock, nothing reacts to network or screen events, and the backoff has no jitter. The proposal has two gaps. (1) onAvailable runs on a ConnectivityManager thread and posts kick(). A kick queued just before onDestroy runs after it, because onDestroy only removes the named runnables. connect() would then open a zombie socket and set Hub.status back to 'connecting' with no service. (2) The status-based staleness test ignores a socket stuck in 'connecting'. Both are fixed by checking Hub.service and timing any socket from connect(). The receiver needs no export flag because SCREEN_ON is a protected system broadcast. Since #6 is rejected, this is its own receiver.",
+   "amended_change": "MemeDropService (+ imports BroadcastReceiver, Context, IntentFilter, ConnectivityManager, Network, SystemClock):\nprivate var lastRxAt = 0L   // elapsedRealtime : dernier signe de vie de `ws`\n// connect(): right after `ws = client.newWebSocket(...)` -> lastRxAt = SystemClock.elapsedRealtime()\n// onSocketMessage(): first line -> same\n// Réseau revenu / écran rallumé : sans attendre le backoff ni le heartbeat\n// (timers Handler gelés en veille profonde).\nprivate fun kick() {\n    if (Hub.service !== this || Prefs.paused) return   // service déjà détruit\n    if (ws == null || SystemClock.elapsedRealtime() - lastRxAt > HEARTBEAT_TIMEOUT_MS) {\n        attempts = 0\n        connect()\n    }\n}\nprivate val netCallback = object : ConnectivityManager.NetworkCallback() {\n    override fun onAvailable(network: Network) { Hub.main.post { kick() } }\n}\nprivate val screenOn = object : BroadcastReceiver() {\n    override fun onReceive(c: Context, i: Intent) { kick() }\n}\nonCreate, after connect(): runCatching { getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(netCallback) }; registerReceiver(screenOn, IntentFilter(Intent.ACTION_SCREEN_ON))\nonDestroy, first lines: runCatching { ...unregisterNetworkCallback(netCallback) }; runCatching { unregisterReceiver(screenOn) }\nl.156: multiply the delay by (0.8 + Math.random() * 0.4) before toLong().\nManifest: <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\" />"
+  },
+  {
+   "id": "android-native#10-prefs-reparse-and-mute-write-race",
+   "verdict": "modify",
+   "reason": "Confirmed: settings() rebuilds the defaults and re-parses the saved JSON on every call, and toMinutes() compiles the Regex twice per quietHoursActive(). isManuallyMuted() also writes muteUntil = 0 from the JavaBridge thread through stateJson (MainActivity.kt:92). That races with a mute set on the main thread and can lose it, though the window is tiny. The settings cache is not worth adding: each parse costs tens of µs a few times a minute. In exchange it would hand one shared, mutable JSONObject to every caller, and stateJson embeds it in the bridge JSON on another thread, which is a new aliasing hazard. Keep only the two risk-free parts.",
+   "amended_change": "Prefs.kt only:\nprivate val TIME_RE = Regex(\"^(\\\\d{1,2}):(\\\\d{2})$\")   // Pattern est thread-safe\nprivate fun toMinutes(s: String): Int? {\n    val m = TIME_RE.find(s) ?: return null\n    return m.groupValues[1].toInt() * 60 + m.groupValues[2].toInt()\n}\n// Lecture seule : aussi appelée depuis le thread du pont JS (stateJson) ;\n// un timestamp expiré compte simplement comme « pas en sourdine ».\nfun isManuallyMuted(): Boolean {\n    val until = muteUntil\n    return until == -1L || until > System.currentTimeMillis()\n}\nNo settings() cache; settings() and setSetting() unchanged. Results are the same for 0, -1, future and past values; an expired timestamp now simply stays stored, and every reader already ignores it."
+  },
+  {
+   "id": "android-native#11-notification-reposted-unchanged",
+   "verdict": "accept",
+   "reason": "Confirmed. setState() (l.246-253), setMute() and onSettingChanged() always rebuild 3 PendingIntents and re-post through nm.notify, even when the text is identical: 'linked' then 'linked' + code, 'connecting' + code, links_update, and every slider change. With the bot in the working tree, issueExtensionCode sends 'pairing_code' to every socket of the user, so each (re)connection of another device also re-posts an identical notification. The key (muted state + full text) covers everything the notification shows. Cached PendingIntents and Actions stay valid for the life of the process, and the lazy values are created after attachBaseContext. The side effects are acceptable: on Android 14 a notification the user dismissed comes back only when its text changes. On Android 13+, if the notification permission is granted later, the notification appears at the next text change; resetting lastNotifKey from onRequestPermissionsResult would show it right away (optional).",
+   "amended_change": ""
+  },
+  {
+   "id": "android-native#12-updater-unbounded-main-thread-poll",
+   "verdict": "modify",
+   "reason": "Confirmed. poll() runs on the main thread every 500 ms with a provider query and an unconditional Hub.changed(). It stops only on SUCCESSFUL, FAILED or a missing row, so a download paused for lack of network is polled at 2 Hz until it resumes. enqueue() and setDestinationInExternalFilesDir() (l.80-86) are unguarded on the UI thread. They throw IllegalArgumentException when DownloadManager is disabled and IllegalStateException without external storage, which would kill the process, foreground service included.\nKeep: notify only when progress changes, poll more slowly while not RUNNING, and the try/catch in download().\nDrop the 10-min auto-cancel. DownloadManager resumes paused downloads by itself, and cancelling turns a recoverable wait into an error the user must retry. With a 3 s poll and no Hub.changed() while paused, the cost of waiting is negligible.\nLeave check()'s Thread alone: it runs once per activity creation. Rewriting it with enqueue() would also require catching everything inside onResponse, because OkHttp 4.12 rethrows non-IOExceptions from callbacks on its dispatcher thread.",
+   "amended_change": "Updater.kt\n1) download(): guard everything from getSystemService to enqueue:\n   try {\n       val dm = ctx.getSystemService(DownloadManager::class.java)\n       ctx.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.let { File(it, APK_NAME).delete() }\n       val req = /* Request inchangée */\n       downloadId = dm.enqueue(req)\n   } catch (e: Exception) {\n       // DownloadManager désactivé, stockage absent… : erreur affichée, pas de plantage\n       error = e.message ?: \"téléchargement impossible\"; set(\"error\"); return\n   }\n   progress = 0; error = null; set(\"downloading\"); poll(ctx.applicationContext)\n2) poll(): add `var delay = 500L` before the query; the else branch of the when becomes\n   val p = if (total > 0) (done * 100 / total).toInt() else progress\n   if (p != progress) { progress = p; Hub.changed() }\n   // En pause (réseau absent…) : DownloadManager reprendra seul.\n   if (status != DownloadManager.STATUS_RUNNING) delay = 3_000L\n   and the last line becomes Hub.main.postDelayed({ poll(ctx) }, delay).\n3) No stall auto-cancel; check() unchanged."
+  },
+  {
+   "id": "android-native#13-shim-injection-silent-failure",
+   "verdict": "accept",
+   "reason": "Confirmed. The filter (l.15-20) is a literal per-line replace, and overlay.html:443 currently matches it. Any edit of that tag made for Windows would silently produce an overlay without the shim. overlay.js would then throw at load on the top-level window.memedrop.onCursor call (l.76), and every Android drop would be invisible. The doLast check is build-time only. `check` resolves to kotlin.check inside the Copy and Task lambdas, and it runs only when the task executes; an up-to-date output was already checked on a previous run.",
+   "amended_change": ""
+  },
+  {
+   "id": "android-native#14-r8-disabled",
+   "verdict": "reject",
+   "reason": "The premise is true (isMinifyEnabled = false), but there is no SDK or device here to build or test the change. A missing or wrong keep rule would strip or rename the bridge methods, or drop their annotations under R8 full mode (the AGP 8 default). That would ship a blank settings screen or missing touch zones to every phone through the auto-updater, and Android refuses downgrades. The gain is small: about 1-1.5 MB per update download, and little RAM or CPU since unused stdlib and OkHttp classes are never loaded. The auditor itself rates it not worth doing without a device test.",
+   "amended_change": ""
+  }
+ ],
+ "missed": [
+  {
+   "id": "android-native-missed#1-handshake-no-timeout",
+   "file": "android/app/src/main/java/com/memedrop/app/MemeDropService.kt",
+   "line": 128,
+   "category": "bug",
+   "severity": "medium",
+   "title": "The WebSocket handshake has no timeout: a stalled connect leaves the service on 'Connexion au bot…' forever",
+   "evidence": "l.37-39 readTimeout(0) is needed for the idle open socket, but it also disables OkHttp's read timeout during the handshake. In 4.12 the raw socket's SO_TIMEOUT is set to readTimeout before the TLS handshake, and the 101 response is read with it. Only connectTimeout (TCP connect, 10 s) remains. armHeartbeat() is first called in onSocketOpen (l.169), and scheduleReconnect() runs only from onFailure/onClosed. If TCP connects but the network path dies, or a middlebox holds the request (cell handover, captive portal), neither onOpen nor onFailure arrives. ws stays set, the status stays 'connecting', and nothing retries until the user taps 'reconnecter'. About 85% sure of the OkHttp detail.",
+   "proposed_change": "In connect(), right after the `ws = client.newWebSocket(request, object : WebSocketListener() { … })` statement:\n```kotlin\n// Garde-fou : readTimeout(0) vaut aussi pour la poignée de main ; sans\n// onOpen sous 75 s on abandonne (cancel → onFailure → reconnexion).\narmHeartbeat()\n```\nonSocketOpen() re-arms the timer, and dropSocket()/onSocketClosed() already remove it. cancel() during the handshake does reach onFailure, because the call is still running on its OkHttp thread. So this works with today's heartbeatRunnable and with #1's version. Do not replace readTimeout(0) with a finite value: that would also kill idle open sockets.",
+   "behavior_change": "bugfix: a stalled handshake is retried after 75 s instead of never",
+   "cross_component": "none (complements #9's screen-on/network kick, which only fires on events)",
+   "risk": "Low: a normal handshake never takes 75 s, and the timer's lifecycle is unchanged.",
+   "value": "Removes a state where the app stays offline for good on flaky mobile networks, for a service that runs 24/7."
+  },
+  {
+   "id": "android-native-missed#2-webview-ctor-unguarded",
+   "file": "android/app/src/main/java/com/memedrop/app/OverlayController.kt",
+   "line": 90,
+   "category": "robustness",
+   "severity": "low",
+   "title": "The overlay WebView is created outside the try: an unavailable WebView provider crashes the service",
+   "evidence": "ensureView() l.90-103 runs `WebView(ctx)` and its setup before the try at l.124, which only guards addView/loadUrl. The first WebView of a process throws AndroidRuntimeException (WebViewFactory MissingWebViewPackageException) when the WebView provider is disabled or in the middle of an update. The exception propagates through show() into onSocketMessage on the main thread and kills the process, including the foreground service and its socket. A freshly started process creates its first WebView on its first drop. The drop is lost either way.",
+   "proposed_change": "OverlayController.ensureView():\n```kotlin\n// Moteur WebView indisponible (désactivé, mise à jour en cours) : on saute\n// ce drop au lieu de faire tomber le service.\nval w = try { WebView(ctx) } catch (e: Exception) { return null }\n```\nThe rest is unchanged. run() already returns when ensureView() gives null, and the idleRemove posted by show() is harmless with web == null.",
+   "behavior_change": "bugfix: a drop that arrives while WebView is unavailable is skipped instead of crashing the app",
+   "cross_component": "none",
+   "risk": "Low.",
+   "value": "Keeps the 24/7 connection alive through WebView/Chrome updates or a disabled WebView."
+  }
+ ]
+}

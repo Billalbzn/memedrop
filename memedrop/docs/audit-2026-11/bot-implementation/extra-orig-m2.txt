@@ -1,0 +1,34 @@
+FAIL  /dropgroup race: one sent, one cooldown
+      ["✅ Drop envoyé sur **alice**, **bob** !","✅ Drop envoyé sur **alice**, **bob** !"]
+FAIL  /dropgroup race: one drop per overlay
+      {"al":["drop","drop"],"bo":["drop","drop"]}
+PASS  3 delayed drops accepted
+FAIL  4th delayed drop refused
+      "⏳ Drop programmé dans **4 min** pour **alice**. 😈"
+FAIL  refusal did not consume the cooldown
+      "⏱️ Doucement — encore 2s avant le prochain `/drop`."
+PASS  first delayed drop fired
+PASS  slot freed after firing
+FAIL  6th /link refused while locked
+      "✅ Linked on **Les Potes**. To be reachable from other servers, run `/link` there too — your overlay shows the code."
+PASS  lock is per user
+FAIL  unlocked after 10 min
+      "✅ Added **Les Potes** to your linked sources (1 total)."
+FAIL  warm-up fetched the trimmed text
+      []
+FAIL  ttsUrl served from the warmed cache
+      {"http":[{"req":"GET /tts?text=aaaaaaaaaaaaaa…[212 chars, sha1:6f8a3747]","status":200,"content-type":"audio/mpeg","content-length":"240","cache-control":"public, max-age=86400","bodyLen":240,"body":"audio<fr|aaaaaaaaaaaaaaaaaaaaa…[202 chars, sha1:43d3f16d]>"}],"up":[{"tl":"fr","q":"aaaaaaaaaaaaaaaaaaaaaaaa…[199 chars, sha1:4c5da22d]"}]}
+PASS  in-flight join: one upstream call, 200
+FAIL  budget: 120 × 200 then 503 tts busy
+      {"counts":{"200":150}}
+FAIL  budget: 120 upstream calls
+      150
+PASS  budget resets after the window
+FAIL  per-socket budget caps processing (≤ 30 of 35)
+      35
+PASS  budget resets after 10 s
+FAIL  throttled write: x1,x2 written while saves keep coming
+      []
+PASS  second write has x3
+
+8/20 checks passed; process exits: m2={"code":null,"signal":"SIGKILL"}; transcript: extra-orig-m2.json

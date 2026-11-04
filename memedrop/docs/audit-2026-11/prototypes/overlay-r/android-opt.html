@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>MemeDrop overlay</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
+      background: transparent !important;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+    }
+
+    /* ── Thèmes ────────────────────────────────────────────────────────
+       --accent-a/--accent-b pilotent le dégradé de la bulle avatar (et son
+       libellé). "classique" reprend les couleurs historiques de l'overlay. */
+    :root, html[data-theme="classic"] {
+      --accent-a: #ff5e8a;
+      --accent-b: #ffb45e;
+    }
+    html[data-theme="neon"] {
+      --accent-a: #7c3aed;
+      --accent-b: #22d3ee;
+    }
+    html[data-theme="fire"] {
+      --accent-a: #ef4444;
+      --accent-b: #facc15;
+    }
+    html[data-theme="mono"] {
+      --accent-a: #6b7280;
+      --accent-b: #d1d5db;
+    }
+
+    #stage {
+      position: fixed; inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .anchor {
+      position: absolute;
+      width: 0; height: 0;
+    }
+
+    .drop {
+      position: absolute;
+      /* #stage est en pointer-events:none (propriété héritée) : sans ce
+         rétablissement, la croix de fermeture ne reçoit jamais le mousedown
+         et c'est le handler global de drag qui capte le clic à sa place. */
+      pointer-events: auto;
+      left: 0; top: 0;
+      transform-origin: center;
+      will-change: transform, opacity;
+      opacity: 0;
+      animation:
+        drop-in   420ms cubic-bezier(.18,1.2,.4,1) forwards,
+        drop-bob  3s ease-in-out 420ms infinite;
+    }
+
+    /* ── Effets d'apparition spéciaux (option `effet` du /drop) ──────
+       Chaque effet remplace l'animation d'entrée mais conserve le bob.
+       Déclarés AVANT .leaving/.closing pour que la sortie garde priorité. */
+    .drop.fx-zoom {
+      animation:
+        fx-zoom-in 500ms cubic-bezier(.16,1,.3,1) forwards,
+        drop-bob 3s ease-in-out 500ms infinite;
+    }
+    .drop.fx-tornade {
+      animation:
+        fx-tornade-in 750ms cubic-bezier(.22,1,.36,1) forwards,
+        drop-bob 3s ease-in-out 750ms infinite;
+    }
+    .drop.fx-glitch {
+      animation:
+        drop-in 420ms cubic-bezier(.18,1.2,.4,1) forwards,
+        fx-glitch-jitter 90ms steps(2) 420ms 8,
+        drop-bob 3s ease-in-out 1.2s infinite;
+    }
+    @keyframes fx-zoom-in {
+      0%   { opacity: 0; transform: translate(-50%, -50%) scale(3.2); filter: blur(6px); }
+      60%  { opacity: 1; transform: translate(-50%, -50%) scale(.94); filter: blur(0); }
+      100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    }
+    @keyframes fx-tornade-in {
+      0%   { opacity: 0; transform: translate(-50%, -50%) rotate(-720deg) scale(.05); }
+      70%  { opacity: 1; transform: translate(-50%, -50%) rotate(20deg)   scale(1.06); }
+      100% { opacity: 1; transform: translate(-50%, -50%) rotate(0deg)    scale(1); }
+    }
+    @keyframes fx-glitch-jitter {
+      0%   { transform: translate(calc(-50% + 5px), calc(-50% - 3px)) skewX(4deg);  filter: hue-rotate(90deg) saturate(3); }
+      50%  { transform: translate(calc(-50% - 5px), calc(-50% + 3px)) skewX(-4deg); filter: hue-rotate(-70deg) contrast(1.6); }
+      100% { transform: translate(-50%, -50%); filter: none; }
+    }
+
+    /* Effet shake : tout l'écran tremble à l'arrivée du drop */
+    body.fx-shake {
+      animation: fx-shake 600ms linear;
+    }
+    @keyframes fx-shake {
+      10% { transform: translate(-9px, 5px); }
+      20% { transform: translate(10px, -7px); }
+      30% { transform: translate(-8px, -4px); }
+      40% { transform: translate(7px, 6px); }
+      50% { transform: translate(-9px, 3px); }
+      60% { transform: translate(8px, -5px); }
+      70% { transform: translate(-6px, -6px); }
+      80% { transform: translate(5px, 4px); }
+      90% { transform: translate(-3px, 2px); }
+      100% { transform: none; }
+    }
+
+    .drop.leaving {
+      animation: drop-out 380ms cubic-bezier(.5,0,.75,0) forwards;
+    }
+
+    /* Fermeture manuelle (croix) — fondu doux, sans la chute de drop-out */
+    .drop.closing {
+      animation: drop-close-out 220ms cubic-bezier(.4,0,.2,1) forwards;
+    }
+
+    .media-box {
+      position: relative;
+      display: inline-block;
+      line-height: 0;
+      border-radius: 14px;
+      box-shadow:
+        0 30px 140px rgba(0,0,0,.55),
+        0 6px 28px rgba(0,0,0,.4);
+    }
+
+    .drop img,
+    .drop video,
+    .media-box > div > svg,
+    .media-box > div > div > svg {
+      display: block;
+      max-width: 38vw;
+      max-height: 50vh;
+      width: auto;
+      height: auto;
+      border-radius: 14px;
+      background: #000;
+    }
+
+    /* Avatar bubble for image/video drops — overlaps top of media */
+    .avatar-bubble {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translate(-50%, -55%);
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background:
+        linear-gradient(135deg, var(--accent-a) 0%, var(--accent-b) 100%) padding-box,
+        linear-gradient(135deg, var(--accent-a) 0%, var(--accent-b) 100%) border-box;
+      padding: 3px;
+      box-shadow:
+        0 8px 22px rgba(0,0,0,.5),
+        0 2px 6px rgba(0,0,0,.3);
+      z-index: 3;
+    }
+    .avatar-bubble img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #1a1226;
+    }
+    .avatar-bubble::after {
+      content: attr(data-username);
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translate(-50%, 4px);
+      padding: 2px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .02em;
+      color: #fff;
+      background: rgba(0,0,0,.7);
+      border-radius: 999px;
+      white-space: nowrap;
+      box-shadow: 0 4px 10px rgba(0,0,0,.35);
+    }
+
+    /* Bouton fermer — coin haut-droit, discret, visible au survol du drop */
+    .drop-close {
+      position: absolute;
+      top: -10px;
+      right: -10px;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(0,0,0,.65);
+      color: #fff;
+      font-size: 13px;
+      line-height: 1;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transform: scale(.7);
+      transition: opacity 120ms ease, transform 120ms ease, background 120ms ease;
+      z-index: 4;
+      box-shadow: 0 2px 8px rgba(0,0,0,.4);
+    }
+    /* L'overlay est click-through (forward:true) : :hover n'est pas fiable,
+       donc overlay.js bascule manuellement la classe .hover via le sondage
+       du curseur fait dans le main process. */
+    .drop.hover .drop-close {
+      opacity: 1;
+      transform: scale(1);
+    }
+    .drop-close:hover {
+      background: rgba(255,60,90,.9);
+    }
+
+    /* Barre de réactions — sous le drop, visible au survol (comme la croix) */
+    .react-bar {
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translate(-50%, 10px);
+      display: flex;
+      gap: 2px;
+      padding: 5px 8px;
+      background: rgba(0,0,0,.7);
+      border-radius: 999px;
+      opacity: 0;
+      transition: opacity 120ms ease;
+      z-index: 4;
+      box-shadow: 0 4px 14px rgba(0,0,0,.45);
+    }
+    .drop.hover .react-bar { opacity: 1; }
+    .react-btn {
+      background: none;
+      border: none;
+      padding: 2px 4px;
+      font-size: 17px;
+      line-height: 1;
+      cursor: pointer;
+      transition: transform 100ms ease;
+    }
+    .react-btn:hover { transform: scale(1.35); }
+    .react-bar.reacted .react-btn { pointer-events: none; opacity: .3; }
+    .react-bar.reacted .react-btn.chosen { opacity: 1; transform: scale(1.3); }
+
+    /* Barre de vie — fine jauge en bas du média, se vide jusqu'au départ
+       du drop (animée en JS via transform: scaleX). */
+    .life-bar {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 6px;
+      height: 3px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent-a), var(--accent-b));
+      box-shadow: 0 0 6px rgba(0,0,0,.6);
+      transform-origin: left center;
+      opacity: .85;
+      z-index: 3;
+      pointer-events: none;
+    }
+
+    /* Caption — subtitle bar at bottom of media (image/video only) */
+    .caption-bar {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      box-sizing: border-box;
+      width: 100%;
+      padding: 10px 14px 14px;
+      font-family: 'Impact', 'Arial Black', 'Anton', system-ui, sans-serif;
+      font-weight: 900;
+      /* Taille par défaut ; overlay.js la recalcule d'après la largeur réelle
+         du média (fitCaption) — une taille en vw rendait le texte énorme sur
+         les images portrait étroites. */
+      font-size: clamp(14px, 2.2vw, 40px);
+      line-height: 1.08;
+      letter-spacing: .01em;
+      text-transform: uppercase;
+      text-align: center;
+      color: #fff;
+      white-space: normal;
+      /* break-word (et pas anywhere) : un mot n'est coupé que s'il est plus
+         large que l'image à lui seul — fini les "COMMAND / O" en plein mot. */
+      word-break: normal;
+      overflow-wrap: break-word;
+      -webkit-text-stroke: 2px #000;
+      paint-order: stroke fill;
+      text-shadow:
+        0 2px 4px rgba(0,0,0,.9),
+        0 0 10px rgba(0,0,0,.7);
+      background: linear-gradient(to top,
+        rgba(0,0,0,.65) 0%,
+        rgba(0,0,0,.35) 55%,
+        rgba(0,0,0,0) 100%);
+      border-bottom-left-radius: 14px;
+      border-bottom-right-radius: 14px;
+      z-index: 2;
+      animation: caption-rise 420ms cubic-bezier(.18,1.1,.4,1) 160ms backwards;
+    }
+
+    /* ──────────────────────────────────────────────────────────────────
+       Audio toast — minimalist, top-center, no card / no background.
+       Just the avatar bubble + small username + optional caption with
+       text-shadows so it stays readable over any game UI.
+       ────────────────────────────────────────────────────────────────── */
+    .audio-toast {
+      position: fixed;
+      top: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      pointer-events: none;
+      z-index: 999;
+      opacity: 0;
+      animation:
+        audio-in   320ms cubic-bezier(.18,1.2,.4,1) forwards;
+    }
+    /* Opacité réglable (voir clampOpacity dans overlay.js) : posée sur les
+       enfants, car l'animation audio-in écrase l'opacité du toast lui-même. */
+    .audio-toast > * { opacity: var(--op, 1); }
+    .audio-toast.leaving {
+      animation: audio-out 280ms cubic-bezier(.5,0,.75,0) forwards;
+    }
+
+    .audio-toast .avatar-bubble {
+      position: relative;
+      top: auto; left: auto;
+      transform: none;
+      width: 44px;
+      height: 44px;
+    }
+    /* Smaller pill label for the audio variant */
+    .audio-toast .avatar-bubble::after {
+      font-size: 10px;
+      padding: 2px 7px;
+      transform: translate(-50%, 3px);
+    }
+
+    .audio-caption {
+      max-width: 70vw;
+      text-align: center;
+      font-family: 'Impact', 'Arial Black', 'Anton', system-ui, sans-serif;
+      font-weight: 900;
+      font-size: clamp(14px, 1.6vw, 22px);
+      line-height: 1.1;
+      letter-spacing: .02em;
+      text-transform: uppercase;
+      color: #fff;
+      -webkit-text-stroke: 1.5px #000;
+      paint-order: stroke fill;
+      text-shadow:
+        0 2px 4px rgba(0,0,0,.9),
+        0 0 8px rgba(0,0,0,.7);
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      margin-top: 12px;     /* room for the avatar's pill label */
+    }
+
+    @keyframes drop-in {
+      0%   { opacity: 0; transform: translate(-50%, calc(-50% - 80px)) rotate(-8deg) scale(.6); }
+      60%  { opacity: 1; transform: translate(-50%, calc(-50% + 12px)) rotate( 2deg) scale(1.04); }
+      100% { opacity: 1; transform: translate(-50%, -50%)              rotate( 0deg) scale(1);    }
+    }
+    @keyframes drop-bob {
+      0%, 100% { transform: translate(-50%, -50%)             rotate(0deg); }
+      50%      { transform: translate(-50%, calc(-50% - 6px)) rotate(.6deg); }
+    }
+    @keyframes drop-out {
+      from { opacity: 1; transform: translate(-50%, -50%); }
+      to { opacity: 0; transform: translate(-50%, calc(-50% + 40px)) rotate(6deg) scale(.92); }
+    }
+    @keyframes drop-close-out {
+      from { opacity: 1; transform: translate(-50%, -50%); }
+      to { opacity: 0; transform: translate(-50%, -50%) scale(.85); }
+    }
+    @keyframes caption-rise {
+      0%   { opacity: 0; transform: translateY(14px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes audio-in {
+      0%   { opacity: 0; transform: translate(-50%, -20px); }
+      100% { opacity: 1; transform: translate(-50%, 0);     }
+    }
+    @keyframes audio-out {
+      from { opacity: 1; transform: translate(-50%, 0); }
+      to { opacity: 0; transform: translate(-50%, -16px); }
+    }
+
+    /* ── Spotlight ─────────────────────────────────────────────────────
+       Voile sombre sur tout l'écran avec un trou transparent centré sur
+       le drop actif. Position mise à jour via custom properties --cx/--cy
+       et --rx/--ry par requestAnimationFrame dans overlay.js.
+       ────────────────────────────────────────────────────────────────── */
+    #spotlight {
+      position: fixed; inset: 0;
+      pointer-events: none;
+      z-index: 1;
+      background: radial-gradient(
+        ellipse var(--rx, 240px) var(--ry, 240px) at var(--cx, 50%) var(--cy, 50%),
+        transparent 0%,
+        transparent 35%,
+        rgba(0, 0, 0, 0.78) 100%
+      );
+      opacity: 0;
+      transition: opacity 0.45s ease;
+    }
+
+    /* ── Pluie d'émojis ────────────────────────────────────────────────
+       Chaque particule est positionnée aléatoirement en JS et tombe
+       verticalement avec une légère dérive horizontale (--sway).
+       ────────────────────────────────────────────────────────────────── */
+    .rain-emoji {
+      position: fixed;
+      top: -64px;
+      pointer-events: none;
+      user-select: none;
+      z-index: 9999;
+      line-height: 1;
+      will-change: transform, opacity;
+      animation: rain-fall linear forwards;
+    }
+    @keyframes rain-fall {
+      0%   { transform: translateY(0)     translateX(0)           rotate(0deg);   opacity: .95; }
+      15%  { opacity: .95; }
+      85%  { opacity: .9; }
+      100% { transform: translateY(115vh) translateX(var(--sway)) rotate(var(--rot)); opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div id="spotlight"></div>
+  <div id="stage"></div>
+  <script src="./mock-native.js"></script><script src="./android-shim-opt.js"></script><script src="./overlay-opt.js"></script>
+</body>
+</html>
