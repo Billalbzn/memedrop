@@ -1,12 +1,15 @@
 // main.js — MemeDrop overlay (Electron main process)
-const { app, BrowserWindow, screen, ipcMain, shell, Tray, Menu, nativeImage, globalShortcut } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, shell, Tray, Menu, nativeImage, globalShortcut, session, powerMonitor } = require('electron');
 const path = require('path');
 const WebSocket = require('ws');
 const Store = require('electron-store');
 const { autoUpdater } = require('electron-updater');
 
+// Surcharge par variable d'environnement en dev (npm start) seulement : l'app
+// packagée ne la lit pas (electron-builder n'injecte rien au build). Pour un
+// fork, modifier la valeur ci-dessous avant de compiler.
 const DEFAULT_SERVER =
-  process.env.DEFAULT_SERVER || 'wss://memedrop-bot.fly.dev';
+  (!app.isPackaged && process.env.DEFAULT_SERVER) || 'wss://memedrop-bot.fly.dev';
 
 // Le bot a quitté Railway (coupé) pour Fly.io. electron-store ne réapplique
 // jamais une valeur par défaut sur une clé déjà enregistrée : on migre donc
@@ -19,7 +22,10 @@ app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 
-const store = new Store({
+const diskStore = new Store({
+  // config.json illisible (coupure pendant une écriture, édition à la main) :
+  // retour aux valeurs par défaut au lieu d'un plantage à chaque lancement.
+  clearInvalidConfig: true,
   defaults: {
     serverUrl: DEFAULT_SERVER,
     volume: 0.75,
@@ -54,6 +60,23 @@ const store = new Store({
     avoidZone: 'none',
   },
 });
+
+// electron-store (conf 10) relit et reparse config.json à chaque get() et le
+// réécrit avec fsync à chaque set(), en synchrone sur le thread principal
+// (~12 lectures + 1 écriture par drop). On garde une copie mémoire comme seule
+// source de lecture ; le disque n'est touché qu'à l'écriture.
+const store = (() => {
+  const data = diskStore.store;   // une seule lecture, au démarrage
+  const persist = () => {
+    // `diskStore.store = x` écrit sans relire le fichier (set() le relit)
+    try { diskStore.store = data; } catch (e) { console.error('[store] write failed:', e.message); }
+  };
+  return {
+    get: (k) => data[k],
+    set: (k, v) => { data[k] = v; persist(); },
+    setMany: (patch) => { Object.assign(data, patch); persist(); },
+  };
+})();
 
 if (isLegacyServerUrl(store.get('serverUrl'))) store.set('serverUrl', DEFAULT_SERVER);
 
@@ -116,9 +139,7 @@ function recordHistory(payload) {
   };
   const history = [entry, ...store.get('dropHistory')].slice(0, MAX_HISTORY);
   store.set('dropHistory', history);
-  for (const w of BrowserWindow.getAllWindows()) {
-    if (!w.isDestroyed()) w.webContents.send('history-update', history);
-  }
+  sendToSettings('history-update', history);
 }
 
 let overlayWin = null;
@@ -126,6 +147,12 @@ let settingsWin = null;
 let tray = null;
 let topGuardTimer = null;
 let displayListenersBound = false;
+
+// Seule la fenêtre de réglages écoute connection-state, history-update et
+// update-state : inutile de les sérialiser aussi vers l'overlay.
+function sendToSettings(channel, data) {
+  if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send(channel, data);
+}
 
 function iconPath() {
   return path.join(__dirname, 'assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
@@ -190,13 +217,15 @@ function createOverlayWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       backgroundThrottling: false,
-      paintWhenInitiallyHidden: false,
     },
   });
 
   overlayWin.setAlwaysOnTop(true, 'screen-saver');
   overlayWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  overlayWin.setIgnoreMouseEvents(true, { forward: true });
+  // Sans `forward` : sous Windows, forward:true installe un hook souris global
+  // bas niveau (WH_MOUSE_LL) sur le thread principal, actif 24/7. Le survol
+  // passe par le sondage du curseur (plus bas), donc rien ne s'en servait.
+  overlayWin.setIgnoreMouseEvents(true);
 
   overlayWin.on('blur', () => {
     if (overlayWin && !overlayWin.isDestroyed() && !overlayWin.isAlwaysOnTop()) enforceTop();
@@ -204,6 +233,27 @@ function createOverlayWindow() {
 
   overlayWin.loadFile(path.join(__dirname, 'src', 'overlay.html'));
   overlayWin.once('ready-to-show', () => { overlayWin.show(); enforceTop(); });
+
+  // Renderer planté (mémoire, décodeur sur un média piégé) ou rechargé : sans
+  // ça, les drops suivants partaient dans le vide, le sondage du curseur et le
+  // garde-fou tournaient sans fin, et un plantage en plein glissé laissait la
+  // fenêtre plein écran capter tous les clics.
+  const win = overlayWin;
+  const resetOverlayState = () => {
+    stopCursorPoll(); stopTopGuard();
+    if (!win.isDestroyed()) win.setIgnoreMouseEvents(true);
+  };
+  // Nouveau document (chargement, rechargement, Ctrl+R) : le renderer repart de zéro.
+  win.webContents.on('did-start-loading', resetOverlayState);
+  let crashReloads = [];
+  win.webContents.on('render-process-gone', (_e, d) => {
+    console.error('[overlay] renderer gone:', d.reason);
+    resetOverlayState();
+    if (app.isQuitting || win.isDestroyed() || d.reason === 'clean-exit') return;
+    const now = Date.now();
+    crashReloads = crashReloads.filter((t) => now - t < 60_000);
+    if (crashReloads.length < 3) { crashReloads.push(now); win.webContents.reload(); }
+  });
 
   // Écouteurs globaux : enregistrés une seule fois, même si la fenêtre est
   // recréée (sinon ils s'accumulaient à chaque recréation).
@@ -348,7 +398,10 @@ function currentDropSettings() {
 // Affiche un payload de drop sur l'overlay (création de la fenêtre au besoin).
 function showDropOnOverlay(payload) {
   if (!overlayWin || overlayWin.isDestroyed()) createOverlayWindow();
-  startTopGuard(); enforceTop();
+  // Seuls les drops avec média envoient 'stage-empty' à la fin (pluie / TTS
+  // seuls ne prennent pas d'emplacement) : sinon le garde-fou ne s'arrêtait plus.
+  if (payload.media) startTopGuard();
+  enforceTop();
   overlayWin.webContents.send('drop', { ...payload, settings: currentDropSettings() });
 }
 
@@ -390,9 +443,7 @@ function wsSend(payload) {
 let connState = { status: 'disconnected', code: null, user: null, links: null, muteUntil: store.get('muteUntil') };
 
 function broadcastState() {
-  for (const w of BrowserWindow.getAllWindows()) {
-    if (!w.isDestroyed()) w.webContents.send('connection-state', connState);
-  }
+  sendToSettings('connection-state', connState);
 }
 
 function setState(patch) {
@@ -411,7 +462,10 @@ function connectWS() {
   setState({ status: 'connecting', code: null, user: null, links: null });
 
   let sock;
-  try { sock = new WebSocket(url); }
+  // handshakeTimeout : sans lui, une poignée de main bloquée (veille ou
+  // changement de Wi-Fi en pleine connexion, proxy) laissait « connexion… »
+  // indéfiniment. maxPayload : les messages du bot font quelques Ko (défaut 100 Mo).
+  try { sock = new WebSocket(url, { handshakeTimeout: 20_000, maxPayload: 1024 * 1024 }); }
   catch (err) { console.error('[ws] construct error:', err.message); scheduleReconnect(); return; }
   ws = sock;
 
@@ -487,9 +541,17 @@ function connectWS() {
         store.set('linkIdentity', null);   // this overlay is no longer linked
         setState({ status: 'connecting', code: null, user: null, links: null }); break;
       case 'drop':
+        // URLs fournies par le serveur : http(s) ou data: seulement. L'overlay
+        // est une page file:// : un file:// ou un chemin UNC (\\hôte\partage)
+        // ferait tenter à Windows une connexion SMB/NTLM vers cet hôte.
+        if (msg.media && typeof msg.media === 'object' && !safeUrl(msg.media.url)) msg.media = null;
+        if (msg.music && typeof msg.music === 'object' && !safeUrl(msg.music.url)) msg.music = null;
+        if (msg.ttsUrl != null) msg.ttsUrl = safeUrl(msg.ttsUrl);
+        if (msg.from && typeof msg.from === 'object' && msg.from.avatar != null) msg.from.avatar = safeUrl(msg.from.avatar);
+        // Affichage d'abord, écriture disque ensuite. Mode tranquille / heures
+        // calmes : on note le drop mais on ne l'affiche pas.
+        if (!isMuted()) showDropOnOverlay(msg);
         recordHistory(msg);
-        if (isMuted()) break; // mode tranquille / heures calmes : on note le drop mais on ne l'affiche pas
-        showDropOnOverlay(msg);
         break;
       case 'ping':
         wsSend({ type: 'pong' }); break;
@@ -506,6 +568,8 @@ function connectWS() {
   });
   sock.on('error', (err) => console.error('[ws] error:', err.message));
 }
+
+const safeUrl = (u) => (typeof u === 'string' && /^(https?:|data:)/i.test(u) ? u : null);
 
 function scheduleReconnect() {
   if (reconnectTimer) clearTimeout(reconnectTimer);
@@ -531,9 +595,7 @@ let updateState = { status: 'idle', version: null, error: null, progress: null }
 let manualUpdateCheck = false;
 
 function broadcastUpdate() {
-  for (const w of BrowserWindow.getAllWindows()) {
-    if (!w.isDestroyed()) w.webContents.send('update-state', updateState);
-  }
+  sendToSettings('update-state', updateState);
 }
 
 function setUpdateState(patch) {
@@ -552,6 +614,9 @@ autoUpdater.on('checking-for-update', () => {
 autoUpdater.on('update-available', (info) => {
   console.log('[updater] update available:', info.version);
   setUpdateState({ status: 'available', version: info.version, error: null });
+  // Sinon les vérifications de fond suivantes affichaient « Vérification… »,
+  // voire une erreur réseau, à la place de la carte « mise à jour disponible ».
+  manualUpdateCheck = false;
 });
 
 autoUpdater.on('update-not-available', () => {
@@ -622,17 +687,32 @@ ipcMain.handle('settings:get', () => ({
   avoidZone:      store.get('avoidZone'),
 }));
 
-ipcMain.handle('settings:set', (_e, patch) => {
-  if (!patch || typeof patch !== 'object') return false;
+// Seule la fenêtre de réglages peut modifier l'état : les deux fenêtres ont le
+// même preload, et l'overlay est celle qui décode des médias non fiables.
+const fromSettings = (e) =>
+  !!settingsWin && !settingsWin.isDestroyed() && e.sender.id === settingsWin.webContents.id;
+// Clés modifiables depuis les réglages (jamais linkIdentity, dropHistory, muteUntil…)
+const SETTINGS_KEYS = new Set([
+  'serverUrl', 'volume', 'musicVolume', 'opacity', 'duration', 'videoDuration',
+  'soundOnArrival', 'spotlightOnDrop', 'autostart', 'overlayDisplayId', 'paused',
+  'theme', 'quietHours', 'avoidZone',
+]);
+const hostOf = (u) => { try { return new URL(u).host.toLowerCase(); } catch { return null; } };
+
+ipcMain.handle('settings:set', (e, raw) => {
+  if (!fromSettings(e) || !raw || typeof raw !== 'object') return false;
+  const patch = Object.fromEntries(
+    Object.entries(raw).filter(([k, v]) => SETTINGS_KEYS.has(k) && v !== undefined));
   if ('serverUrl' in patch && !/^wss?:\/\/\S+$/i.test(String(patch.serverUrl))) {
     delete patch.serverUrl;   // URL invalide : ignorée (validée aussi côté UI)
   }
-  for (const [k, v] of Object.entries(patch)) store.set(k, v);
-  if ('autostart' in patch) {
-    // openAsHidden = macOS; args ['--hidden'] = Windows (start to tray, no
-    // settings window) so the app boots silently and connects on its own.
-    app.setLoginItemSettings({ openAtLogin: !!patch.autostart, openAsHidden: true, args: ['--hidden'] });
+  // Le jeton de re-link ne vaut que pour le bot qui l'a émis : on ne le rejoue
+  // jamais vers un autre hôte (son opérateur pourrait s'en servir sur le vrai bot).
+  if ('serverUrl' in patch && hostOf(patch.serverUrl) !== hostOf(store.get('serverUrl'))) {
+    store.set('linkIdentity', null);
   }
+  store.setMany(patch);
+  if ('autostart' in patch) syncLoginItem(patch.autostart);
   if ('paused' in patch) {
     // connectWS() coupe proprement l'ancienne socket et, en pause, s'arrête là.
     connectWS();
@@ -666,38 +746,43 @@ ipcMain.handle('displays:list', () => screen.getAllDisplays().map(d => ({
 })));
 
 ipcMain.handle('connection:get', () => connState);
-ipcMain.handle('connection:reconnect', () => {
+ipcMain.handle('connection:reconnect', (e) => {
+  if (!fromSettings(e)) return false;
   reconnectAttempts = 0;
   connectWS(); return true;
 });
-ipcMain.handle('connection:unlink-guild', (_e, guildId) =>
-  wsSend({ type: 'unlink_guild', guildId: String(guildId || '') }));
-ipcMain.handle('connection:unblock-user', (_e, userId) =>
-  wsSend({ type: 'unblock_user', userId: String(userId || '') }));
+ipcMain.handle('connection:unlink-guild', (e, guildId) => {
+  if (!fromSettings(e)) return false;
+  return wsSend({ type: 'unlink_guild', guildId: String(guildId || '') });
+});
+ipcMain.handle('connection:unblock-user', (e, userId) => {
+  if (!fromSettings(e)) return false;
+  return wsSend({ type: 'unblock_user', userId: String(userId || '') });
+});
 
 // ── Mode tranquille ────────────────────────────────────────────────────
 // `minutes` null/0 → désactive. -1 → tranquille jusqu'à réactivation.
-ipcMain.handle('mute:set', (_e, minutes) => {
+ipcMain.handle('mute:set', (e, minutes) => {
+  if (!fromSettings(e)) return false;
   setMute(minutes);
   return store.get('muteUntil');
 });
-ipcMain.handle('mute:get', () => (isManuallyMuted() ? store.get('muteUntil') : null));
 ipcMain.handle('quiet-hours:active', () => quietHoursActive());
 
 // ── Historique des drops ──────────────────────────────────────────────
 ipcMain.handle('history:get', () => store.get('dropHistory'));
-ipcMain.handle('history:clear', () => {
+ipcMain.handle('history:clear', (e) => {
+  if (!fromSettings(e)) return false;
   store.set('dropHistory', []);
-  for (const w of BrowserWindow.getAllWindows()) {
-    if (!w.isDestroyed()) w.webContents.send('history-update', []);
-  }
+  sendToSettings('history-update', []);
   return true;
 });
 
 // Rejoue un drop de l'historique sur l'overlay (sans le ré-enregistrer).
 // `ts` identifie l'entrée — plus robuste qu'un index si l'historique bouge
 // entre l'affichage et le clic.
-ipcMain.handle('history:replay', (_e, ts) => {
+ipcMain.handle('history:replay', (e, ts) => {
+  if (!fromSettings(e)) return false;
   const h = store.get('dropHistory').find(x => x.ts === ts);
   if (!h || (!h.media && !h.rain && !h.tts)) return false;
   showDropOnOverlay({
@@ -716,7 +801,8 @@ ipcMain.handle('history:replay', (_e, ts) => {
 
 // ── Réactions aux drops ───────────────────────────────────────────────
 // Le renderer de l'overlay relaie le clic emoji ; on le transmet au bot.
-ipcMain.on('drop:react', (_e, { dropId, emoji } = {}) => {
+ipcMain.on('drop:react', (_e, arg) => {
+  const { dropId, emoji } = arg || {};   // null ne doit pas lever dans le main
   if (!dropId || !emoji) return;
   wsSend({ type: 'react', dropId: String(dropId), emoji: String(emoji) });
 });
@@ -724,15 +810,20 @@ ipcMain.on('drop:react', (_e, { dropId, emoji } = {}) => {
 // App version + update IPC
 ipcMain.handle('app:get-version', () => app.getVersion());
 ipcMain.handle('update:get-state', () => updateState);
-ipcMain.handle('update:check',     () => { checkForUpdates(true); return true; });
-ipcMain.handle('update:download',  () => {
+ipcMain.handle('update:check',     (e) => {
+  if (!fromSettings(e)) return false;
+  checkForUpdates(true); return true;
+});
+ipcMain.handle('update:download',  (e) => {
+  if (!fromSettings(e)) return false;
   if (updateState.status === 'available') {
     autoUpdater.downloadUpdate().catch(err =>
       setUpdateState({ status: 'error', error: err?.message || String(err) }));
   }
   return true;
 });
-ipcMain.handle('update:install',   () => {
+ipcMain.handle('update:install',   (e) => {
+  if (!fromSettings(e)) return false;
   if (updateState.status === 'downloaded') {
     // isSilent=true, isForceRunAfter=true → installs cleanly and relaunches
     autoUpdater.quitAndInstall(true, true);
@@ -740,7 +831,8 @@ ipcMain.handle('update:install',   () => {
   return true;
 });
 
-ipcMain.on('test-drop', () => {
+ipcMain.on('test-drop', (e) => {
+  if (!fromSettings(e)) return;
   showDropOnOverlay({
     type: 'drop',
     media: { url: 'about:blank', kind: 'test', mime: 'test/test', name: 'test.png', size: 0 },
@@ -751,15 +843,20 @@ ipcMain.on('test-drop', () => {
 });
 
 ipcMain.on('stage-empty', () => stopTopGuard());
-ipcMain.on('open-external', (_e, url) => {
-  if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+ipcMain.on('open-external', (e, url) => {
+  if (!fromSettings(e)) return;
+  try {
+    const u = new URL(String(url));
+    if (u.protocol === 'https:') shell.openExternal(u.href);
+  } catch {}
 });
 
 // ── Drag : sondage du curseur + bascule setIgnoreMouseEvents ─────────────
 //
-// Le renderer ne peut pas détecter le survol des drops via forward:true de
-// façon fiable sur Windows. On sonde donc screen.getCursorScreenPoint() dans
-// le main process (~60 fps) et on envoie la position au renderer.
+// L'overlay ignore la souris (clics vers le jeu) sans forward:true, qui
+// coûtait un hook souris global : le survol des drops est détecté en sondant
+// screen.getCursorScreenPoint() dans le main process (~60 fps), position
+// envoyée au renderer.
 // Le renderer demande à démarrer/arrêter le sondage selon qu'il y a des
 // drops visuels à l'écran.
 let _cursorPollTimer = null;
@@ -794,12 +891,23 @@ ipcMain.on('overlay:unwatch-cursor', () => stopCursorPoll());
 //   ignore = false → overlay capture la souris (mode drag)
 ipcMain.on('overlay:set-ignore-mouse', (_e, ignore) => {
   if (!overlayWin || overlayWin.isDestroyed()) return;
-  if (ignore) {
-    overlayWin.setIgnoreMouseEvents(true, { forward: true });
-  } else {
-    overlayWin.setIgnoreMouseEvents(false);
-  }
+  overlayWin.setIgnoreMouseEvents(!!ignore);
 });
+
+// openAsHidden = macOS ; args ['--hidden'] = Windows (démarrage dans le tray,
+// sans fenêtre de réglages), l'app se connecte toute seule.
+function syncLoginItem(enabled) {
+  // En dev, process.execPath est electron.exe sans l'app, et la valeur Run
+  // porte le même nom que celle de l'app installée : on n'y touche pas.
+  if (!app.isPackaged) return;
+  // Version portable : le vrai .exe, pas la copie extraite dans %TEMP%
+  // (supprimée à la fermeture).
+  const exe = process.env.PORTABLE_EXECUTABLE_FILE;
+  app.setLoginItemSettings({
+    openAtLogin: !!enabled, openAsHidden: true, args: ['--hidden'],
+    ...(exe ? { path: exe } : {}),
+  });
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // App lifecycle
@@ -818,37 +926,55 @@ if (!gotLock) {
   const startedHidden =
     process.argv.includes('--hidden') || app.getLoginItemSettings().wasOpenedAtLogin;
 
+  // Nos pages sont locales et figées : un fichier ou un lien glissé sur une
+  // fenêtre ne doit pas remplacer sa page (le preload y serait réinjecté), et
+  // aucune nouvelle fenêtre ne s'ouvre (clic molette sur un lien).
+  app.on('web-contents-created', (_e, contents) => {
+    contents.on('will-navigate', (e) => e.preventDefault());
+    contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  });
+
   app.whenReady().then(() => {
+    // Seule permission utile : le presse-papiers du bouton « copier le code ».
+    session.defaultSession.setPermissionRequestHandler(
+      (_wc, perm, cb) => cb(perm === 'clipboard-sanitized-write'));
+
     // Reconcile the OS login item with the stored setting on every launch, so
     // autostart actually takes effect even if the user never opened settings.
-    app.setLoginItemSettings({
-      openAtLogin: !!store.get('autostart'),
-      openAsHidden: true,
-      args: ['--hidden'],
-    });
+    syncLoginItem(store.get('autostart'));
 
     createOverlayWindow();
     if (!startedHidden) createSettingsWindow();
     createTray();
     connectWS();
 
-    // Debug shortcuts — work even when the overlay (which is non-focusable)
-    // can't receive keyboard events normally. We use Ctrl+Alt+X combos so we
-    // don't collide with GPU monitor overlays (NZXT CAM, MSI Afterburner, etc.)
-    // which often grab Ctrl+Shift+X.
+    // Au réveil, la socket d'avant la veille est presque toujours morte : on
+    // n'attend pas les 75 s du heartbeat.
+    powerMonitor.on('resume', () => {
+      if (store.get('paused')) return;
+      reconnectAttempts = 0;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(connectWS, 2000);   // laisse le Wi-Fi revenir
+    });
+
+    // Raccourcis DevTools en dev seulement : un raccourci global prive toutes
+    // les autres applis de la combinaison (AltGr = Ctrl+Alt sous Windows).
+    // En production : tray → « Ouvrir les DevTools (overlay) », et Ctrl+Maj+I
+    // dans la fenêtre de réglages.
     //   Ctrl+Alt+S → DevTools on the Settings window
-    //   Ctrl+Alt+M → DevTools on the overlay window (the transparent one
-    //                that actually plays the videos)
-    globalShortcut.register('Control+Alt+S', () => {
-      if (settingsWin && !settingsWin.isDestroyed()) {
-        settingsWin.webContents.openDevTools({ mode: 'detach' });
-      }
-    });
-    globalShortcut.register('Control+Alt+M', () => {
-      if (overlayWin && !overlayWin.isDestroyed()) {
-        overlayWin.webContents.openDevTools({ mode: 'detach' });
-      }
-    });
+    //   Ctrl+Alt+M → DevTools on the overlay window
+    if (!app.isPackaged) {
+      globalShortcut.register('Control+Alt+S', () => {
+        if (settingsWin && !settingsWin.isDestroyed()) {
+          settingsWin.webContents.openDevTools({ mode: 'detach' });
+        }
+      });
+      globalShortcut.register('Control+Alt+M', () => {
+        if (overlayWin && !overlayWin.isDestroyed()) {
+          overlayWin.webContents.openDevTools({ mode: 'detach' });
+        }
+      });
+    }
 
     // Expiration du mode tranquille / début-fin des heures calmes
     setInterval(refreshMuteState, 30_000);
