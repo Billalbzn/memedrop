@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://cdn.discordapp.com;">
+        content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://cdn.discordapp.com; base-uri 'none'; form-action 'none';">
   <title>MemeDrop</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,7 +11,6 @@
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <div class="grain"></div>
 
   <!-- ── En-tête + onglets (collants) ── -->
   <div class="topbar">
@@ -49,7 +48,7 @@
 
 
   <main>
-  <div class="tab-panel" data-panel="home">
+  <div class="tab-panel" role="tabpanel" data-panel="home">
   <!-- ── Carte mise à jour ── -->
   <section id="update-card" class="card update hidden">
     <div class="card-eyebrow">
@@ -178,7 +177,7 @@
 
   </div>
 
-  <div class="tab-panel" data-panel="calm">
+  <div class="tab-panel" role="tabpanel" data-panel="calm">
   <!-- ── Tranquillité & connexion ── -->
   <section class="card">
     <div class="card-eyebrow">
@@ -237,7 +236,7 @@
 
   </div>
 
-  <div class="tab-panel" data-panel="history">
+  <div class="tab-panel" role="tabpanel" data-panel="history">
   <!-- ── Historique ── -->
   <section class="card">
     <div class="card-eyebrow">
@@ -255,7 +254,7 @@
 
   </div>
 
-  <div class="tab-panel" data-panel="settings">
+  <div class="tab-panel" role="tabpanel" data-panel="settings">
   <!-- ── Audio & Affichage ── -->
   <section class="card">
     <div class="card-eyebrow">

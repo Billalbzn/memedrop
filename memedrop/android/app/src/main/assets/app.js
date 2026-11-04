@@ -18,7 +18,11 @@ let currentTab = 'home';
 function showTab(name) {
   if (!panels.some(p => p.dataset.panel === name)) name = 'home';
   currentTab = name;
-  tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  tabs.forEach(t => {
+    const on = t.dataset.tab === name;
+    t.classList.toggle('active', on);
+    t.setAttribute('aria-selected', String(on));   // onglet actif annoncé par TalkBack
+  });
   panels.forEach(p => p.classList.toggle('active', p.dataset.panel === name));
   lsSet('memedrop.tab', name);
   if (name === 'history') markHistorySeen();
@@ -190,7 +194,7 @@ function renderServers() {
       if (confirm(`Ne plus recevoir de drops venant de « ${g.name} » ?`)) MD.unlinkGuild(g.id);
     });
     let pic = (g.name || '?').charAt(0).toUpperCase();
-    if (g.icon) { pic = document.createElement('img'); pic.src = g.icon; pic.referrerPolicy = 'no-referrer'; }
+    if (g.icon) { pic = document.createElement('img'); pic.src = g.icon; pic.alt = ''; pic.referrerPolicy = 'no-referrer'; }
     list.appendChild(row(pic, g.name || 'Serveur inconnu', `ID ${g.id}`, btn).r);
   }
 }
@@ -242,13 +246,18 @@ $('#mute-off').addEventListener('click', () => MD.setMute(0));
 
 // ── Historique ─────────────────────────────────────────────────────────
 const KIND = { image: '🖼️', gif: '🎞️', video: '🎬', audio: '🎵', rain: '🌧️', tts: '🗣️', test: '🧪', unknown: '❓' };
+// Formateurs créés une seule fois : toLocale*String(locale, options) en
+// recrée un à chaque appel (~15x plus lent, 20 lignes à chaque mise à jour)
+const FMT_HEURE = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' });
+const FMT_JOUR  = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+const FMT_COURT = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' });
 function relTime(ts) {
   const min = Math.round(Math.max(0, Date.now() - ts) / 60000);
   if (min < 1) return 'à l\'instant';
   if (min < 60) return `il y a ${min} min`;
   const h = Math.round(min / 60);
   if (h < 24) return `il y a ${h} h`;
-  return new Date(ts).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  return FMT_COURT.format(ts);
 }
 function dayLabel(ts) {
   const d = new Date(ts); d.setHours(0, 0, 0, 0);
@@ -256,7 +265,7 @@ function dayLabel(ts) {
   const days = Math.round((t - d) / 86400000);
   if (days === 0) return 'aujourd\'hui';
   if (days === 1) return 'hier';
-  return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  return FMT_JOUR.format(d);
 }
 function describe(h) {
   if (h.caption) return `« ${h.caption} »`;
@@ -304,12 +313,13 @@ function renderHistory() {
       btn.textContent = 'revoir';
       btn.addEventListener('click', () => MD.replay(String(h.ts)));
     }
-    const time = new Date(h.ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const time = FMT_HEURE.format(h.ts);
     const { r, pic } = row((h.from || '?').charAt(0).toUpperCase(), h.from, `${time} · ${describe(h)}`, btn);
     pic.classList.add('history-pic');
     if (h.avatar) {
       const img = document.createElement('img');
       img.src = h.avatar;
+      img.alt = '';
       img.referrerPolicy = 'no-referrer';
       img.onload = () => { pic.firstChild && pic.firstChild.nodeType === 3 && pic.firstChild.remove(); };
       img.onerror = () => img.remove();
@@ -401,13 +411,29 @@ $('#open-github').addEventListener('click', (e) => {
 });
 
 // ── Démarrage ──────────────────────────────────────────────────────────
+// Écran en arrière-plan : on ne reconstruit rien (état + 3 listes à chaque
+// changement), on redessinera au retour. Si la WebView ne signale pas
+// document.hidden, rien ne change par rapport à avant.
+let stale = false;
 window.onNativeState = () => {
+  if (document.hidden) { stale = true; return; }
+  stale = false;
   const next = readState();
   if (!next) return;
   S = next;
   render();
 };
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && stale) window.onNativeState();
+});
+
+// Barre du haut floutée seulement quand du contenu défile dessous (voir styles.css)
+const topbar = $('.topbar');
+const syncTopbar = () => topbar?.classList.toggle('is-scrolled', window.scrollY > 0);
+window.addEventListener('scroll', syncTopbar, { passive: true });
+
 showTab(lsGet('memedrop.tab', 'home'));
+syncTopbar();
 window.onNativeState();
 // Compte à rebours du mode tranquille / "il y a X min"
 // (rien à rafraîchir tant que l'écran n'est pas visible : onResume le fait au retour)

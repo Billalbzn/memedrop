@@ -100,12 +100,13 @@ function renderServersPanel(links) {
   serversTitle.textContent = 'Sources autorisées';
   serversHint.textContent  = 'Désactive un serveur dont tu ne veux plus recevoir de drops.';
 
+  // En texte, jamais en innerHTML : le code vient du serveur (un balisage
+  // <meta http-equiv="refresh"> pouvait faire naviguer la fenêtre).
   const code = lastConnState?.code;
-  if (code) {
-    serversTip.innerHTML = `Pour ajouter un serveur, tape <code>/link ${code}</code> dessus.`;
-  } else {
-    serversTip.innerHTML = 'Pour ajouter un serveur, tape <code>/link &lt;code&gt;</code> dessus.';
-  }
+  serversTip.textContent = 'Pour ajouter un serveur, tape ';
+  const tip = document.createElement('code');
+  tip.textContent = `/link ${code || '<code>'}`;
+  serversTip.append(tip, ' dessus.');
 
   if (!links.guilds || links.guilds.length === 0) {
     const empty = document.createElement('div');
@@ -135,17 +136,17 @@ function renderServersPanel(links) {
 
     const name = document.createElement('div');
     name.className = 'server-row-name';
-    name.innerHTML = `
-      <strong></strong>
-      <div class="server-row-sub">ID ${g.id}</div>
-    `;
+    name.innerHTML = '<strong></strong><div class="server-row-sub"></div>';
     name.querySelector('strong').textContent = g.name || 'Serveur inconnu';
+    name.querySelector('.server-row-sub').textContent = `ID ${g.id}`;   // ID venu du serveur : en texte
 
     const sw = document.createElement('input');
     sw.type = 'checkbox';
     sw.className = 'switch';
     sw.checked = g.enabled !== false;
     sw.title = sw.checked ? 'Cliquer pour désactiver ce serveur' : '';
+    // Sinon tous les interrupteurs portent le même nom pour un lecteur d'écran
+    sw.setAttribute('aria-label', `Recevoir les drops de ${g.name || 'ce serveur'}`);
     sw.addEventListener('change', async () => {
       if (!sw.checked) {
         const ok = confirm(`Désactiver les drops venant de « ${g.name} » ? Tu pourras le réactiver en tapant /link sur ce serveur.`);
@@ -180,8 +181,9 @@ function renderBlockedPanel(blocked) {
 
     const name = document.createElement('div');
     name.className = 'server-row-name';
-    name.innerHTML = `<strong></strong><div class="server-row-sub">ID ${b.id}</div>`;
+    name.innerHTML = '<strong></strong><div class="server-row-sub"></div>';
     name.querySelector('strong').textContent = b.username || 'Inconnu';
+    name.querySelector('.server-row-sub').textContent = `ID ${b.id}`;
 
     const btn = document.createElement('button');
     btn.className = 'ghost';
@@ -231,7 +233,9 @@ async function refreshQuietHours() {
   try { quietActive = !!(await window.memedrop.isQuietHoursActive()); } catch { quietActive = false; }
   applyMuteState(lastConnState?.muteUntil ?? null);
 }
-setInterval(refreshQuietHours, 30_000);
+// Fenêtre fermée = masquée (pas détruite) : rien à rafraîchir tant qu'elle
+// n'est pas visible, on rattrape au retour (visibilitychange plus bas).
+setInterval(() => { if (!document.hidden) refreshQuietHours(); }, 30_000);
 
 // ── Pause de connexion ───────────────────────────────────────────────────
 connectionToggle.addEventListener('change', (e) => {
@@ -247,6 +251,12 @@ const lastDropBox  = $('#last-drop');
 const lastDropText = $('#last-drop-text');
 let historyEntries = [];
 
+// Formateurs créés une seule fois : toLocale*String(locale, options) en
+// recrée un à chaque appel (~15x plus lent, 20 lignes par rendu).
+const FMT_HEURE = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' });
+const FMT_JOUR  = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+const FMT_COURT = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' });
+
 function relativeTime(ts) {
   const diff = Math.max(0, Date.now() - ts);
   const min = Math.round(diff / 60_000);
@@ -254,7 +264,7 @@ function relativeTime(ts) {
   if (min < 60) return `il y a ${min} min`;
   const h = Math.round(min / 60);
   if (h < 24)   return `il y a ${h} h`;
-  return new Date(ts).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  return FMT_COURT.format(ts);
 }
 
 function dayLabel(ts) {
@@ -263,7 +273,7 @@ function dayLabel(ts) {
   const days = Math.round((today - d) / 86_400_000);
   if (days === 0) return 'aujourd\'hui';
   if (days === 1) return 'hier';
-  return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  return FMT_JOUR.format(d);
 }
 
 function describeDrop(h) {
@@ -332,7 +342,7 @@ function renderHistory(history) {
 
     const name = document.createElement('div');
     name.className = 'server-row-name';
-    const time = new Date(h.ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const time = FMT_HEURE.format(h.ts);
     name.innerHTML = `<strong></strong><div class="server-row-sub"></div>`;
     name.querySelector('strong').textContent = h.from;
     name.querySelector('.server-row-sub').textContent = `${time} · ${describeDrop(h)}`;
@@ -363,7 +373,16 @@ historyClearBtn.addEventListener('click', async () => {
   renderHistory([]);
 });
 // Les "il y a X min" vieillissent : on rafraîchit l'affichage chaque minute
-setInterval(() => renderHistory(historyEntries), 60_000);
+// (seulement si la fenêtre est visible)
+setInterval(() => { if (!document.hidden) renderHistory(historyEntries); }, 60_000);
+// Fenêtre ré-affichée : compte à rebours, "il y a X min" et liste des écrans
+// (un écran branché entre-temps apparaît)
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  refreshQuietHours();
+  renderHistory(historyEntries);
+  refreshDisplays();
+});
 
 // ── État de connexion ──────────────────────────────────────────────────
 const statusCard  = $('#status-card');
@@ -393,6 +412,9 @@ function applyConnState(state) {
   linkedCard.classList.add('hidden');
   serversCard.classList.add('hidden');
   statusCard.classList.add('hidden');
+  // Ré-affichée par renderBlockedPanel si 'linked' : sinon la liste (d'un
+  // compte délié, ou hors ligne) restait là avec des boutons sans effet
+  blockedCard.classList.add('hidden');
 
   switch (state.status) {
     case 'connecting':
@@ -549,12 +571,18 @@ function queueSetting(key, value) {
   }, 150);
 }
 
+// Remplissage du curseur selon ses bornes (l'opacité va de 20 à 100 : la
+// valeur brute en % décalait le remplissage par rapport au curseur)
+function paintRange(el) {
+  el.style.setProperty('--value', `${(el.value - el.min) * 100 / (el.max - el.min)}%`);
+}
+
 function bindRange(id, outId, fmt, key, scale = 1) {
   const input = document.getElementById(id);
   const out   = document.getElementById(outId);
   input.addEventListener('input', () => {
     out.textContent = fmt(input.value);
-    input.style.setProperty('--value', `${(input.value - input.min) * 100 / (input.max - input.min)}%`);
+    paintRange(input);
     queueSetting(key, Number(input.value) / scale);
   });
 }
@@ -606,52 +634,17 @@ serverInput.addEventListener('change', () => {
   serverError.classList.toggle('hidden', ok);
   if (ok) queueSetting('serverUrl', v);
 });
+let wantedDisplay = null;   // overlayDisplayId enregistré (null = principal)
 $('#display').addEventListener('change',   (e) => {
   const id = e.target.value === 'primary' ? null : Number(e.target.value);
+  wantedDisplay = id;
   queueSetting('overlayDisplayId', id);
 });
 
-// ── Initialisation ─────────────────────────────────────────────────────
-async function init() {
-  const s = await window.memedrop.getSettings();
-
-  const volEl = $('#volume');
-  volEl.value = Math.round((s.volume ?? .75) * 100);
-  $('#volume-out').textContent = `${volEl.value}%`;
-  volEl.style.setProperty('--value', `${volEl.value}%`);
-
-  const musicVolEl = $('#music-volume');
-  musicVolEl.value = Math.round((s.musicVolume ?? .75) * 100);
-  $('#music-volume-out').textContent = `${musicVolEl.value}%`;
-  musicVolEl.style.setProperty('--value', `${musicVolEl.value}%`);
-
-  const opEl = $('#opacity');
-  opEl.value = Math.round((s.opacity ?? 1) * 100);
-  $('#opacity-out').textContent = `${opEl.value}%`;
-  opEl.style.setProperty('--value', `${opEl.value}%`);
-
-  const durEl = $('#duration');
-  durEl.value = s.duration ?? 4;
-  $('#duration-out').textContent = `${durEl.value}s`;
-  durEl.style.setProperty('--value', `${(durEl.value - 1) * 100 / 29}%`);
-
-  const vidDurEl = $('#video-duration');
-  vidDurEl.value = s.videoDuration ?? 30;
-  $('#video-duration-out').textContent = `${vidDurEl.value}s`;
-  vidDurEl.style.setProperty('--value', `${(vidDurEl.value - 1) * 100 / 29}%`);
-
-  $('#sound').checked      = !!s.soundOnArrival;
-  $('#spotlight').checked  = s.spotlightOnDrop !== false; // true par défaut
-  $('#theme').value        = s.theme || 'classic';
-  $('#avoid-zone').value   = s.avoidZone || 'none';
-  qhToggle.checked         = !!s.quietHours?.enabled;
-  qhStart.value            = s.quietHours?.start || '22:00';
-  qhEnd.value              = s.quietHours?.end   || '08:00';
-  refreshQuietHours();
-  $('#autostart').checked  = !!s.autostart;
-  serverInput.value        = s.serverUrl || '';
-
-  const displays = await window.memedrop.listDisplays();
+// Liste des écrans, relue à chaque ré-affichage de la fenêtre
+async function refreshDisplays() {
+  let displays;
+  try { displays = await window.memedrop.listDisplays(); } catch { return; }
   const sel = $('#display');
   sel.innerHTML = '';
   const primOpt = document.createElement('option');
@@ -664,7 +657,54 @@ async function init() {
     o.textContent = `${d.primary ? '★' : '·'}  ${d.label} — ${d.bounds.width}×${d.bounds.height}`;
     sel.appendChild(o);
   }
-  sel.value = s.overlayDisplayId == null ? 'primary' : String(s.overlayDisplayId);
+  sel.value = wantedDisplay == null ? 'primary' : String(wantedDisplay);
+  // Écran enregistré débranché : l'overlay utilise l'écran principal (main.js
+  // getTargetDisplay), on l'affiche au lieu d'une liste vide
+  if (sel.selectedIndex < 0) sel.value = 'primary';
+}
+
+// ── Initialisation ─────────────────────────────────────────────────────
+async function init() {
+  const s = await window.memedrop.getSettings();
+
+  const volEl = $('#volume');
+  volEl.value = Math.round((s.volume ?? .75) * 100);
+  $('#volume-out').textContent = `${volEl.value}%`;
+  paintRange(volEl);
+
+  const musicVolEl = $('#music-volume');
+  musicVolEl.value = Math.round((s.musicVolume ?? .75) * 100);
+  $('#music-volume-out').textContent = `${musicVolEl.value}%`;
+  paintRange(musicVolEl);
+
+  const opEl = $('#opacity');
+  opEl.value = Math.round((s.opacity ?? 1) * 100);
+  $('#opacity-out').textContent = `${opEl.value}%`;
+  paintRange(opEl);
+
+  const durEl = $('#duration');
+  durEl.value = s.duration ?? 4;
+  $('#duration-out').textContent = `${durEl.value}s`;
+  paintRange(durEl);
+
+  const vidDurEl = $('#video-duration');
+  vidDurEl.value = s.videoDuration ?? 30;
+  $('#video-duration-out').textContent = `${vidDurEl.value}s`;
+  paintRange(vidDurEl);
+
+  $('#sound').checked      = !!s.soundOnArrival;
+  $('#spotlight').checked  = s.spotlightOnDrop !== false; // true par défaut
+  $('#theme').value        = s.theme || 'classic';
+  $('#avoid-zone').value   = s.avoidZone || 'none';
+  qhToggle.checked         = !!s.quietHours?.enabled;
+  qhStart.value            = s.quietHours?.start || '22:00';
+  qhEnd.value              = s.quietHours?.end   || '08:00';
+  refreshQuietHours();
+  $('#autostart').checked  = !!s.autostart;
+  serverInput.value        = s.serverUrl || '';
+
+  wantedDisplay = s.overlayDisplayId ?? null;
+  await refreshDisplays();
 
   try {
     const v = await window.memedrop.getVersion();
@@ -678,5 +718,13 @@ $('#open-discord').addEventListener('click', (e) => {
   window.memedrop.openExternal('https://github.com/Billalbzn/memedrop');
 });
 
+// Barre du haut floutée seulement quand du contenu passe dessous : à scrollY 0
+// il n'y a que le fond uni derrière, et ce flou recomposé à chaque image de
+// l'animation « pulse » du statut coûtait plus de la moitié d'un cœur.
+const topbar = $('.topbar');
+const syncTopbar = () => topbar?.classList.toggle('is-scrolled', window.scrollY > 0);
+window.addEventListener('scroll', syncTopbar, { passive: true });
+
 // Onglet mémorisé — appelé en dernier, une fois tout le module initialisé
 showTab(lsGet('memedrop.tab', 'home'));
+syncTopbar();

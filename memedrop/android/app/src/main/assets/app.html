@@ -39,7 +39,6 @@
   </style>
 </head>
 <body>
-  <div class="grain"></div>
 
   <div class="topbar">
     <header class="hero">
@@ -59,17 +58,17 @@
       </div>
       <div id="conn-pill" class="pill pill--idle"><span class="dot"></span><span class="label">…</span></div>
     </header>
-    <nav class="tabs">
-      <button class="tab" data-tab="home">accueil</button>
-      <button class="tab" data-tab="calm">calme</button>
-      <button class="tab" data-tab="history">historique <span class="tab-badge hidden" id="history-badge">0</span></button>
-      <button class="tab" data-tab="settings">réglages</button>
+    <nav class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="home">accueil</button>
+      <button class="tab" role="tab" data-tab="calm">calme</button>
+      <button class="tab" role="tab" data-tab="history">historique <span class="tab-badge hidden" id="history-badge">0</span></button>
+      <button class="tab" role="tab" data-tab="settings">réglages</button>
     </nav>
   </div>
 
   <main>
   <!-- ════════ ACCUEIL ════════ -->
-  <div class="tab-panel" data-panel="home">
+  <div class="tab-panel" role="tabpanel" data-panel="home">
 
     <section id="update-card" class="card update hidden">
       <div class="card-eyebrow" id="update-eyebrow">mise à jour</div>
@@ -160,7 +159,7 @@
   </div>
 
   <!-- ════════ CALME ════════ -->
-  <div class="tab-panel" data-panel="calm">
+  <div class="tab-panel" role="tabpanel" data-panel="calm">
     <section class="card">
       <div class="card-eyebrow">tranquillité</div>
       <h2>Besoin de calme ?</h2>
@@ -199,7 +198,7 @@
   </div>
 
   <!-- ════════ HISTORIQUE ════════ -->
-  <div class="tab-panel" data-panel="history">
+  <div class="tab-panel" role="tabpanel" data-panel="history">
     <section class="card">
       <div class="card-eyebrow">historique</div>
       <h2>Derniers drops reçus</h2>
@@ -211,7 +210,7 @@
   </div>
 
   <!-- ════════ RÉGLAGES ════════ -->
-  <div class="tab-panel" data-panel="settings">
+  <div class="tab-panel" role="tabpanel" data-panel="settings">
     <section class="card">
       <div class="card-eyebrow">audio &amp; affichage</div>
       <div class="field"><label for="volume">Volume vidéo <output id="volume-out"></output></label>
