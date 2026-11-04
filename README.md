@@ -53,7 +53,7 @@ Sur **Windows** et sur **Android**. Gratuit, auto-hébergé.
 2. Windows affiche « Windows a protégé votre PC » (l'app n'est pas signée) → **Informations complémentaires** → **Exécuter quand même**.
 3. L'app s'ouvre et affiche un **code à 6 chiffres**.
 
-MemeDrop se lance ensuite tout seul au démarrage (icône dans la barre des tâches) et **se met à jour automatiquement**.
+MemeDrop se lance ensuite tout seul au démarrage (icône dans la barre des tâches) et **te signale les mises à jour** : clic sur l'icône → réglages → **Télécharger** → **Installer & redémarrer**.
 
 > Joue en **plein écran fenêtré / sans bordure** : le plein écran exclusif cache toute fenêtre par-dessus le jeu (limite de Windows).
 

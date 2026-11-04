@@ -5,11 +5,11 @@
 
 Three pieces:
 
-- **`bot/`** → Discord bot + WebSocket hub. Hosted once on Railway, runs 24/7.
+- **`bot/`** → Discord bot + WebSocket hub. Hosted once on Fly.io, runs 24/7.
 - **`overlay/`** → Electron app. Each friend installs the `.exe` on their PC.
 - **`android/`** → Kotlin app for Android 8+. Same bot protocol, same drop renderer.
 
-The bot exposes `/drop @target`, `/dropall`, `/link`, `/unlink`, `/status`, `/who`, `/block`, `/unblock`, `/blocklist`. The overlay is a transparent click-through window that sits on top of the user's game, launches automatically at login, and re-connects to your bot on its own.
+The bot exposes `/drop @target`, `/dropall`, `/link`, `/unlink`, `/status`, `/who`, `/block`, `/unblock`, `/blocklist`, `/fav`, `/dropfav`, `/group`, `/dropgroup` and `/stats`. The overlay is a transparent click-through window that sits on top of the user's game, launches automatically at login, and re-connects to your bot on its own.
 
 ---
 
@@ -18,7 +18,7 @@ The bot exposes `/drop @target`, `/dropall`, `/link`, `/unlink`, `/status`, `/wh
 ```
    ┌──────────────────┐         ┌─────────────────┐
    │  Friend A on     │  /drop  │   YOUR BOT      │
-   │  Discord         ├────────▶│   on Railway    │
+   │  Discord         ├────────▶│   on Fly.io     │
    └──────────────────┘         └────────┬────────┘
                                          │ WSS
                           ┌──────────────┴───────────────┐
@@ -30,11 +30,11 @@ The bot exposes `/drop @target`, `/dropall`, `/link`, `/unlink`, `/status`, `/wh
                 └──────────────────┘          └──────────────────┘
 ```
 
-Everyone shares **one bot** on one Railway service. Each PC runs its own overlay app that connects to that bot.
+Everyone shares **one bot** on one Fly.io app (a single machine). Each PC or phone runs its own app that connects to that bot.
 
 ---
 
-## Part 1 — Deploy the bot on Railway (one time, ~5 min)
+## Part 1 — Deploy the bot on Fly.io (one time, ~10 min)
 
 ### 1.1 Create the Discord bot
 
@@ -45,32 +45,52 @@ Everyone shares **one bot** on one Railway service. Each PC runs its own overlay
    - Bot Permissions: ☑ Send Messages + ☑ Use Slash Commands
 4. Copy the generated URL, open it in your browser, invite the bot to your server.
 
-### 1.2 Push the bot to Railway
+### 1.2 Deploy the bot on Fly.io
 
-1. Create a free account on https://railway.com.
-2. Install the CLI: https://docs.railway.com/guides/cli (or use the web UI).
-3. From inside the `bot/` folder:
+1. Create an account on https://fly.io and install `flyctl` (https://fly.io/docs/flyctl/install/), then `fly auth login`.
+2. From inside the `bot/` folder, create the app without deploying yet:
 
    ```bash
-   railway login
-   railway init        # create a new project
-   railway up          # deploys the current folder
+   fly launch --no-deploy     # pick a name, e.g. memedrop-bot → wss://memedrop-bot.fly.dev
    ```
 
-   Or use the web UI: "New Project" → "Deploy from GitHub" → pick your fork.
+   It writes a `fly.toml` (and a `Dockerfile` for Node). Before deploying, check in `fly.toml`:
+   - `internal_port` matches the port the bot listens on: `PORT` if set, otherwise
+     `WS_PORT`, otherwise **8765**;
+   - `auto_stop_machines = 'off'` and `min_machines_running = 1`: a stopped machine
+     means the bot is offline on Discord and every app is disconnected;
+   - a `[mounts]` section with `source = 'memedrop_data'` and `destination = '/data'`,
+     plus `DATA_DIR = '/data'` under `[env]` (see step 4).
 
-4. In the Railway dashboard, open the service → **Variables** tab → add:
+3. Set the secrets (never in `fly.toml`):
+
+   ```bash
+   fly secrets set DISCORD_TOKEN=... CLIENT_ID=... LINK_SECRET=...
+   ```
+
    - `DISCORD_TOKEN` = your bot token from step 1.1
-   - `CLIENT_ID` = your application ID (visible on the bot's Discord dev page → General Info)
+   - `CLIENT_ID` = your application ID (Discord dev page → General Info)
    - `LINK_SECRET` = a long random string, used to sign the tokens that let the
-     overlay re-link automatically after a restart. Generate one with:
+     apps re-link automatically after a restart. Generate one with:
      ```bash
      node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
      ```
-     **Keep this stable** across redeploys. If it ever changes (or is left
-     unset), every overlay needs to run `/link` again once.
+     **Keep this stable** across redeploys. If it ever changes, every app needs
+     to run `/link` again once. On Fly the bot refuses to start without it.
 
-5. Still in Railway → **Settings** tab → **Networking** → **Generate Domain**. You get something like `memedrop-bot.up.railway.app`. **Copy this domain**, you'll need it.
+4. Create the volume that keeps favorites, groups and stats (`store.json`) across deploys:
+
+   ```bash
+   fly volumes create memedrop_data --size 1
+   ```
+
+5. Deploy, with **exactly one machine** (two would split the connected apps between
+   them and answer each Discord command twice):
+
+   ```bash
+   fly deploy
+   fly scale count 1
+   ```
 
 6. Register the slash commands once (from your machine, with `.env` filled in locally):
 
@@ -79,7 +99,7 @@ Everyone shares **one bot** on one Railway service. Each PC runs its own overlay
    npm run deploy
    ```
 
-The bot is now running 24/7 at `wss://memedrop-bot.up.railway.app`. Test from any Discord channel: type `/status` — bot should reply.
+The bot is now running 24/7 at `wss://<your-app>.fly.dev`. Test from any Discord channel: type `/status` — bot should reply. Once it works, keep the real config in the repo with `fly config save -a <your-app>` and commit `fly.toml`.
 
 ---
 
@@ -89,32 +109,30 @@ This is the `.exe` you'll share with friends.
 
 ### 2.1 First time: set the default server URL
 
-Before building, the overlay needs to know which bot to connect to by default. The `main.js` already reads from a build-time env var:
+Before building, the overlay needs to know which bot to connect to by default. Edit the `DEFAULT_SERVER` constant near the top of `overlay/main.js` (your bot's `wss://` URL) — and the one in `android/app/src/main/java/com/memedrop/app/Prefs.kt` for the APK — then build:
 
 ```bash
-# Windows PowerShell
 cd overlay
-$env:DEFAULT_SERVER = "wss://memedrop-bot.up.railway.app"  # YOUR Railway URL
 npm install
 npm run build:win
 ```
 
-```bash
-# macOS / Linux (if cross-building)
-cd overlay
-DEFAULT_SERVER="wss://memedrop-bot.up.railway.app" npm run build:win
-```
+The `DEFAULT_SERVER` environment variable is only read by `npm start` (dev runs); the packaged app ignores it.
 
 This takes 1–3 minutes. When it's done, look in `overlay/dist/` — you'll have two files:
 
 | File                              | What it is                                                          |
 |-----------------------------------|---------------------------------------------------------------------|
-| `MemeDrop-Setup-1.0.0.exe`        | Full installer (creates Start Menu + desktop shortcuts, can uninstall) |
-| `MemeDrop-Portable-1.0.0.exe`     | Single-file portable, no install, just double-click to run          |
+| `MemeDrop-Setup-x.y.z.exe`        | Full installer (creates Start Menu + desktop shortcuts, can uninstall) |
+| `MemeDrop-Portable-x.y.z.exe`     | Single-file portable, no install, just double-click to run          |
+
+Official releases are built by the **Windows release** workflow instead (see `RELEASE.md`).
 
 ### 2.2 Share with friends
 
-Upload one of those `.exe` files to a Google Drive / Discord channel / wherever. Friends download it, double-click, and that's it.
+Point friends to the latest GitHub release (or upload one of those `.exe` files anywhere). Friends download it, double-click, and that's it.
+
+Installed apps check for a new release every 30 minutes but **don't install it on their own**: the settings window shows « Mise à jour disponible » → *Télécharger* → *Installer & redémarrer*.
 
 > **Heads up about SmartScreen**: because the `.exe` isn't code-signed (a $200/year cert), Windows will show a blue "Windows protected your PC" popup. Friends need to click "More info" → "Run anyway". Tell them this in advance, otherwise they'll think it's a virus. If you want zero friction, look into signing the binary later.
 
@@ -138,8 +156,9 @@ The Android app lives in `android/`. It is a small native Kotlin app:
 ### Getting the APK
 
 You don't need Android Studio: the **Android APK** GitHub Actions workflow
-(`.github/workflows/android.yml`) builds it on every push touching `android/` or
-`overlay/src/`. Only builds of `main` are published as `MemeDrop.apk` in the
+(`.github/workflows/android.yml`) builds it on every branch push touching `android/`
+or the shared renderer files (`overlay/src/overlay.js`, `overlay.html`, `styles.css`).
+Only builds of `main` are published as `MemeDrop.apk` in the
 **`android-latest`** pre-release (the one phones update from); on other branches
 the APK is only attached to the run as the `MemeDrop-apk` artifact. Being a
 pre-release, it does not interfere with the Windows auto-updater, which only
@@ -192,9 +211,9 @@ Local builds without these variables are signed with the Android debug key.
 For each friend, once:
 
 1. Run `MemeDrop-Setup.exe` (or `MemeDrop-Portable.exe`) — or install `MemeDrop.apk` on Android.
-2. App opens. The header pill says **AWAITING LINK** and shows a 6-digit code.
+2. App opens. The header pill says **en attente** and shows a 6-digit code.
 3. On Discord, in the server where the bot lives, type `/link <code>`.
-4. App pill turns green **LINKED**. They're done.
+4. App pill turns green **connecté**. They're done.
 
 The app starts automatically with Windows from now on (tray icon only — no
 window) and reconnects to the bot on its own. To pause incoming drops without
@@ -254,14 +273,14 @@ to make them rain down the screen too.
 
 ---
 
-## Local development (no Railway)
+## Local development
 
 If you just want to test on your own machine:
 
 ```bash
 # Terminal 1
 cd bot
-cp .env.example .env   # fill DISCORD_TOKEN, CLIENT_ID, and optionally DEV_GUILD_IDS
+cp .env.example .env   # fill DISCORD_TOKEN, CLIENT_ID, LINK_SECRET, PUBLIC_BASE_URL=http://localhost:8765
 npm install
 npm run deploy
 npm start              # listens on :8765
@@ -269,35 +288,40 @@ npm start              # listens on :8765
 # Terminal 2
 cd overlay
 npm install
-npm start
+DEFAULT_SERVER=ws://localhost:8765 npm start   # only applies to a fresh config
 ```
 
-The overlay tries `wss://memedrop-bot.up.railway.app` by default — change the URL to `ws://localhost:8765` from the settings window's "Bot server URL" field on first launch.
+Or change the URL to `ws://localhost:8765` in the settings window's "Bot server URL" field. Without `PUBLIC_BASE_URL`, the local bot hands out TTS links pointing at the production bot.
+
+> ⚠️ Use a **separate Discord application** (its own token) for local tests: two bots running with the same token both answer every command.
+>
+> `npm start` uses the same settings file as the installed app (same `config.json`, same link). Quit the installed app first.
 
 ---
 
 ## Known limitations
 
 - **Fullscreen exclusive mode** hides the overlay (OS-level limit). Friends must play in **borderless** or **windowed**. Most modern games default to borderless.
-- The overlay is click-through by design. To interact (close, drag), use the tray icon menu.
+- The overlay is click-through by design: drops can be dragged and closed with their ✕, the rest of the window lets clicks through to the game.
 - This app does NOT inject into game processes, hook APIs, or read game memory. It's just a transparent OS window. That's safe with anti-cheats — but always check your game's ToS.
 - Discord CDN URLs expire after ~24h. Drops are real-time, so this doesn't matter for normal use, but don't expect to "replay" old drops — including favorites saved with `/fav add`: if a favorite stops showing up after a day or so, just re-run `/fav add` to refresh its URL.
-- The bot keeps pairings in memory. If it restarts (e.g. Railway redeploys), the overlay re-links itself automatically using a token saved locally — as long as `LINK_SECRET` stays the same across deploys. If `LINK_SECRET` changes (or was never set), everyone re-runs `/link` once.
-- Favorites and groups (`/fav`, `/group`) are saved to `bot/data/store.json`. On Railway this disk is wiped on every redeploy — mount a persistent volume at `bot/data` (set `DATA_DIR` to its path if different) if you want favorites/groups to survive redeploys, not just restarts.
+- The bot keeps pairings in memory. If it restarts (e.g. a Fly deploy), the apps re-link themselves automatically using a token saved locally — as long as `LINK_SECRET` stays the same across deploys. If `LINK_SECRET` changes, everyone re-runs `/link` once.
+- Favorites, groups and stats (`/fav`, `/group`, `/stats`) are saved to `store.json` in `DATA_DIR` (default `bot/data/`). A Fly machine's disk is reset on every deploy: mount a volume and point `DATA_DIR` at it (Part 1.2), or they only survive restarts.
 
 ---
 
 ## Project layout
 
 ```
-.github/workflows/android.yml # builds + publishes the APK
+.github/workflows/android.yml # builds the APK, publishes it from main
+.github/workflows/windows.yml # builds + publishes the Windows release
 memedrop/
 ├── bot/
 │   ├── index.js              # bot + HTTP/ws server (+ /tts)
 │   ├── store.js              # favorites / groups / stats persistence
 │   ├── deploy-commands.js    # slash command registration
-│   ├── nixpacks.toml         # tells Railway to use Node 20 LTS
-│   ├── railway.json          # Railway service config
+│   ├── nixpacks.toml         # Node version for nixpacks builds (former Railway host)
+│   ├── railway.json          # former Railway service config (unused on Fly)
 │   ├── package.json
 │   └── .env.example
 └── overlay/
@@ -318,7 +342,6 @@ memedrop/
     ├── settings.gradle.kts / build.gradle.kts
     └── app/
         ├── build.gradle.kts      # syncWebAssets: copies overlay/src into the APK
-        ├── memedrop-shared.keystore
         └── src/main/
             ├── AndroidManifest.xml
             ├── assets/           # app.html, app.js, android-shim.js
@@ -327,5 +350,6 @@ memedrop/
                 ├── MemeDropService.kt    # WebSocket + notification
                 ├── OverlayController.kt  # window drawn over other apps
                 ├── Prefs.kt / Hub.kt     # settings + shared state
-                └── BootReceiver.kt       # start at boot
+                ├── Updater.kt            # in-app APK update (android-latest)
+                └── BootReceiver.kt       # start at boot / after an update
 ```

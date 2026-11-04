@@ -1,8 +1,8 @@
 # Compile l'app Windows (.exe) sur un runner Windows et publie la release
 # GitHub correspondant à la version de overlay/package.json. Les PC de tes
-# potes la détectent ensuite via l'auto-update.
+# potes la voient ensuite dans leurs réglages (« Mise à jour disponible »).
 # Lancement : onglet Actions → "Windows release" → Run workflow (sur main),
-# ou en poussant un tag v1.2.3.
+# ou en poussant un tag v1.2.3 (identique à la version de package.json).
 name: Windows release
 
 on:
@@ -16,6 +16,13 @@ permissions:
 
 jobs:
   release:
+    # Depuis main ou un tag seulement : lancée depuis une autre branche, elle
+    # publiait le code de cette branche comme release officielle.
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    # Un tag poussé + un lancement manuel partagent le même brouillon
+    concurrency:
+      group: windows-release
+      cancel-in-progress: false
     runs-on: windows-latest
     defaults:
       run:
@@ -28,6 +35,21 @@ jobs:
         with:
           node-version: '20'
 
+      # Sans ces contrôles, une version non incrémentée finissait en run vert
+      # sans rien publier (electron-builder ne fait qu'avertir) et l'étape
+      # suivante réécrivait la release déjà publiée.
+      - name: Check version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+            echo "::error::Le tag $GITHUB_REF_NAME ne correspond pas à overlay/package.json (v$VERSION)"; exit 1
+          fi
+          if [ "$(gh release view "v$VERSION" --json isDraft -q .isDraft 2>/dev/null)" = false ]; then
+            echo "::error::v$VERSION est déjà publiée : augmente \"version\" dans overlay/package.json"; exit 1
+          fi
+
       # npm install (pas npm ci) : le package-lock n'est pas toujours à jour
       - name: Install dependencies
         run: npm install --no-audit --no-fund
@@ -35,16 +57,16 @@ jobs:
       - name: Build and upload (draft release)
         env:
           GH_TOKEN: ${{ github.token }}
-          DEFAULT_SERVER: wss://memedrop-bot.fly.dev
         run: npx electron-builder --win --publish always
 
-      # electron-builder crée un brouillon : on le publie pour déclencher
-      # l'auto-update chez tout le monde.
+      # electron-builder crée un brouillon : on le publie pour que les apps
+      # installées le proposent. --target : le tag est posé sur le commit compilé
+      # (sans ça, sur la tête de la branche par défaut ; ignoré si le tag existe).
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          gh release edit "v$VERSION" --draft=false --latest \
+          gh release edit "v$VERSION" --target "$GITHUB_SHA" --draft=false --latest \
             --title "MemeDrop v$VERSION" \
-            --notes "Version Windows v$VERSION — installe \`MemeDrop-Setup-$VERSION.exe\` (ou la version Portable). Les PC déjà équipés se mettent à jour tout seuls. Version Android : voir la release android-latest."
+            --notes "Version Windows v$VERSION — installe \`MemeDrop-Setup-$VERSION.exe\` (ou la version Portable). Les PC déjà équipés la proposent dans les réglages de l'app (Télécharger → Installer & redémarrer). Version Android : voir la release android-latest."

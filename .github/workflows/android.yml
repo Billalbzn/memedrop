@@ -6,9 +6,14 @@ name: Android APK
 
 on:
   push:
+    # Branches seulement : un tag v1.2.3 (release Windows) ne relance pas l'APK
+    branches: ['**']
     paths:
       - 'memedrop/android/**'
-      - 'memedrop/overlay/src/**'
+      # Seuls fichiers de overlay/src copiés dans l'APK (syncWebAssets)
+      - 'memedrop/overlay/src/overlay.js'
+      - 'memedrop/overlay/src/overlay.html'
+      - 'memedrop/overlay/src/styles.css'
       - '.github/workflows/android.yml'
   workflow_dispatch:
 
@@ -17,7 +22,8 @@ permissions:
 
 concurrency:
   group: android-apk-${{ github.ref }}
-  cancel-in-progress: true
+  # Sur main, ne jamais couper une publication entre le delete et le create
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build:

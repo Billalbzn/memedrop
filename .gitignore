@@ -1,0 +1,6 @@
+# Secrets : jamais commités, où qu'ils soient dans le repo (dépôt public).
+# Les .gitignore des sous-dossiers restent valables.
+*.p12
+*.jks
+*.keystore
+.env

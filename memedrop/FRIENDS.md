@@ -4,7 +4,7 @@ Tu vas installer MemeDrop. Une fois lancé, n'importe qui sur le Discord pourra 
 
 ## Installation (1 minute)
 
-1. **Télécharge** le fichier `MemeDrop-Setup.exe` (lien fourni par kalel95190)
+1. **Télécharge** le fichier `MemeDrop-Setup-x.y.z.exe` depuis https://github.com/Billalbzn/memedrop/releases/latest (sur Android : `MemeDrop.apk`, voir le README principal)
 2. **Double-clique** dessus
 3. Windows va afficher un écran bleu **"Windows a protégé votre PC"** — c'est normal, l'app n'est pas signée (on est pas Microsoft 😅). Clique sur :
    - **"Informations complémentaires"** (petit lien)
@@ -27,7 +27,7 @@ Sur ton Discord, dans n'importe quel salon où le bot **MemeDrop** est présent,
 → Tape le code à 6 chiffres dans le champ
 → Entrée
 
-Le bot te répond `✅ Linked!` et dans l'app le voyant passe au **vert "LINKED"**.
+Le bot te répond `✅ Linked on …` et dans l'app le voyant passe au **vert « connecté »**.
 
 **C'est bon, tu es opérationnel.** 🎯
 
@@ -39,7 +39,7 @@ Le bot te répond `✅ Linked!` et dans l'app le voyant passe au **vert "LINKED"
 
 Quelques règles :
 - Le pote doit avoir lancé l'app et fait `/link` aussi
-- Formats supportés : PNG, JPG, GIF, WEBP, MP4, WEBM
+- Formats supportés : PNG, JPG, GIF, WEBP, MP4, WEBM, MP3
 - Taille max : 25 MB
 - Un drop maximum toutes les 2 secondes par personne
 
@@ -75,6 +75,7 @@ Passe la souris sur le drop → une barre d'emojis apparaît en dessous (😂 �
 - **Heures calmes** : mute automatique sur un créneau (ex. 22h–8h)
 - **Zone d'exclusion** : les drops évitent le centre / haut / bas de ton écran
 - **Historique** : bouton **revoir** pour rejouer un drop reçu (< 24 h)
+- **Mises à jour** : quand une nouvelle version sort, une carte « Mise à jour disponible » apparaît ici → **Télécharger** → **Installer & redémarrer** (rien ne s'installe tout seul)
 
 ## ⚠️ À savoir avant de jouer
 
@@ -84,7 +85,7 @@ Passe la souris sur le drop → une barre d'emojis apparaît en dessous (😂 �
 
 ## Coupe le bordel quand t'en as marre
 
-- Clic droit sur l'icône M dans la barre des tâches → **Quit**
+- Clic droit sur l'icône M dans la barre des tâches → **Quitter**
 - Ou tape `/unlink` dans Discord (les drops ne passeront plus mais l'app continue de tourner)
 
 Have fun et abuse pas trop 😈
