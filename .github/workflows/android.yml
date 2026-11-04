@@ -1,6 +1,7 @@
 # Compile l'APK Android de MemeDrop à chaque push touchant l'appli Android ou
-# le renderer partagé, puis le publie dans la release "android-latest"
-# (lien de téléchargement direct, sans compte GitHub).
+# le renderer partagé. Seule une build de `main` est publiée dans la release
+# "android-latest" (lien de téléchargement direct, sans compte GitHub) : sur les
+# autres branches, l'APK est seulement compilé et joint comme artefact.
 name: Android APK
 
 on:
@@ -74,7 +75,11 @@ jobs:
 
       # Pré-release (pas "latest") : n'interfère pas avec l'auto-update
       # Windows, qui ne lit que la dernière release stable.
+      # Uniquement depuis main : le bouton « mise à jour » des téléphones
+      # propose cette release à tout le monde, et Android refuse les retours
+      # en arrière (une build de branche publiée ne peut pas être annulée).
       - name: Publish to the android-latest release
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

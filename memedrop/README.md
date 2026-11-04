@@ -139,9 +139,11 @@ The Android app lives in `android/`. It is a small native Kotlin app:
 
 You don't need Android Studio: the **Android APK** GitHub Actions workflow
 (`.github/workflows/android.yml`) builds it on every push touching `android/` or
-`overlay/src/`, and publishes it as `MemeDrop.apk` in the **`android-latest`**
-pre-release. Being a pre-release, it does not interfere with the Windows
-auto-updater, which only reads the latest stable release.
+`overlay/src/`. Only builds of `main` are published as `MemeDrop.apk` in the
+**`android-latest`** pre-release (the one phones update from); on other branches
+the APK is only attached to the run as the `MemeDrop-apk` artifact. Being a
+pre-release, it does not interfere with the Windows auto-updater, which only
+reads the latest stable release.
 
 To build locally instead (JDK 17 + Android SDK + Gradle 8.9):
 
