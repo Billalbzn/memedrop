@@ -20,12 +20,26 @@ function load() {
   try {
     const raw = fs.readFileSync(DATA_FILE, 'utf8');
     const data = JSON.parse(raw);
-    return {
+    const out = {
       favorites: data.favorites || {},
       groups: data.groups || {},
       stats: data.stats || {},
     };
-  } catch {
+    // Un store vide après un déploiement (volume non monté…) se voit ici
+    const nFav = Object.values(out.favorites).reduce((n, l) => n + (Array.isArray(l) ? l.length : 0), 0);
+    const nGrp = Object.values(out.groups).reduce((n, g) => n + Object.keys(g || {}).length, 0);
+    console.log(`[store] ${DATA_FILE} : ${nFav} favoris, ${nGrp} groupes`);
+    return out;
+  } catch (e) {
+    if (e.code === 'ENOENT') {
+      console.log(`[store] aucun store.json dans ${DATA_DIR} — démarrage à vide`);
+    } else {
+      // Illisible (JSON cassé par une édition à la main…) : on le met de côté
+      // au lieu de laisser la prochaine sauvegarde l'écraser pour de bon.
+      const aside = `${DATA_FILE}.corrupt-${Date.now()}`;
+      console.error(`[store] store.json illisible (${e.message}), renommé en ${aside}`);
+      try { fs.renameSync(DATA_FILE, aside); } catch {}
+    }
     return { favorites: {}, groups: {}, stats: {} };
   }
 }
@@ -46,10 +60,13 @@ function writeNow(data) {
 
 let saveTimer = null;
 let pendingData = null;
+// `data` : l'objet à écrire, ou une fonction qui le construit au moment de
+// l'écriture (un seul instantané pour une rafale de changements).
+// Écrit au plus 500 ms après le PREMIER changement : relancer le minuteur à
+// chaque appel pouvait repousser l'écriture indéfiniment.
 function save(data) {
   pendingData = data;
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(flush, 500);
+  if (!saveTimer) saveTimer = setTimeout(flush, 500);
 }
 
 // Écrit immédiatement une sauvegarde en attente (appelé à l'arrêt du bot,
@@ -57,7 +74,7 @@ function save(data) {
 function flush() {
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
   if (!pendingData) return;
-  const data = pendingData;
+  const data = typeof pendingData === 'function' ? pendingData() : pendingData;
   pendingData = null;
   writeNow(data);
 }
