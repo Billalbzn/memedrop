@@ -22,6 +22,15 @@ function addEffectOption(b) {
     .addChoices(...EFFECT_CHOICES)
     .setRequired(false));
 }
+// Recherche de GIF — alternative à `media` pour ne pas avoir à uploader un
+// fichier. Le bot répond avec jusqu'à 5 résultats (vignettes + boutons) pour
+// choisir, pas d'autocomplete Discord (celle-ci ne peut afficher que du texte).
+function addGifOption(b) {
+  return b.addStringOption(o => o.setName('gif')
+    .setDescription('Cherche un GIF (mots-clés) — un choix de vignettes s\'affichera')
+    .setMaxLength(100)
+    .setRequired(false));
+}
 
 const commands = [
   // /drop @cible media [musique] [caption]
@@ -48,6 +57,7 @@ const commands = [
         .setDescription('Emoji(s) qui tomberont en pluie sur l\'écran (ex: 🔥💀🤣, jusqu\'à 5)')
         .setMaxLength(40)
         .setRequired(false));
+    addGifOption(b);
     addTtsOption(b);
     addEffectOption(b);
     b.addIntegerOption(o => o.setName('delai')
@@ -82,6 +92,7 @@ const commands = [
         .setDescription('Emoji(s) qui tomberont en pluie sur l\'écran (ex: 🔥💀🤣, jusqu\'à 5)')
         .setMaxLength(40)
         .setRequired(false));
+    addGifOption(b);
     addTtsOption(b);
     addEffectOption(b);
     return b.toJSON();
@@ -246,6 +257,7 @@ const commands = [
         .setDescription('Emoji(s) qui tomberont en pluie sur l\'écran (ex: 🔥💀🤣, jusqu\'à 5)')
         .setMaxLength(40)
         .setRequired(false));
+    addGifOption(b);
     addTtsOption(b);
     addEffectOption(b);
     return b.toJSON();

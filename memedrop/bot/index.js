@@ -1,7 +1,8 @@
 // index.js — MemeDrop bot
 require('dotenv').config();
 
-const { Client, GatewayIntentBits, Events, MessageFlags } = require('discord.js');
+const { Client, GatewayIntentBits, Events, MessageFlags,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const { WebSocketServer } = require('ws');
 const http = require('http');
 const crypto = require('crypto');
@@ -808,6 +809,159 @@ function classifyMedia(mime) {
   return 'image';
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Recherche de GIF (Klipy) — alternative à l'upload d'un fichier pour /drop,
+// /dropall et /dropgroup. (Tenor ferme son API en 2026 ; Klipy, fondé par
+// d'anciens de Tenor, a une API très proche : https://klipy.com/developers)
+//
+// L'autocomplete Discord n'affiche que du texte, donc l'option `gif` est une
+// recherche : le bot répond avec jusqu'à 5 résultats en embeds (image visible)
+// + des boutons numérotés. Le clic déclenche `finish(att)`, une closure fournie
+// par chaque commande qui sait livrer le drop et renvoie le texte à afficher.
+// ─────────────────────────────────────────────────────────────────────────────
+const KLIPY_API_KEY = process.env.KLIPY_API_KEY || '';
+const GIF_PICK_TTL_MS = 5 * 60_000;
+const GIF_SEARCH_TIMEOUT_MS = 8_000;
+const pendingGifPicks = new Map(); // sessionId -> { requesterId, results, finish, expiresAt }
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, session] of pendingGifPicks) {
+    if (session.expiresAt < now) pendingGifPicks.delete(id);
+  }
+}, 60_000).unref();
+
+// Un résultat Klipy expose `file.<hd|md|sm|xs>.<gif|webp|jpg|mp4|webm>`
+// (chacun { url, width, height, size }) : variante gif "md" (bon compromis
+// qualité/poids), sinon la première variante gif disponible.
+function pickKlipyFile(file) {
+  if (!file || typeof file !== 'object') return null;
+  for (const sizeKey of ['md', 'sm', 'hd', 'xs']) {
+    const gif = file[sizeKey]?.gif;
+    if (typeof gif?.url === 'string') return gif;
+  }
+  for (const variant of Object.values(file)) {
+    if (typeof variant?.gif?.url === 'string') return variant.gif;
+  }
+  return null;
+}
+
+async function searchGifs(query) {
+  if (!KLIPY_API_KEY || !query) return [];
+  const u = new URL(`https://api.klipy.com/api/v1/${encodeURIComponent(KLIPY_API_KEY)}/gifs/search`);
+  u.searchParams.set('q', query);
+  u.searchParams.set('per_page', '5');
+  u.searchParams.set('page', '1');
+  const res = await fetch(u, { signal: AbortSignal.timeout(GIF_SEARCH_TIMEOUT_MS) });
+  if (!res.ok) throw new Error(`klipy ${res.status}`);
+  const data = await res.json();
+  const items = Array.isArray(data?.data?.data) ? data.data.data : [];
+  return items
+    .map(item => {
+      const gif = pickKlipyFile(item?.file);
+      // Seules des URL https partent vers les overlays
+      if (!gif || !/^https:\/\//i.test(gif.url)) return null;
+      return {
+        label: String(item.title || item.slug || 'gif').slice(0, 100),
+        url: gif.url,
+        mime: 'image/gif',
+        size: Number(gif.size) || 0,
+        width: Number(gif.width) || null,
+        height: Number(gif.height) || null,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 5);   // un ActionRow Discord tient 5 boutons au plus
+}
+
+// Cherche `query` et affiche jusqu'à 5 résultats (embeds avec vignette) + des
+// boutons numérotés. `finish(att)` est appelée avec le GIF choisi.
+async function presentGifPicker(interaction, query, finish) {
+  if (!KLIPY_API_KEY) {
+    return safeReply(interaction, '❌ La recherche GIF n\'est pas configurée sur ce bot — utilise `media`.');
+  }
+  let results;
+  try {
+    results = await searchGifs(query);
+  } catch (e) {
+    console.error('[gif] search failed:', e.message);
+    return safeReply(interaction, '❌ Recherche GIF indisponible pour le moment — réessaie plus tard ou utilise `media`.');
+  }
+  if (!results.length) {
+    return safeReply(interaction, `❌ Aucun GIF trouvé pour \`${query}\`. Essaie d'autres mots-clés ou utilise \`media\`.`);
+  }
+
+  const sessionId = crypto.randomBytes(6).toString('hex');
+  pendingGifPicks.set(sessionId, {
+    requesterId: interaction.user.id,
+    results,
+    finish,
+    expiresAt: Date.now() + GIF_PICK_TTL_MS,
+  });
+
+  const embeds = results.map((r, i) =>
+    new EmbedBuilder().setTitle(`${i + 1}. ${r.label}`).setImage(r.url).setColor(0x5865f2));
+  // Numéros dans une rangée (5 max par ActionRow), Annuler dans une seconde
+  const pickRow = new ActionRowBuilder().addComponents(
+    ...results.map((r, i) => new ButtonBuilder()
+      .setCustomId(`gifpick:${sessionId}:${i}`)
+      .setLabel(String(i + 1))
+      .setStyle(ButtonStyle.Secondary)));
+  const cancelRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`gifpick:${sessionId}:cancel`)
+      .setLabel('Annuler')
+      .setStyle(ButtonStyle.Danger));
+
+  try {
+    await interaction.editReply({
+      content: `🔎 Résultats pour \`${query}\` — clique un numéro pour choisir :`,
+      embeds,
+      components: [pickRow, cancelRow],
+    });
+  } catch (e) {
+    pendingGifPicks.delete(sessionId);
+    console.error('[gif] picker reply failed:', e.message);
+  }
+}
+
+// Clic sur un bouton `gifpick:<sessionId>:<index|cancel>`.
+async function handleGifPickButton(interaction) {
+  const [, sessionId, choice] = interaction.customId.split(':');
+  const session = pendingGifPicks.get(sessionId);
+  const done = (content) => interaction.update({ content, embeds: [], components: [] });
+  if (!session || session.expiresAt < Date.now()) {
+    pendingGifPicks.delete(sessionId);
+    return done('❌ Cette recherche a expiré. Relance la commande.');
+  }
+  if (interaction.user.id !== session.requesterId) {
+    return interaction.reply({ content: '❌ Seule la personne qui a lancé la commande peut choisir.', flags: MessageFlags.Ephemeral });
+  }
+  pendingGifPicks.delete(sessionId);   // un seul choix par recherche
+
+  if (choice === 'cancel') return done('❌ Recherche annulée.');
+  const picked = session.results[Number(choice)];
+  if (!picked) return done('❌ Choix invalide.');
+  const att = {
+    url: picked.url,
+    contentType: picked.mime,
+    name: `gif-${sessionId}-${choice}.gif`,
+    size: picked.size,
+    width: picked.width,
+    height: picked.height,
+  };
+  const err = validateAttachment(att);
+  if (err) return done(`❌ ${err}`);
+  let text;
+  try {
+    text = await session.finish(att);
+  } catch (e) {
+    console.error('[gif] finish failed:', e);
+    text = '⚠️ Erreur interne en envoyant le drop.';
+  }
+  return done(text);
+}
+
 // Extrait jusqu'à 5 emojis visuels distincts d'une chaîne (option "pluie") —
 // permet de faire pleuvoir une combinaison d'emojis plutôt qu'un seul.
 const MAX_RAIN_EMOJIS = 5;
@@ -952,7 +1106,8 @@ function validateMusic(att) {
 }
 
 // Lit et valide les options communes à /drop, /dropall et /dropgroup.
-// Renvoie { error } ou { att, caption, musicAtt, rain, tts, effect }.
+// Renvoie { error } ou { att, gifQuery, caption, musicAtt, rain, tts, effect }.
+// Avec `gif`, att est null : le média sera connu après le choix sur le picker.
 function readDropOptions(interaction) {
   const att      = interaction.options.getAttachment('media', false);
   const caption  = interaction.options.getString('caption', false);
@@ -960,10 +1115,14 @@ function readDropOptions(interaction) {
   const rain     = extractEmojis(interaction.options.getString('pluie', false));
   const tts      = (interaction.options.getString('tts', false) || '').trim() || null;
   const effect   = interaction.options.getString('effet', false);
+  const gifQuery = (interaction.options.getString('gif', false) || '').trim().slice(0, 100) || null;
 
-  // Il faut au moins un média, une pluie ou un texte à lire
-  if (!att && !rain && !tts) {
-    return { error: '❌ Mets au moins un média (`media`), un emoji (`pluie`) ou un texte (`tts`).' };
+  if (att && gifQuery) {
+    return { error: '❌ Choisis soit `media` soit `gif`, pas les deux.' };
+  }
+  // Il faut au moins un média (fichier ou recherche gif), une pluie ou un texte à lire
+  if (!att && !gifQuery && !rain && !tts) {
+    return { error: '❌ Mets au moins un média (`media`/`gif`), un emoji (`pluie`) ou un texte (`tts`).' };
   }
   if (att) {
     const err = validateAttachment(att);
@@ -971,13 +1130,13 @@ function readDropOptions(interaction) {
   }
   const musicErr = validateMusic(musicAtt);
   if (musicErr) return { error: `❌ ${musicErr}` };
-  if (musicAtt && !att) {
+  if (musicAtt && !att && !gifQuery) {
     return { error: '❌ L\'option `musique` nécessite un média (image ou GIF).' };
   }
-  if (musicAtt && !att.contentType.startsWith('image/')) {
+  if (musicAtt && att && !att.contentType.startsWith('image/')) {
     return { error: '❌ L\'option `musique` ne fonctionne qu\'avec une image ou un GIF (pas une vidéo).' };
   }
-  return { att, caption, musicAtt, rain, tts, effect };
+  return { att, gifQuery, caption, musicAtt, rain, tts, effect };
 }
 
 async function safeReply(interaction, content) {
@@ -1007,6 +1166,17 @@ function capLines(header, lines) {
 }
 
 async function onInteraction(interaction) {
+  // Boutons du picker GIF (les autres boutons sont ignorés)
+  if (interaction.isButton?.()) {
+    if (interaction.customId?.startsWith('gifpick:')) {
+      try {
+        await handleGifPickButton(interaction);
+      } catch (e) {
+        console.error('[gif] button handler error:', e.message);
+      }
+    }
+    return;
+  }
   if (!interaction.isChatInputCommand()) return;
 
   // Tout le modèle de liens est par serveur : en MP, /link créait un lien
@@ -1219,32 +1389,44 @@ async function onInteraction(interaction) {
         if (delayMin > 0 && (pendingDelayed.get(interaction.user.id) || 0) >= MAX_PENDING_DELAYED) {
           return safeReply(interaction, `⏳ Tu as déjà ${MAX_PENDING_DELAYED} drops programmés — attends qu'ils partent.`);
         }
+        // Avec `gif`, le cooldown est consommé dès la recherche (appel Klipy)
         markCooldown(lastDropAt, interaction.user.id);
 
-        const { att, caption, musicAtt, rain, tts, effect } = opts;
-        const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain, { tts, effect });
+        const { att, gifQuery, caption, musicAtt, rain, tts, effect } = opts;
+        const senderId  = interaction.user.id;
+        const guildId   = interaction.guildId;
+        const channelId = interaction.channelId;
 
-        // Drop différé : on programme l'envoi et on répond tout de suite.
-        // (Perdu si le bot redémarre entre-temps — assumé pour un troll.)
-        if (delayMin && delayMin > 0) {
-          const minutes   = Math.min(delayMin, 60);
-          const senderId  = interaction.user.id;
-          const guildId   = interaction.guildId;
-          const channelId = interaction.channelId;
-          pendingDelayed.set(senderId, (pendingDelayed.get(senderId) || 0) + 1);
-          setTimeout(() => {
-            const left = (pendingDelayed.get(senderId) || 1) - 1;
-            if (left > 0) pendingDelayed.set(senderId, left);
-            else pendingDelayed.delete(senderId);
-            payload.ts = Date.now();
-            const { delivered } = deliverDrop(senderId, guildId, channelId, targets, payload);
-            console.log(`[drop] delayed drop fired (${delivered.length}/${targets.length} delivered)`);
-          }, minutes * 60_000);
-          return safeReply(interaction,
-            `⏳ Drop programmé dans **${minutes} min** pour ${targets.map(t => `**${t.username}**`).join(', ')}. 😈`);
-        }
+        // Livre le drop une fois le média connu : tout de suite pour `media`,
+        // après le choix sur le picker pour `gif`. Renvoie le texte à afficher.
+        const finishDrop = (media) => {
+          const payload = buildDropPayload(media, caption, interaction.user, musicAtt || null, rain, { tts, effect });
 
-        return safeReply(interaction, dispatchToTargets(interaction, targets, payload, musicAtt));
+          // Drop différé : on programme l'envoi et on répond tout de suite.
+          // (Perdu si le bot redémarre entre-temps — assumé pour un troll.)
+          if (delayMin && delayMin > 0) {
+            // Revérifié ici : plusieurs pickers GIF ouverts à la fois
+            if ((pendingDelayed.get(senderId) || 0) >= MAX_PENDING_DELAYED) {
+              return `⏳ Tu as déjà ${MAX_PENDING_DELAYED} drops programmés — attends qu'ils partent.`;
+            }
+            const minutes = Math.min(delayMin, 60);
+            pendingDelayed.set(senderId, (pendingDelayed.get(senderId) || 0) + 1);
+            setTimeout(() => {
+              const left = (pendingDelayed.get(senderId) || 1) - 1;
+              if (left > 0) pendingDelayed.set(senderId, left);
+              else pendingDelayed.delete(senderId);
+              payload.ts = Date.now();
+              const { delivered } = deliverDrop(senderId, guildId, channelId, targets, payload);
+              console.log(`[drop] delayed drop fired (${delivered.length}/${targets.length} delivered)`);
+            }, minutes * 60_000);
+            return `⏳ Drop programmé dans **${minutes} min** pour ${targets.map(t => `**${t.username}**`).join(', ')}. 😈`;
+          }
+
+          return dispatchToTargets(interaction, targets, payload, musicAtt);
+        };
+
+        if (gifQuery) return presentGifPicker(interaction, gifQuery, finishDrop);
+        return safeReply(interaction, finishDrop(att));
       }
 
       // ── /dropall — only reachable users in this guild ──────────────────
@@ -1258,7 +1440,7 @@ async function onInteraction(interaction) {
 
         const opts = readDropOptions(interaction);
         if (opts.error) return safeReply(interaction, opts.error);
-        const { att, caption, musicAtt, rain, tts, effect } = opts;
+        const { att, gifQuery, caption, musicAtt, rain, tts, effect } = opts;
         // Réservé avant les await ci-dessous (voir reserveCooldown)
         const undoCooldown = reserveCooldown(lastDropAllAt, interaction.user.id);
 
@@ -1274,17 +1456,21 @@ async function onInteraction(interaction) {
           return safeReply(interaction, 'Personne n\'est atteignable sur ce serveur pour l\'instant. 😴');
         }
 
-        const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain, { tts, effect });
-        // deliverDrop revérifie chaque destinataire : il a pu se déconnecter
-        // ou bloquer l'expéditeur pendant les await.
-        const { delivered: names } =
-          deliverDrop(interaction.user.id, interaction.guildId, interaction.channelId, recipients, payload);
-        if (names.length === 0) {
-          undoCooldown();
-          return safeReply(interaction, 'Personne n\'est atteignable sur ce serveur pour l\'instant. 😴');
-        }
-        return safeReply(interaction,
-          `💥 Drop envoyé à **${names.length}** personne${names.length > 1 ? 's' : ''} : ${names.map(n => `**${n}**`).join(', ')}${musicAtt ? ' 🎵' : ''}`);
+        const finishDropAll = (media) => {
+          const payload = buildDropPayload(media, caption, interaction.user, musicAtt || null, rain, { tts, effect });
+          // deliverDrop revérifie chaque destinataire : il a pu se déconnecter
+          // ou bloquer l'expéditeur pendant les await (ou le choix du GIF).
+          const { delivered: names } =
+            deliverDrop(interaction.user.id, interaction.guildId, interaction.channelId, recipients, payload);
+          if (names.length === 0) {
+            undoCooldown();
+            return 'Personne n\'est atteignable sur ce serveur pour l\'instant. 😴';
+          }
+          return `💥 Drop envoyé à **${names.length}** personne${names.length > 1 ? 's' : ''} : ${names.map(n => `**${n}**`).join(', ')}${musicAtt ? ' 🎵' : ''}`;
+        };
+
+        if (gifQuery) return presentGifPicker(interaction, gifQuery, finishDropAll);
+        return safeReply(interaction, finishDropAll(att));
       }
 
       // ── /block — stop a specific user from being able to /drop you ─────
@@ -1511,7 +1697,7 @@ async function onInteraction(interaction) {
 
         const opts = readDropOptions(interaction);
         if (opts.error) return safeReply(interaction, opts.error);
-        const { att, caption, musicAtt, rain, tts, effect } = opts;
+        const { att, gifQuery, caption, musicAtt, rain, tts, effect } = opts;
         // Réservé avant les await ci-dessous (voir reserveCooldown)
         const undoCooldown = reserveCooldown(lastDropAt, interaction.user.id);
 
@@ -1526,8 +1712,13 @@ async function onInteraction(interaction) {
           return safeReply(interaction, `❌ Aucun membre du groupe **${groupKey}** n'est joignable (utilisateurs introuvables).`);
         }
 
-        const payload = buildDropPayload(att, caption, interaction.user, musicAtt || null, rain, { tts, effect });
-        return safeReply(interaction, dispatchToTargets(interaction, targets, payload, musicAtt, undoCooldown));
+        const finishDropGroup = (media) => {
+          const payload = buildDropPayload(media, caption, interaction.user, musicAtt || null, rain, { tts, effect });
+          return dispatchToTargets(interaction, targets, payload, musicAtt, undoCooldown);
+        };
+
+        if (gifQuery) return presentGifPicker(interaction, gifQuery, finishDropGroup);
+        return safeReply(interaction, finishDropGroup(att));
       }
 
       // ── /stats — compteurs de drops envoyés / reçus ─────────────────────

@@ -99,7 +99,9 @@ Everyone shares **one bot** on one Fly.io app (a single machine). Each PC or pho
    npm run deploy
    ```
 
-The bot is now running 24/7 at `wss://<your-app>.fly.dev`. Test from any Discord channel: type `/status` — bot should reply. Once it works, keep the real config in the repo with `fly config save -a <your-app>` and commit `fly.toml`.
+The bot is now running 24/7 at `wss://<your-app>.fly.dev`. Test from any Discord channel: type `/status` — bot should reply.
+
+The official bot's config is committed as `bot/fly.toml` + `bot/Dockerfile` (app `memedrop-bot`, Paris, volume `memedrop_data` on `/app/data`): from `bot/`, a plain `fly deploy` redeploys it. The container registers the slash commands at every start. Optional: `fly secrets set KLIPY_API_KEY=...` enables the `gif` search option of `/drop`, `/dropall` and `/dropgroup`.
 
 ---
 
@@ -320,8 +322,8 @@ memedrop/
 │   ├── index.js              # bot + HTTP/ws server (+ /tts)
 │   ├── store.js              # favorites / groups / stats persistence
 │   ├── deploy-commands.js    # slash command registration
-│   ├── nixpacks.toml         # Node version for nixpacks builds (former Railway host)
-│   ├── railway.json          # former Railway service config (unused on Fly)
+│   ├── fly.toml              # Fly.io app config (one machine, volume on /app/data)
+│   ├── Dockerfile            # image built by `fly deploy` (registers commands, then starts the bot)
 │   ├── package.json
 │   └── .env.example
 └── overlay/
