@@ -357,7 +357,7 @@ let reconnectTimer = null;
 let reconnectAttempts = 0;
 let heartbeatTimer = null;
 
-// Le bot envoie un ping toutes les 30 s. Sans nouvelles pendant 75 s, la
+// Le bot envoie un ping toutes les 45 s (30 s avant la 1.7). Sans nouvelles pendant 75 s, la
 // connexion est considérée morte (veille, changement de Wi-Fi…) : on la
 // coupe pour déclencher la reconnexion au lieu d'attendre indéfiniment.
 const HEARTBEAT_TIMEOUT_MS = 75_000;
@@ -465,8 +465,9 @@ function connectWS() {
         break;
       }
       case 'register_failed':
-        // Identité invalide/obsolète — on l'oublie et on repasse en appairage.
-        store.set('linkIdentity', null);
+        // Identité refusée : on affiche le code d'appairage mais on la garde
+        // (un LINK_SECRET mal configuré côté bot ne doit pas délier le PC pour
+        // de bon). Un /link la remplace, 'unlinked' l'efface.
         setState({ status: 'awaiting_link', code: connState.code || null, user: null, links: null });
         break;
       case 'links_update': {

@@ -14,6 +14,7 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -45,13 +46,36 @@ class MainActivity : Activity() {
                 }
                 return false
             }
+            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                // Moteur web partagé avec l'overlay : sans `true`, sa mort tue
+                // toute l'appli (service compris). L'écran sera recréé à la
+                // prochaine ouverture ; finish() plutôt que recreate() pour éviter
+                // une boucle si le moteur continue de planter.
+                Hub.removeListener(onHubChange)   // plus d'evaluateJavascript sur une WebView morte
+                finish()
+                return true
+            }
         }
         setContentView(web)
         web.loadUrl("file:///android_asset/app.html")
 
-        Hub.addListener(onHubChange)
         startMemeDropService()
         Updater.check(manual = false)
+    }
+
+    // Écran visible seulement : arrêté (Home, moveTaskToBack…), le service garde
+    // l'activité en vie et chaque Hub.changed() reconstruisait la page pour rien.
+    override fun onStart() {
+        super.onStart()
+        Hub.addListener(onHubChange)
+        web.onResume()
+    }
+
+    override fun onStop() {
+        Hub.removeListener(onHubChange)
+        // Pas pauseTimers() : il gèlerait aussi la WebView de l'overlay (tout le process).
+        web.onPause()
+        super.onStop()
     }
 
     override fun onResume() {

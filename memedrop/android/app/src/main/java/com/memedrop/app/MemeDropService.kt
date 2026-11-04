@@ -5,11 +5,17 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.graphics.drawable.Icon
+import android.net.ConnectivityManager
+import android.net.Network
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -29,7 +35,7 @@ class MemeDropService : Service() {
         const val ACTION_STOP = "com.memedrop.app.STOP"
         private const val CHANNEL = "memedrop"
         private const val NOTIF_ID = 1
-        // Le bot envoie un ping toutes les 30 s : sans nouvelles pendant 75 s,
+        // Le bot envoie un ping toutes les 45 s (30 s avant la 1.7) : sans nouvelles pendant 75 s,
         // la connexion est considérée morte et on se reconnecte.
         private const val HEARTBEAT_TIMEOUT_MS = 75_000L
     }
@@ -42,8 +48,33 @@ class MemeDropService : Service() {
     private lateinit var overlay: OverlayController
     private var lastMuteKey = ""
 
+    // elapsedRealtime (avance aussi en veille profonde) : dernier signe de vie de `ws`
+    private var lastRxAt = 0L
+
     private val reconnectRunnable = Runnable { connect() }
-    private val heartbeatRunnable = Runnable { ws?.cancel() }
+    // cancel() ne rappelle pas onFailure si OkHttp a déjà cessé de lire la
+    // socket : on traite la coupure nous-mêmes (ses callbacks seront ignorés).
+    private val heartbeatRunnable = Runnable {
+        val dead = ws ?: return@Runnable
+        onSocketClosed()
+        dead.cancel()
+    }
+
+    // Réseau revenu / écran rallumé : on n'attend ni la fin du backoff ni le
+    // heartbeat (les timers Handler sont gelés pendant la veille profonde).
+    private fun kick() {
+        if (Hub.service !== this || Prefs.paused) return   // service déjà détruit
+        if (ws == null || SystemClock.elapsedRealtime() - lastRxAt > HEARTBEAT_TIMEOUT_MS) {
+            attempts = 0
+            connect()
+        }
+    }
+    private val netCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) { Hub.main.post { kick() } }
+    }
+    private val screenOn = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) { kick() }
+    }
     private val muteTicker = object : Runnable {
         override fun run() {
             val key = "${Prefs.isManuallyMuted()}|${Prefs.quietHoursActive()}"
@@ -72,6 +103,14 @@ class MemeDropService : Service() {
         }
         Hub.main.post(muteTicker)
         connect()
+        runCatching {
+            getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(netCallback)
+        }
+        runCatching {
+            val f = IntentFilter(Intent.ACTION_SCREEN_ON)
+            if (Build.VERSION.SDK_INT >= 33) registerReceiver(screenOn, f, Context.RECEIVER_NOT_EXPORTED)
+            else registerReceiver(screenOn, f)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -87,6 +126,8 @@ class MemeDropService : Service() {
     }
 
     override fun onDestroy() {
+        runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(netCallback) }
+        runCatching { unregisterReceiver(screenOn) }
         Hub.main.removeCallbacks(reconnectRunnable)
         Hub.main.removeCallbacks(heartbeatRunnable)
         Hub.main.removeCallbacks(muteTicker)
@@ -132,6 +173,12 @@ class MemeDropService : Service() {
             override fun onMessage(webSocket: WebSocket, text: String) {
                 Hub.main.post { if (webSocket === ws) onSocketMessage(text) }
             }
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                // Fermeture propre côté bot (redéploiement) : OkHttp n'appelle onClosed
+                // qu'après NOTRE trame de fermeture et ne lit plus la socket.
+                webSocket.close(1000, null)
+                Hub.main.post { if (webSocket === ws) onSocketClosed() }
+            }
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 Hub.main.post { if (webSocket === ws) onSocketClosed() }
             }
@@ -139,6 +186,10 @@ class MemeDropService : Service() {
                 Hub.main.post { if (webSocket === ws) onSocketClosed() }
             }
         })
+        lastRxAt = SystemClock.elapsedRealtime()
+        // Garde-fou de la poignée de main : readTimeout(0) (indispensable une fois
+        // la socket ouverte) laisse TLS et l'upgrade HTTP sans délai maximum.
+        armHeartbeat()
     }
 
     // Ferme la socket courante sans déclencher de reconnexion (les callbacks
@@ -166,6 +217,7 @@ class MemeDropService : Service() {
 
     private fun onSocketOpen() {
         attempts = 0
+        lastRxAt = SystemClock.elapsedRealtime()
         armHeartbeat()
         // Ré-enregistrement automatique avec l'identité stockée (pas de /link)
         val identity = Prefs.linkIdentity
@@ -186,6 +238,7 @@ class MemeDropService : Service() {
     }
 
     private fun onSocketMessage(text: String) {
+        lastRxAt = SystemClock.elapsedRealtime()
         armHeartbeat()
         val msg = runCatching { JSONObject(text) }.getOrNull() ?: return
         when (msg.optString("type")) {
@@ -214,8 +267,9 @@ class MemeDropService : Service() {
                 setState("linked", null, user, links)
             }
             "register_failed" -> {
-                // Identité invalide/obsolète : on l'oublie et on repasse en appairage
-                Prefs.linkIdentity = null
+                // Identité refusée : on affiche le code d'appairage mais on la garde
+                // (un LINK_SECRET mal configuré côté bot ne doit pas délier le
+                // téléphone pour de bon). Un /link ou 'unlinked' la remplace/efface.
                 setState("awaiting_link", Hub.code, null, null)
             }
             "links_update" -> {

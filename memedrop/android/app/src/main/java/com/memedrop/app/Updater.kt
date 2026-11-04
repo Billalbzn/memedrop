@@ -74,16 +74,24 @@ object Updater {
 
     fun download(ctx: Context) {
         if (state == "downloading") return
-        val dm = ctx.getSystemService(DownloadManager::class.java)
-        // DownloadManager renomme au lieu d'écraser : on retire l'ancien fichier
-        ctx.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.let { File(it, APK_NAME).delete() }
-        val req = DownloadManager.Request(Uri.parse(APK_URL))
-            .setTitle("MemeDrop ${latestName ?: ""}".trim())
-            .setDescription("Mise à jour de MemeDrop")
-            .setMimeType("application/vnd.android.package-archive")
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
-            .setDestinationInExternalFilesDir(ctx, Environment.DIRECTORY_DOWNLOADS, APK_NAME)
-        downloadId = dm.enqueue(req)
+        try {
+            val dm = ctx.getSystemService(DownloadManager::class.java)
+            // DownloadManager renomme au lieu d'écraser : on retire l'ancien fichier
+            ctx.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.let { File(it, APK_NAME).delete() }
+            val req = DownloadManager.Request(Uri.parse(APK_URL))
+                .setTitle("MemeDrop ${latestName ?: ""}".trim())
+                .setDescription("Mise à jour de MemeDrop")
+                .setMimeType("application/vnd.android.package-archive")
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
+                .setDestinationInExternalFilesDir(ctx, Environment.DIRECTORY_DOWNLOADS, APK_NAME)
+            downloadId = dm.enqueue(req)
+        } catch (e: Exception) {
+            // Gestionnaire de téléchargements désactivé, stockage absent… : sur le
+            // thread principal, l'exception tuait l'appli entière (service compris).
+            error = e.message ?: "téléchargement impossible"
+            set("error")
+            return
+        }
         progress = 0
         error = null
         set("downloading")
@@ -112,8 +120,13 @@ object Updater {
                     return
                 }
                 else -> {
-                    if (total > 0) progress = (done * 100 / total).toInt()
-                    Hub.changed()
+                    val p = if (total > 0) (done * 100 / total).toInt() else progress
+                    if (p != progress) { progress = p; Hub.changed() }
+                    // En attente de réseau / en pause : DownloadManager reprendra seul,
+                    // inutile d'interroger 2 fois par seconde.
+                    Hub.main.postDelayed({ poll(ctx) },
+                        if (status == DownloadManager.STATUS_RUNNING) 500L else 3_000L)
+                    return
                 }
             }
         }

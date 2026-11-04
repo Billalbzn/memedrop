@@ -20,6 +20,14 @@ val syncWebAssets = tasks.register<Copy>("syncWebAssets") {
         }
     }
     into(webAssetsDir)
+    // Sans le shim, overlay.js plante sur Android : on échoue le build plutôt
+    // que de publier un APK qui n'affiche plus rien.
+    doLast {
+        val html = webAssetsDir.get().file("overlay.html").asFile.readText()
+        check("android-shim.js" in html) {
+            "overlay.html : balise du script overlay.js introuvable, android-shim.js non injecté"
+        }
+    }
 }
 tasks.named("preBuild") { dependsOn(syncWebAssets) }
 

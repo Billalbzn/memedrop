@@ -12,6 +12,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import org.json.JSONArray
@@ -87,7 +88,9 @@ class OverlayController(private val ctx: Context) {
     @SuppressLint("SetJavaScriptEnabled")
     private fun ensureView(): WebView? {
         web?.let { return it }
-        val w = WebView(ctx)
+        // Moteur WebView indisponible (désactivé, mise à jour en cours) : on saute
+        // ce drop au lieu de faire tomber le service.
+        val w = try { WebView(ctx) } catch (e: Exception) { return null }
         w.setBackgroundColor(Color.TRANSPARENT)
         w.settings.javaScriptEnabled = true
         w.settings.domStorageEnabled = true
@@ -99,6 +102,12 @@ class OverlayController(private val ctx: Context) {
                 view.evaluateJavascript("window.__mdSettings(${Prefs.dropSettings()})", null)
                 for (js in pending) view.evaluateJavascript(js, null)
                 pending.clear()
+            }
+            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                // Moteur web planté/tué (mémoire, média piégé…) : sans `true`, Android tue
+                // toute l'appli, service compris. Le prochain drop recrée une WebView.
+                if (view === web) destroy()
+                return true
             }
         }
 

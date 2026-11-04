@@ -410,4 +410,5 @@ window.onNativeState = () => {
 showTab(lsGet('memedrop.tab', 'home'));
 window.onNativeState();
 // Compte à rebours du mode tranquille / "il y a X min"
-setInterval(() => window.onNativeState(), 30000);
+// (rien à rafraîchir tant que l'écran n'est pas visible : onResume le fait au retour)
+setInterval(() => { if (!document.hidden) window.onNativeState(); }, 30000);
